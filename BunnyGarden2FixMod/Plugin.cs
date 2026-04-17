@@ -137,7 +137,7 @@ public class Plugin : BaseUnityPlugin
             isFixedFreeCam = false;
         }
 
-        Logger.LogInfo($"フリーカメラ: {(isFreeCamActive ? "ON" : "OFF")}");
+        PatchLogger.LogInfo($"フリーカメラ: {(isFreeCamActive ? "ON" : "OFF")}");
     }
 
     private void ToggleFixedFreeCam()
@@ -145,7 +145,7 @@ public class Plugin : BaseUnityPlugin
         if (isFreeCamActive)
         {
             isFixedFreeCam = !isFixedFreeCam;
-            Logger.LogInfo($"フリーカメラ固定モード: {(isFixedFreeCam ? "ON" : "OFF")}");
+            PatchLogger.LogInfo($"フリーカメラ固定モード: {(isFixedFreeCam ? "ON" : "OFF")}");
         }
     }
 
@@ -153,11 +153,11 @@ public class Plugin : BaseUnityPlugin
     {
         // シーン内の全カメラを診断ログ出力
         var allCameras = Camera.allCameras;
-        Logger.LogInfo($"[FreeCam診断] シーン内カメラ数: {allCameras.Length}");
+        PatchLogger.LogInfo($"[FreeCam診断] シーン内カメラ数: {allCameras.Length}");
         foreach (var cam in allCameras)
         {
             var brain = cam.GetComponent("CinemachineBrain");
-            Logger.LogInfo($"  - {cam.name} | tag={cam.tag} | depth={cam.depth} | enabled={cam.enabled} | CinemachineBrain={brain != null}");
+            PatchLogger.LogInfo($"  - {cam.name} | tag={cam.tag} | depth={cam.depth} | enabled={cam.enabled} | CinemachineBrain={brain != null}");
         }
 
         originalCam = Camera.main;
@@ -172,15 +172,15 @@ public class Plugin : BaseUnityPlugin
 
             if (originalCam == null)
             {
-                Logger.LogError("[FreeCam診断] 有効なカメラが見つかりません。フリーカメラを起動できません");
+                PatchLogger.LogError("[FreeCam診断] 有効なカメラが見つかりません。フリーカメラを起動できません");
                 isFreeCamActive = false;
                 return;
             }
-            Logger.LogInfo($"[FreeCam診断] 代替カメラを使用: {originalCam.name}");
+            PatchLogger.LogInfo($"[FreeCam診断] 代替カメラを使用: {originalCam.name}");
         }
         else
         {
-            Logger.LogInfo($"[FreeCam診断] Camera.main = {originalCam.name}");
+            PatchLogger.LogInfo($"[FreeCam診断] Camera.main = {originalCam.name}");
         }
 
         freeCamObject = new GameObject("BG2FreeCam");
@@ -201,7 +201,7 @@ public class Plugin : BaseUnityPlugin
         if (originalListener != null)
             originalListener.enabled = false;
 
-        Logger.LogInfo("フリーカメラを作成しました");
+        PatchLogger.LogInfo("フリーカメラを作成しました");
     }
 
     private static void CopyUrpCameraData(Camera src, Camera dst)
