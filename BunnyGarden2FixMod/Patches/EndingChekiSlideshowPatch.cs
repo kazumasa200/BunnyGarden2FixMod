@@ -51,7 +51,7 @@ public sealed class ChekiSlideshowBehaviour : MonoBehaviour
     private const float ChekiBorderRatio = 0.02f;
 
     /// <summary>チェキシートの下ボーダー幅（写真サイズ比率）。サインエリア分を多めに取る</summary>
-    private const float ChekiBottomRatio = 0.22f;
+    private const float ChekiBottomRatio = 0.16f;
 
     /// <summary>チェキシートの色（白 = Polaroid 風）</summary>
     private static readonly Color ChekiSheetColor = Color.white;
@@ -68,8 +68,8 @@ public sealed class ChekiSlideshowBehaviour : MonoBehaviour
     /// <summary>ランダム傾きの最大角度（度）</summary>
     private const float ChekiTiltMax = 12f;
 
-    /// <summary>グラフィティが写真エリアの下端から何割をカバーするか（残りは下ボーダーまで）</summary>
-    private const float ChekiGraffitiPhotoRatio = 0.45f;
+    /// <summary>グラフィティの左右マージン（写真サイズ比率）。0 = カード横幅いっぱい</summary>
+    private const float ChekiGraffitiMarginRatio = 0f;
 
     /// <summary>名前ラベルの写真左上からのX オフセット（px）</summary>
     private const float ChekiNameOffsetX = 0f;
@@ -310,14 +310,21 @@ public sealed class ChekiSlideshowBehaviour : MonoBehaviour
         if (entry.Graffiti != null)
         {
             var graffitiRt = MakeRectChild(card.transform, "Graffiti");
-            graffitiRt.anchorMin = Vector2.zero;
-            graffitiRt.anchorMax = new Vector2(1f, 0f);
-            // ペアチェキのグラフィティは写真カバー分を半分にする
-            float photoRatio = entry.IsPair ? ChekiGraffitiPhotoRatio * 0.5f : ChekiGraffitiPhotoRatio;
-            float graffitiH = bottom + photo * photoRatio;
-            // offsetMin.x / offsetMax.x で左右ボーダー分だけ内側に収める
-            graffitiRt.offsetMin = new Vector2(border, 0f);
-            graffitiRt.offsetMax = new Vector2(-border, graffitiH);
+
+            // カード横幅いっぱいに引き伸ばし、高さはアスペクト比から算出
+            float graffitiMargin = photo * ChekiGraffitiMarginRatio;
+            float availW = cardW - border * 2f - graffitiMargin * 2f;
+            var nativeSize = entry.Graffiti.rect.size;
+            float availH = nativeSize.x > 0f
+                ? nativeSize.y / nativeSize.x * availW
+                : availW; // フォールバック（正方形扱い）
+
+            // カード下端（border内側）を基準に上方向へ積む
+            graffitiRt.anchorMin = graffitiRt.anchorMax = new Vector2(0.5f, 0f);
+            graffitiRt.pivot     = new Vector2(0.5f, 0f);
+            graffitiRt.sizeDelta = new Vector2(availW, availH);
+            graffitiRt.anchoredPosition = new Vector2(0f, border);
+
             graffitiRt.gameObject.AddComponent<Image>().sprite = entry.Graffiti;
         }
 
