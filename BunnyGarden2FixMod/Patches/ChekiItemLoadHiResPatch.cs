@@ -33,8 +33,8 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(ChekiItem), nameof(ChekiItem.SetupCheki))]
 public static class ChekiItemLoadHiResPatch
 {
-    private const int SizeMin = 64;
-    private const int SizeMax = 2048;
+    internal const int SizeMin = 64;
+    internal const int SizeMax = 2048;
 
     private static AccessTools.FieldRef<ChekiItem, Texture2D> s_textureRef;
     private static AccessTools.FieldRef<ChekiItem, Sprite> s_spriteRef;
@@ -124,13 +124,18 @@ public static class ChekiItemLoadHiResPatch
     /// payload を magic byte で自動判別してデコードする。読み込み失敗・検証エラー時は null を返し、
     /// 呼び出し側は vanilla 320 にフォールバックする。成功時は呼び出し側が <c>Destroy</c> 責任を持つ。
     ///
+    /// <para>
+    /// <paramref name="logPrefix"/> は警告ログのプレフィックス（呼び出し元のパッチ名等）。
+    /// 他パッチ（<c>EndingChekiSlideshowHiResPatch</c> 等）からも再利用できるよう internal で公開。
+    /// </para>
+    ///
     /// <list type="bullet">
     ///   <item>先頭 <c>89 50 4E 47</c> (PNG) → <c>ImageConversion.LoadImage</c></item>
     ///   <item>先頭 <c>FF D8 FF</c> (JPG) → <c>ImageConversion.LoadImage</c></item>
     ///   <item>それ以外 → 未対応フォーマット、警告ログ＋null 返却（vanilla 320 にフォールバック）</item>
     /// </list>
     /// </summary>
-    private static Texture2D DecodePayload(byte[] payload, int slot)
+    internal static Texture2D DecodePayload(byte[] payload, int slot, string logPrefix = "[ChekiItemLoadHiResPatch]")
     {
         // PNG magic: 89 50 4E 47
         bool isPng = payload.Length >= 4
@@ -142,7 +147,7 @@ public static class ChekiItemLoadHiResPatch
 
         if (!isPng && !isJpg)
         {
-            PatchLogger.LogWarning($"[ChekiItemLoadHiResPatch] 未対応フォーマット slot={slot}、vanilla 320 にフォールバック");
+            PatchLogger.LogWarning($"{logPrefix} 未対応フォーマット slot={slot}、vanilla 320 にフォールバック");
             return null;
         }
 
@@ -156,20 +161,20 @@ public static class ChekiItemLoadHiResPatch
         }
         catch (Exception ex)
         {
-            PatchLogger.LogWarning($"[ChekiItemLoadHiResPatch] LoadImage 例外 slot={slot}: {ex.Message}");
+            PatchLogger.LogWarning($"{logPrefix} LoadImage 例外 slot={slot}: {ex.Message}");
             UnityEngine.Object.Destroy(tex);
             return null;
         }
         if (!ok)
         {
-            PatchLogger.LogWarning($"[ChekiItemLoadHiResPatch] LoadImage 失敗 slot={slot}");
+            PatchLogger.LogWarning($"{logPrefix} LoadImage 失敗 slot={slot}");
             UnityEngine.Object.Destroy(tex);
             return null;
         }
         // 破損 / 攻撃的 payload に備え、サイズを検証（正方形・範囲内）。
         if (tex.width != tex.height || tex.width < SizeMin || tex.width > SizeMax)
         {
-            PatchLogger.LogWarning($"[ChekiItemLoadHiResPatch] デコード後サイズ不正 slot={slot} {tex.width}x{tex.height}、スキップ");
+            PatchLogger.LogWarning($"{logPrefix} デコード後サイズ不正 slot={slot} {tex.width}x{tex.height}、スキップ");
             UnityEngine.Object.Destroy(tex);
             return null;
         }
