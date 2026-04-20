@@ -44,10 +44,13 @@
 
   <ItemGroup>
     <None Remove="Assembly\Assembly-CSharp.dll" />
+    <None Remove="Assembly\UniTask.dll" />
     <None Remove="Assembly\Unity.InputSystem.dll" />
     <None Remove="Assembly\Unity.RenderPipelines.Universal.Runtime.dll" />
     <None Remove="Assembly\Unity.TextMeshPro.dll" />
     <None Remove="Assembly\UnityEngine.UI.dll" />
+    <None Remove="Assembly\MessagePack.dll" />
+    <None Remove="Assembly\MessagePack.Annotations.dll" />
   </ItemGroup>
 
   <!-- BepInEx 5 用パッケージ -->
@@ -74,6 +77,9 @@
     <Reference Include="Assembly-CSharp" Publicize="true">
       <HintPath>Assembly\Assembly-CSharp.dll</HintPath>
     </Reference>
+    <Reference Include="UniTask">
+      <HintPath>Assembly\UniTask.dll</HintPath>
+    </Reference>
     <Reference Include="Unity.RenderPipelines.Universal.Runtime">
       <HintPath>Assembly\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
     </Reference>
@@ -85,6 +91,14 @@
     </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>Assembly\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="MessagePack">
+      <HintPath>Assembly\MessagePack.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MessagePack.Annotations">
+      <HintPath>Assembly\MessagePack.Annotations.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
 </Project>

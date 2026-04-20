@@ -25,6 +25,15 @@ public enum AntiAliasingType
     MSAA8x,
 }
 
+/// <summary>チェキ高解像度版を ExSave に保存する際の画像フォーマット。</summary>
+public enum ChekiImageFormat
+{
+    /// <summary>PNG 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚</summary>
+    PNG,
+    /// <summary>JPG 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚</summary>
+    JPG,
+}
+
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class Plugin : BaseUnityPlugin
 {
@@ -41,6 +50,10 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
     public static ConfigEntry<bool> ConfigDisableStockings;
     public static ConfigEntry<bool> ConfigContinueVoiceOnTap;
+    public static ConfigEntry<bool> ConfigChekiHighResEnabled;
+    public static ConfigEntry<int> ConfigChekiSize;
+    public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat;
+    public static ConfigEntry<int> ConfigChekiJpgQuality;
     public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
     public static ConfigEntry<bool> ConfigCastOrderEnabled;
 
@@ -115,6 +128,42 @@ public class Plugin : BaseUnityPlugin
             false,
             "true にすると会話送り（タップ／オート／スキップ）時にボイスが途中停止せず、\n" +
             "次の台詞のボイス再生で自然に上書きされるか、ボイスが最後まで再生されるようになります。");
+
+        ConfigChekiHighResEnabled = Config.Bind(
+            "Cheki",
+            "HighResEnabled",
+            false,
+            "true にするとチェキ（撮影写真）の保存解像度を Size で指定した値に変更します。\n" +
+            "false の場合は本体既定（320x320）のままです。\n" +
+            "互換性: 本体セーブには常に 320x320 版も保存されるため、MOD を外しても主セーブは破損しません。\n" +
+            "高解像度版は MOD 独自のサイドカーファイル（主セーブ + .exmod）に格納されます。\n" +
+            "スロット対応: セーブスロット単位で高解像度データを分離管理します。\n" +
+            "  別スロットに切り替えた際も各スロットの高解像度チェキが正しく表示されます。\n" +
+            "副作用: 高解像度化でメモリ／セーブサイズが増加します（1024 時: 約 48MB/12 枚）。");
+
+        ConfigChekiSize = Config.Bind(
+            "Cheki",
+            "Size",
+            1024,
+            "チェキ画像の正方形サイズ（ピクセル）。64〜2048 にクランプされます。既定 1024。\n" +
+            "HighResEnabled が false の場合は無視されます（本体既定の 320 が使用されます）。\n" +
+            "PNG で実測 1〜5MB/枚 程度に収まります。");
+
+        ConfigChekiFormat = Config.Bind(
+            "Cheki",
+            "ImageFormat",
+            ChekiImageFormat.PNG,
+            "ExSave に格納する画像フォーマット。PNG / JPG。既定 PNG。\n" +
+            "  PNG : 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚。既定\n" +
+            "  JPG : 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚\n" +
+            "エンコードはシャッター時に 1 度のみ走ります。\n" +
+            "読み込みは magic byte による自動判別です。");
+
+        ConfigChekiJpgQuality = Config.Bind(
+            "Cheki",
+            "JpgQuality",
+            90,
+            "ImageFormat=JPG のときの品質（1〜100）。既定 90。値が小さいほどサイズは小さく画質は粗くなります。");
 
         ConfigEndingChekiSlideshow = Config.Bind(
             "Ending",

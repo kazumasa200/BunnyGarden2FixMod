@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.ExSave;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using GB.Game;
@@ -163,11 +164,26 @@ public sealed class ChekiSlideshowBehaviour : MonoBehaviour
                 byte[] rawData = chekiData.GetRawData();
                 if (rawData == null || rawData.Length != ChekiTexWidth * ChekiTexHeight * 4) continue;
 
-                // 写真テクスチャ → Sprite
-                var tex = new Texture2D(ChekiTexWidth, ChekiTexHeight, TextureFormat.RGBA32, false);
-                tex.LoadRawTextureData(rawData);
-                tex.Apply();
-                var photoSprite = Sprite.Create(tex, new Rect(0, 0, ChekiTexWidth, ChekiTexHeight), new Vector2(0.5f, 0.5f));
+                // 写真テクスチャ → Sprite。ExSave に hi-res があればそちらを優先し、
+                // 失敗・未設定時は vanilla 320 の raw データから構築する。
+                Texture2D tex = null;
+                if (Plugin.ConfigChekiHighResEnabled.Value)
+                {
+                    string key = ChekiSaveHiResPatch.KeyFor(slot);
+                    if (ExSaveStore.CurrentSession.TryGet(key, out byte[] payload)
+                        && payload != null && payload.Length >= 4)
+                    {
+                        tex = ChekiItemLoadHiResPatch.DecodePayload(
+                            payload, slot, "[EndingChekiSlideshow]");
+                    }
+                }
+                if (tex == null)
+                {
+                    tex = new Texture2D(ChekiTexWidth, ChekiTexHeight, TextureFormat.RGBA32, false);
+                    tex.LoadRawTextureData(rawData);
+                    tex.Apply();
+                }
+                var photoSprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
 
                 // キャスト情報
                 CharID mainCast = chekiData.GetMainCast();
