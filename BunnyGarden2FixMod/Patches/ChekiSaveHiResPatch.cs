@@ -33,26 +33,39 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(GameData), nameof(GameData.SaveCheki))]
 public static class ChekiSaveHiResPatch
 {
-    /// <summary>
-    /// チェキスロットの想定範囲（ゲーム本体で <c>new ChekiData[12]</c>）。
-    ///
-    /// <para>
-    /// <b>注意:</b> この値はゲーム本体 <c>GameData.m_chekiData</c> の配列長と一致させる必要がある。
-    /// ゲームアップデートで配列長が変わった場合はこの定数も合わせて更新すること。
-    /// 動的取得（リフレクション等）は実装スコープ外のため、ハードコード値を採用している。
-    /// </para>
-    /// </summary>
-    public const int MaxSlot = 12;
+    private static AccessTools.FieldRef<GameData, GameData.ChekiData[]> s_chekiDataRef;
 
     public static string KeyFor(int slot) => $"cheki.hires.{slot}";
 
+    /// <summary>
+    /// 指定された <paramref name="gameData"/> のチェキスロット数を返す。
+    /// <c>GameData.m_chekiData</c>（protected）の配列長を FieldRef 経由で取得するため、
+    /// ゲーム本体が将来スロット数を変更してもコード修正なしに追従する。
+    /// FieldRef 未初期化・インスタンス null・配列 null の場合は -1 を返す。
+    /// </summary>
+    public static int GetSlotCount(GameData gameData)
+    {
+        if (gameData == null || s_chekiDataRef == null) return -1;
+        var arr = s_chekiDataRef(gameData);
+        return arr?.Length ?? -1;
+    }
+
     static bool Prepare()
     {
+        try
+        {
+            s_chekiDataRef = AccessTools.FieldRefAccess<GameData, GameData.ChekiData[]>("m_chekiData");
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogError($"[ChekiSaveHiResPatch] FieldRef 初期化失敗、パッチ無効化: {ex.Message}");
+            return false;
+        }
         PatchLogger.LogInfo("[ChekiSaveHiResPatch] GameData.SaveCheki をパッチしました（ExSave 書込）");
         return true;
     }
 
-    private static void Postfix(int slot)
+    private static void Postfix(GameData __instance, int slot)
     {
         if (!Plugin.ConfigChekiHighResEnabled.Value)
         {
@@ -61,10 +74,17 @@ public static class ChekiSaveHiResPatch
             return;
         }
 
-        // slot 範囲外は受け付けない（異常系防御）。
-        if (slot < 0 || slot >= MaxSlot)
+        // slot 範囲外は受け付けない（異常系防御）。配列長は本体から動的取得。
+        int slotCount = GetSlotCount(__instance);
+        if (slotCount < 0)
         {
-            PatchLogger.LogWarning($"[ChekiSaveHiResPatch] slot 範囲外 slot={slot}、hi-res 保存をスキップ");
+            PatchLogger.LogWarning($"[ChekiSaveHiResPatch] スロット数取得失敗、hi-res 保存をスキップ");
+            ChekiHiResSidecar.DestroyIfAny();
+            return;
+        }
+        if (slot < 0 || slot >= slotCount)
+        {
+            PatchLogger.LogWarning($"[ChekiSaveHiResPatch] slot 範囲外 slot={slot} max={slotCount}、hi-res 保存をスキップ");
             ChekiHiResSidecar.DestroyIfAny();
             return;
         }

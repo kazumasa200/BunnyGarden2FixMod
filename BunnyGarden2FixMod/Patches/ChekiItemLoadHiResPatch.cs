@@ -63,7 +63,9 @@ public static class ChekiItemLoadHiResPatch
         if (gameData == null) return;
 
         // slot 範囲外は受け付けない（異常系 / 悪意のある .exmod 防御）。
-        if (slot < 0 || slot >= ChekiSaveHiResPatch.MaxSlot) return;
+        // 配列長は ChekiSaveHiResPatch の FieldRef 経由で本体から動的取得。
+        int slotCount = ChekiSaveHiResPatch.GetSlotCount(gameData);
+        if (slotCount < 0 || slot < 0 || slot >= slotCount) return;
 
         string key = ChekiSaveHiResPatch.KeyFor(slot);
 
