@@ -42,6 +42,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigDisableStockings;
     public static ConfigEntry<bool> ConfigContinueVoiceOnTap;
     public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
+    public static ConfigEntry<bool> ConfigCastOrderEnabled;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -121,6 +122,13 @@ public class Plugin : BaseUnityPlugin
             true,
             "true にするとエンディング中に撮影済みのチェキをスライドショーで表示します。");
 
+        ConfigCastOrderEnabled = Config.Bind(
+            "CastOrder",
+            "Enabled",
+            false,
+            "true にするとバーに入る前にキャストの出勤順序を変更できます。\n" +
+            "F1 キーで編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。");
+
         ConfigUltimateSurvivorEnabled = Config.Bind(
             "Cheat",
             "UltimateSurvivor",
@@ -153,6 +161,7 @@ public class Plugin : BaseUnityPlugin
         harmony.PatchAll();
         // async ステートマシンは Harmony でパッチできないため LateUpdate 方式で補正
         Patches.CameraZoomPatch.Initialize(gameObject);
+        Patches.CastOrderPatch.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
