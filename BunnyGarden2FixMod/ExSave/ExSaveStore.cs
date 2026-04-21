@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using BepInEx;
 using BunnyGarden2FixMod.Utils;
 using GB.Save;
 using GB.Save.Pc;
@@ -23,13 +24,20 @@ namespace BunnyGarden2FixMod.ExSave;
 /// </para>
 ///
 /// <para>
-/// サイドカーファイルは主セーブパスに <c>.exmod</c> を付与した位置に置かれる（同ディレクトリ）。
-/// たとえば主セーブが <c>save_00.dat</c> なら <c>save_00.dat.exmod</c>。
+/// サイドカーファイルは Steam Cloud Save の対象外にするため、ゲーム本体のセーブとは
+/// 別の <c>BepInEx/data/{PLUGIN_GUID}/</c> フォルダに置く。
+/// ファイル名は主セーブファイル名（パスなし）に <c>.exmod</c> を付与したもの。
+/// たとえば主セーブが <c>save_00.dat</c> なら
+/// <c>BepInEx/data/net.noeleve.BunnyGarden2FixMod/save_00.dat.exmod</c>。
 /// </para>
 /// </summary>
 public static class ExSaveStore
 {
     private const string SidecarExtension = ".exmod";
+
+    /// <summary>サイドカーを格納する BepInEx データフォルダ。</summary>
+    private static string DataDirectory
+        => Path.Combine(Paths.BepInExRootPath, "data", MyPluginInfo.PLUGIN_GUID);
 
     /// <summary>永続化全体のデータ（全スロット分）。ファイルに読み書きされる。</summary>
     public static ExSaveData AllSlots { get; private set; } = new ExSaveData();
@@ -50,10 +58,37 @@ public static class ExSaveStore
     /// <summary>現在のセーブに対応する主セーブのパス（Load/Save 後に確定）。null の間は I/O スキップ。</summary>
     public static string CurrentMainPath { get; private set; }
 
+    /// <summary>
+    /// 主セーブパスからサイドカーパスを返す。
+    /// ファイルは <c>BepInEx/data/{PLUGIN_GUID}/</c> に置き、Steam Cloud Save の対象外にする。
+    /// </summary>
     public static string GetSidecarPath(string mainSavePath)
     {
         if (string.IsNullOrEmpty(mainSavePath)) return null;
-        return mainSavePath + SidecarExtension;
+        string fileName = Path.GetFileName(mainSavePath) + SidecarExtension;
+        return Path.Combine(DataDirectory, fileName);
+    }
+
+    /// <summary>
+    /// 旧形式（主セーブと同じフォルダの <c>.exmod</c>）が残っていれば新しい場所へ移動する。
+    /// 移動成功後は旧ファイルを削除する。
+    /// </summary>
+    private static void MigrateIfNeeded(string mainSavePath, string newPath)
+    {
+        string oldPath = mainSavePath + SidecarExtension;
+        if (!File.Exists(oldPath) || File.Exists(newPath)) return;
+        try
+        {
+            string dir = Path.GetDirectoryName(newPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.Move(oldPath, newPath);
+            PatchLogger.LogInfo($"[ExSave] 旧サイドカーを移行しました: {oldPath} → {newPath}");
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[ExSave] 旧サイドカーの移行失敗（手動でコピーしてください）: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -142,6 +177,8 @@ public static class ExSaveStore
     {
         CurrentMainPath = mainSavePath;
         string path = GetSidecarPath(mainSavePath);
+        // 旧形式（セーブと同じフォルダ）があれば新しい場所へ移行する
+        MigrateIfNeeded(mainSavePath, path);
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
             AllSlots = new ExSaveData();
