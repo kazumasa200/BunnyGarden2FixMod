@@ -123,7 +123,9 @@ public class CostumePickerView : MonoBehaviour
         PatchLogger.LogInfo($"[CostumePicker] 選択 Font: {(m_font != null ? m_font.name : "<null>")}");
         if (m_font == null || m_font.name.StartsWith("LegacyRuntime", StringComparison.OrdinalIgnoreCase))
         {
-            PatchLogger.LogWarning("[CostumePicker] 日本語対応 Font が見つからないため ASCII のみ表示になります");
+            // LegacyRuntime.ttf 自体は ASCII のみだが、UI Toolkit の dynamic font fallback で
+            // 日本語描画に成功している実測例があるため、ここは警告だけに留める。
+            PatchLogger.LogWarning("[CostumePicker] 日本語対応 Font が見つかりませんでした（LegacyRuntime fallback を使用）");
         }
 
         m_settings = UITRuntime.CreatePanelSettings();

@@ -47,7 +47,8 @@ public static class UITRuntime
     /// <summary>
     /// ゲームがロード済みの Font から日本語対応っぽいものを 1 つ選ぶ。
     /// 優先: Noto Sans JP / NotoSans / JP / Japanese / CJK を名前に含む Font。
-    /// 見つからなければ LegacyRuntime.ttf (ASCII のみだが null 回避)。
+    /// 見つからなければ LegacyRuntime.ttf (fallback — 実測では UI Toolkit の
+    /// dynamic font fallback で日本語描画に成功している)。
     /// </summary>
     public static Font ResolveJapaneseFont(out IReadOnlyList<string> allFontNames)
     {

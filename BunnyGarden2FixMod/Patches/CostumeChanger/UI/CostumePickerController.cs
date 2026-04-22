@@ -45,6 +45,14 @@ public class CostumePickerController : MonoBehaviour
 
     private void Awake()
     {
+        // 二重生成ガード: Initialize が (プラグイン再ロード等で) 2 回呼ばれても
+        // 旧インスタンスを orphan 化させず、新しく作られた側を Destroy する。
+        if (Instance != null && Instance != this)
+        {
+            PatchLogger.LogWarning("[CostumePicker] CostumePickerController が既に存在するため新規生成をキャンセルします");
+            Destroy(gameObject);
+            return;
+        }
         Instance = this;
         m_view = gameObject.AddComponent<CostumePickerView>();
         m_view.OnTabClicked += HandleTabClicked;
@@ -101,6 +109,9 @@ public class CostumePickerController : MonoBehaviour
     {
         if (Plugin.ConfigCostumeChangerEnabled == null) return;
         if (!Plugin.ConfigCostumeChangerEnabled.Value) return;
+        // Awake で AddComponent<CostumePickerView>() が何らかの理由（例外）で失敗したケース防御。
+        // m_view.IsShown などを触る前段で早期 return する。
+        if (m_view == null) return;
 
         var kb = Keyboard.current;
         if (kb == null) return;
@@ -390,16 +401,9 @@ public class CostumePickerController : MonoBehaviour
         _ => $"#{type}",
     };
 
+    // DLC インストール HashSet は CostumeChangerPatch 側の lazy キャッシュを共有する。
     private static HashSet<CostumeType> GetInstalledDlcCostumes()
-    {
-        var set = new HashSet<CostumeType>();
-        var sys = GBSystem.Instance;
-        if (sys == null) return set;
-        var installed = sys.QueryHasDLCCostume();
-        if (installed == null) return set;
-        foreach (var dlc in installed) set.Add(dlc.ToCostumeType());
-        return set;
-    }
+        => CostumeChangerPatch.GetDLCInstalledSet() ?? new HashSet<CostumeType>();
 
     private void ChangeTab(int delta)
     {
@@ -624,14 +628,23 @@ public class CostumePickerController : MonoBehaviour
         // GameObject が非 active でも Animator.Play は state を仕込め、Animator.Update(0f) で
         // bone transform を正解ポーズに更新できる。これにより active 化フレームで T ポーズが
         // 見えず、SetupMagicaCloth も正解ポーズ基準で揺れもの初期化できる。
+        // try/catch 防御: Unity バージョン差分で Update(0f) が disabled Animator 上で
+        // 警告/例外を投げる可能性があるため、失敗時も ShowCharacter 呼出しを止めない。
         var newChar = env.FindCharacter(id);
         var newAnim = newChar != null ? newChar.GetComponent<Animator>() : null;
         if (newAnim != null && motionHash != 0)
         {
-            newAnim.Play(motionHash, 2, motionTime);
-            if (facialHash != 0) newAnim.Play(facialHash, 0, 0f);
-            if (eyeHash != 0) newAnim.Play(eyeHash, 1, 0f);
-            newAnim.Update(0f);
+            try
+            {
+                newAnim.Play(motionHash, 2, motionTime);
+                if (facialHash != 0) newAnim.Play(facialHash, 0, 0f);
+                if (eyeHash != 0) newAnim.Play(eyeHash, 1, 0f);
+                newAnim.Update(0f);
+            }
+            catch (Exception ex)
+            {
+                PatchLogger.LogWarning($"[CostumePicker] Animator 先行シード失敗（T ポーズ可能性あり）: {ex.Message}");
+            }
         }
 
         env.ShowCharacter();

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using BunnyGarden2FixMod.Utils;
 using GB;
@@ -7,6 +8,7 @@ using GB.Extra;
 using GB.Game;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 
@@ -21,10 +23,15 @@ public static class CostumeChangerPatch
 {
     // FittingRoom 検出キャッシュ。FindObjectOfType を毎 Preload で走らせないための最適化。
     // Unity の == null 演算子は破棄済みオブジェクトを null として扱うので、ここでの null チェックは安全。
+    // シーン遷移時は activeSceneChanged で強制 null 化して次回 FindObjectOfType で取り直す。
     private static FittingRoom s_fittingRoomCache;
 
     // 本体 CostumeOverride 尊重でスキップした際のログ dedup（スパム防止）。id 粒度で 1 回だけ出す。
     private static CharID s_lastRespectSkipId = CharID.NUM;
+
+    // DLC 所持キャッシュ。ゲーム起動中は DLC は追加されない前提（要再起動）なので、
+    // プロセス終了まで永続。scene 遷移では無効化しない。
+    private static HashSet<CostumeType> s_dlcInstalledCache;
 
     /// <summary>
     /// Wardrobe ピッカー (<see cref="UI.CostumePickerController"/>) をホストする
@@ -38,11 +45,22 @@ public static class CostumeChangerPatch
         var pickerHost = new GameObject("BG2CostumePicker");
         Object.DontDestroyOnLoad(pickerHost);
         pickerHost.AddComponent<UI.CostumePickerController>();
+        // シーン遷移時に FittingRoom キャッシュを失効させる。
+        // 破棄済み Unity Object も Unity の == null で true になるが、
+        // DontDestroyOnLoad 下に移動された場合のフェイルセーフ。
+        SceneManager.activeSceneChanged += OnSceneChanged;
         PatchLogger.LogInfo("[CostumeChangerPatch] CostumePickerController を生成しました");
+    }
+
+    private static void OnSceneChanged(Scene prev, Scene next)
+    {
+        s_fittingRoomCache = null;
     }
 
     static bool Prepare()
     {
+        // PatchLogger.LogInfo は内部で null-conditional ガード済みのため、
+        // Initialize 未了でも安全に呼べる（最悪ログがドロップするだけ）。
         bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
         PatchLogger.LogInfo($"[CostumeChangerPatch] 適用 (enabled={enabled})");
         return enabled;
@@ -144,10 +162,27 @@ public static class CostumeChangerPatch
 
     private static bool IsDLCInstalled(CostumeType costume)
     {
+        var set = GetDLCInstalledSet();
+        return set != null && set.Contains(costume);
+    }
+
+    /// <summary>
+    /// DLC インストール済み <see cref="CostumeType"/> の HashSet を返す（lazy キャッシュ）。
+    /// ゲーム起動中は DLC は追加されない前提なのでプロセス終了まで保持。
+    /// <see cref="UI.CostumePickerController"/> からも共有する。
+    /// </summary>
+    internal static HashSet<CostumeType> GetDLCInstalledSet()
+    {
+        if (s_dlcInstalledCache != null) return s_dlcInstalledCache;
         var sys = GBSystem.Instance;
-        if (sys == null) return false;
+        if (sys == null) return null;  // GBSystem 未初期化時はキャッシュせず再試行させる
+        var set = new HashSet<CostumeType>();
         var installed = sys.QueryHasDLCCostume();
-        if (installed == null) return false;
-        return installed.Any(d => d.ToCostumeType() == costume);
+        if (installed != null)
+        {
+            foreach (var dlc in installed) set.Add(dlc.ToCostumeType());
+        }
+        s_dlcInstalledCache = set;
+        return s_dlcInstalledCache;
     }
 }
