@@ -485,7 +485,7 @@ public class CostumePickerController : MonoBehaviour
         2 => "White Pansto",
         3 => "Black Fishnet",
         4 => "White Fishnet",
-        5 => "ニーソックス",
+        5 => "瑠那のニーハイ",
         _ => $"#{type}",
     };
 
