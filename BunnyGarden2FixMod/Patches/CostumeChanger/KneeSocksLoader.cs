@@ -7,6 +7,7 @@ using GB.Game;
 using GB.Scene;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 
@@ -59,6 +60,8 @@ public class KneeSocksLoader : MonoBehaviour
         parent.SetActive(false);
         s_handle = new CharacterHandle(parent);
 
+        SceneManager.sceneUnloaded += OnSceneUnloaded;
+
         yield return new WaitUntil(() => GBSystem.Instance != null && GBSystem.Instance.RefSaveData() != null);
 
         s_handle.Preload(CharID.LUNA, new CharacterHandle.LoadArg { Costume = CostumeType.Casual });
@@ -71,6 +74,17 @@ public class KneeSocksLoader : MonoBehaviour
             PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] mesh_kneehigh が見つかりませんでした。ニーソックスは使用できません。");
         else
             PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
+    }
+
+    private void OnDestroy()
+    {
+        SceneManager.sceneUnloaded -= OnSceneUnloaded;
+    }
+
+    private static void OnSceneUnloaded(Scene scene)
+    {
+        s_snapshots.Clear();
+        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロードに伴いスナップショットをクリアしました。");
     }
 
     /// <summary>
@@ -176,7 +190,10 @@ public class KneeSocksLoader : MonoBehaviour
     {
         if (character == null) return;
         var instanceId = character.GetInstanceID();
-        if (!s_snapshots.TryGetValue(instanceId, out var snap)) return;
+
+        CharacterSnapshot snap;
+        if (!s_snapshots.TryGetValue(instanceId, out snap)) return;
+        s_snapshots.Remove(instanceId);
 
         var renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
         var nativeKneehigh = renderers.FirstOrDefault(m => m.name == "mesh_kneehigh");
@@ -191,7 +208,6 @@ public class KneeSocksLoader : MonoBehaviour
             SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", snap.SkinKneehighBlend);
         }
 
-        s_snapshots.Remove(instanceId);
         PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ニーソックス副作用を復元しました: {character.name}");
     }
 }
