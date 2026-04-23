@@ -24,6 +24,11 @@ public class CostumePickerController : MonoBehaviour
     private bool m_loading;
     private CharID m_activeChar = CharID.NUM;
 
+    // 表示中キャスト管理
+    private List<CharID> m_visibleCasts = new();
+    private List<CharID> m_visibleCastsBuf = new();  // 毎フレーム比較用バッファ（GC 再利用）
+    private bool m_followCurrentCast = true;          // true: currentCast 変化に自動追従
+
     private enum PickerMode { Picker, Settings }
     private PickerMode m_mode = PickerMode.Picker;
     private int m_settingsSelected = -1;  // -1: 未選択, 0: 初期化, 1: すべて解放
@@ -91,6 +96,7 @@ public class CostumePickerController : MonoBehaviour
         m_view = gameObject.AddComponent<CostumePickerView>();
         m_view.OnTabClicked += HandleTabClicked;
         m_view.OnRowClicked += HandleRowClicked;
+        m_view.OnCastClicked += HandleCastClicked;
         m_view.OnCloseClicked += HandleCloseClicked;
         m_view.OnSettingsClicked += HandleSettingsClicked;
         m_view.OnBackClicked += HandleBackClicked;
@@ -104,6 +110,7 @@ public class CostumePickerController : MonoBehaviour
         {
             m_view.OnTabClicked -= HandleTabClicked;
             m_view.OnRowClicked -= HandleRowClicked;
+            m_view.OnCastClicked -= HandleCastClicked;
             m_view.OnCloseClicked -= HandleCloseClicked;
             m_view.OnSettingsClicked -= HandleSettingsClicked;
             m_view.OnBackClicked -= HandleBackClicked;
@@ -247,16 +254,29 @@ public class CostumePickerController : MonoBehaviour
 
         var gameData = sys.RefGameData();
         if (gameData == null) return false;
-        var id = gameData.GetCurrentCast();
-        if (id >= CharID.NUM) return false;
-        if (env.FindCharacterIndex(id) < 0) return false;
 
-        charId = id;
+        // 表示中（Preload 済み + activeInHierarchy）のキャスト一覧を取得
+        GetVisibleCastIds(m_visibleCastsBuf);
+        if (m_visibleCastsBuf.Count == 0) return false;
+
+        // currentCast が visible なら優先、なければ visible[0]
+        var currentCast = gameData.GetCurrentCast();
+        charId = currentCast < CharID.NUM && m_visibleCastsBuf.Contains(currentCast)
+            ? currentCast
+            : m_visibleCastsBuf[0];
         return true;
     }
 
     private void OpenFor(CharID charId)
     {
+        // CanOpen() が m_visibleCastsBuf を同フレームで既に更新済みなので直接コピー
+        m_visibleCasts.Clear();
+        m_visibleCasts.AddRange(m_visibleCastsBuf);
+
+        var sys = GBSystem.Instance;
+        var currentCast = sys?.RefGameData()?.GetCurrentCast() ?? CharID.NUM;
+        m_followCurrentCast = charId == currentCast;
+
         m_activeTab = CostumePickerView.WardrobeTab.Costume;
         RebuildItemsFor(charId);
         m_mode = PickerMode.Picker;   // 毎回ピッカーから開始
@@ -323,6 +343,8 @@ public class CostumePickerController : MonoBehaviour
 
     private void CheckCastChanged()
     {
+        if (m_loading) return;  // ローディング中は追従しない
+
         var sys = GBSystem.Instance;
         if (sys == null || !sys.IsIngame) return;
         var env = sys.GetActiveEnvScene();
@@ -330,10 +352,104 @@ public class CostumePickerController : MonoBehaviour
         var gameData = sys.RefGameData();
         if (gameData == null) return;
 
-        var id = gameData.GetCurrentCast();
-        if (id == m_activeChar) return;
-        if (env.FindCharacterIndex(id) < 0) return;
-        RefreshForCast(id);
+        // 表示中キャストを再取得してバッファで比較
+        GetVisibleCastIds(m_visibleCastsBuf);
+
+        // visible が 0 のとき → currentCast のみで代替表示（シーン遷移中の一時状態など）
+        if (m_visibleCastsBuf.Count == 0)
+        {
+            var fallback = gameData.GetCurrentCast();
+            if (fallback >= CharID.NUM)
+            {
+                m_view.Hide();
+                return;
+            }
+            m_visibleCastsBuf.Add(fallback);
+        }
+
+        bool visibleChanged = !ListsEqual(m_visibleCasts, m_visibleCastsBuf);
+        if (visibleChanged)
+        {
+            m_visibleCasts.Clear();
+            m_visibleCasts.AddRange(m_visibleCastsBuf);
+        }
+
+        var currentCast = gameData.GetCurrentCast();
+
+        // m_activeChar が visible から外れた場合のフォールバック
+        if (!m_visibleCasts.Contains(m_activeChar))
+        {
+            CharID nextChar;
+            if (m_followCurrentCast && currentCast < CharID.NUM && m_visibleCasts.Contains(currentCast))
+                nextChar = currentCast;
+            else
+                nextChar = m_visibleCasts[0];
+            RefreshForCast(nextChar);  // m_visibleCasts は既に更新済みなので strip も反映される
+            return;
+        }
+
+        // m_followCurrentCast かつ currentCast が visible 内で変化した
+        if (m_followCurrentCast && currentCast < CharID.NUM
+            && currentCast != m_activeChar && m_visibleCasts.Contains(currentCast))
+        {
+            RefreshForCast(currentCast);
+            return;
+        }
+
+        // visible のみ変化（キャスト切替なし）→ ストリップ + ヘッダー更新
+        if (visibleChanged)
+        {
+            if (m_mode == PickerMode.Settings)
+                m_view.RenderSettings(BuildSettingsData());
+            else
+                m_view.Render(BuildRenderData());
+        }
+    }
+
+    /// <summary>
+    /// 現在の EnvScene から「Preload 済み + activeInHierarchy」のキャスト一覧を result に詰める。
+    /// 呼び出し元は事前に result.Clear() が済んでいることを保証する必要はない（内部で Clear する）。
+    /// </summary>
+    private static void GetVisibleCastIds(List<CharID> result)
+    {
+        result.Clear();
+        var sys = GBSystem.Instance;
+        if (sys == null || !sys.IsIngame) return;
+        var env = sys.GetActiveEnvScene();
+        if (env == null) return;
+        for (int i = (int)CharID.KANA; i < (int)CharID.NUM; i++)
+        {
+            var id = (CharID)i;
+            if (env.FindCharacterIndex(id) < 0) continue;
+            var charObj = env.FindCharacter(id);
+            if (charObj == null || !charObj.activeInHierarchy) continue;
+            result.Add(id);
+        }
+    }
+
+    /// <summary>キャストストリップのボタンクリックハンドラ。index は VisibleCasts 内のインデックス。</summary>
+    private void HandleCastClicked(int index)
+    {
+        if (!m_view.IsShown) return;
+        if (m_loading) return;
+        if (index < 0 || index >= m_visibleCasts.Count) return;
+
+        var newId = m_visibleCasts[index];
+
+        var sys = GBSystem.Instance;
+        var currentCast = sys?.RefGameData()?.GetCurrentCast() ?? CharID.NUM;
+        m_followCurrentCast = newId == currentCast;
+
+        if (newId == m_activeChar) return;  // 同じキャラの再クリックは no-op
+        RefreshForCast(newId);
+    }
+
+    private static bool ListsEqual(List<CharID> a, List<CharID> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+            if (a[i] != b[i]) return false;
+        return true;
     }
 
     private void RefreshForCast(CharID newId)
@@ -394,6 +510,8 @@ public class CostumePickerController : MonoBehaviour
                 ? m_pantiesItems.FindIndex(x => x.Type == opT && x.Color == opC) : -1,
             StockingCurrent = StockingOverrideStore.TryGet(m_activeChar, out var os)
                 ? m_stockingItems.FindIndex(x => x.Type == os) : -1,
+            VisibleCasts = m_visibleCasts.AsReadOnly(),
+            VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
         };
     }
 
@@ -942,6 +1060,8 @@ public class CostumePickerController : MonoBehaviour
         {
             CharId = m_activeChar,
             UnlockAllEnabled = IsEndingClearedFor(m_activeChar),
+            VisibleCasts = m_visibleCasts.AsReadOnly(),
+            VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
         };
     }
 

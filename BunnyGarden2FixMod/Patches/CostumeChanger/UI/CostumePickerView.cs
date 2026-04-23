@@ -34,6 +34,10 @@ public class CostumePickerView : MonoBehaviour
         public int CostumeCurrent;
         public int PantiesCurrent;
         public int StockingCurrent;
+        /// <summary>現在表示中（Preload 済み + activeInHierarchy）のキャスト一覧。</summary>
+        public IReadOnlyList<CharID> VisibleCasts;
+        /// <summary>VisibleCasts の中で現在ピッカーが対象としているキャストのインデックス。</summary>
+        public int VisibleCastSelectedIndex;
     }
 
     public class SettingsData
@@ -41,10 +45,15 @@ public class CostumePickerView : MonoBehaviour
         public CharID CharId;
         /// <summary>「すべて解放」ボタンを enable にするか（= そのキャラの GoodEnd クリア済み）。</summary>
         public bool UnlockAllEnabled;
+        /// <summary>現在表示中のキャスト一覧（ヘッダーの ◀▶ ナビ更新に使用）。</summary>
+        public IReadOnlyList<CharID> VisibleCasts;
+        /// <summary>VisibleCasts の中で現在ピッカーが対象としているキャストのインデックス。</summary>
+        public int VisibleCastSelectedIndex;
     }
 
     public event Action<int> OnTabClicked;
     public event Action<int> OnRowClicked;
+    public event Action<int> OnCastClicked;
     public event Action OnCloseClicked;
     public event Action OnSettingsClicked;
     public event Action OnBackClicked;
@@ -61,6 +70,11 @@ public class CostumePickerView : MonoBehaviour
     private Font m_font;
     private VisualElement m_pickerContent;    // 既存の header/tabStrip/listView/footer を束ねるコンテナ
     private VisualElement m_settingsContent;  // 設定画面コンテナ
+    private Button m_castPrevButton;          // ◀ キャスト切替ボタン
+    private Button m_castNextButton;          // ▶ キャスト切替ボタン
+    private Label m_castNameLabel;            // ヘッダー内キャラ名ラベル
+    private int m_castSelectedIndex;          // Render() 時点での VisibleCastSelectedIndex
+    private int m_castCount;                  // Render() 時点での VisibleCasts.Count（ループ計算用）
     private Button m_settingsButton;          // ⚙: ピッカー中のみ可視
     private Button m_backButton;              // ←: 設定中のみ可視
     private Button m_resetAllButton;          // W/S キー選択ハイライトのため保持
@@ -110,7 +124,7 @@ public class CostumePickerView : MonoBehaviour
     public void RenderSettings(SettingsData data)
     {
         if (m_settingsContent == null) return;
-        m_headerText.text = $"衣装変更 — {data.CharId}";
+        UpdateNavState(data.VisibleCasts, data.VisibleCastSelectedIndex);
         if (m_unlockAllButton != null)
         {
             m_unlockAllButton.SetEnabled(data.UnlockAllEnabled);
@@ -151,7 +165,7 @@ public class CostumePickerView : MonoBehaviour
     public void Render(RenderData data)
     {
         if (m_panel == null) return;
-        m_headerText.text = $"衣装変更 — {data.CharId}";
+        UpdateNavState(data.VisibleCasts, data.VisibleCastSelectedIndex);
         m_tabStrip.SetActive((int)data.ActiveTab);
         m_tabStrip.SetBadges(new[] { data.CostumeCurrent >= 0, data.PantiesCurrent >= 0, data.StockingCurrent >= 0 });
 
@@ -220,12 +234,45 @@ public class CostumePickerView : MonoBehaviour
         m_panel.style.paddingLeft = 12;
         m_root.Add(m_panel);
 
-        // Header（両モード共用）
+        // Header（両モード共用）: [衣装変更] [◀] [キャラ名] [▶]
+        var headerRow = UITFactory.CreateRow();
+        headerRow.style.height = 22;
+        headerRow.style.marginBottom = 6;
+        headerRow.style.marginRight = 68;  // ⚙(right=36, w=22) 左端=58px + 10px バッファ
+        headerRow.style.flexShrink = 0;
+        headerRow.style.alignItems = Align.Center;
+        m_panel.Add(headerRow);
+
         m_headerText = UITFactory.CreateLabel("衣装変更", 13, UITTheme.Text.Accent, m_font, TextAnchor.MiddleLeft);
-        m_headerText.style.height = 22;
-        m_headerText.style.marginBottom = 6;
         m_headerText.style.flexShrink = 0;
-        m_panel.Add(m_headerText);
+        m_headerText.style.marginRight = 6;
+        headerRow.Add(m_headerText);
+
+        m_castPrevButton = UITFactory.CreateButton("◀",
+            () => { if (m_castCount > 0) OnCastClicked?.Invoke(m_castSelectedIndex > 0 ? m_castSelectedIndex - 1 : m_castCount - 1); },
+            10, m_font);
+        m_castPrevButton.style.paddingLeft = 4;
+        m_castPrevButton.style.paddingRight = 4;
+        m_castPrevButton.style.paddingTop = 1;
+        m_castPrevButton.style.paddingBottom = 1;
+        m_castPrevButton.style.flexShrink = 0;
+        m_castPrevButton.style.display = DisplayStyle.None;
+        headerRow.Add(m_castPrevButton);
+
+        m_castNameLabel = UITFactory.CreateLabel("", 12, UITTheme.Text.Primary, m_font, TextAnchor.MiddleCenter);
+        m_castNameLabel.style.flexGrow = 1;
+        headerRow.Add(m_castNameLabel);
+
+        m_castNextButton = UITFactory.CreateButton("▶",
+            () => { if (m_castCount > 0) OnCastClicked?.Invoke(m_castSelectedIndex < m_castCount - 1 ? m_castSelectedIndex + 1 : 0); },
+            10, m_font);
+        m_castNextButton.style.paddingLeft = 4;
+        m_castNextButton.style.paddingRight = 4;
+        m_castNextButton.style.paddingTop = 1;
+        m_castNextButton.style.paddingBottom = 1;
+        m_castNextButton.style.flexShrink = 0;
+        m_castNextButton.style.display = DisplayStyle.None;
+        headerRow.Add(m_castNextButton);
 
         // ピッカー用コンテナ
         m_pickerContent = UITFactory.CreateColumn();
@@ -286,7 +333,7 @@ public class CostumePickerView : MonoBehaviour
         footer.Add(note);
 
         var note2 = UITFactory.CreateLabel(
-            "※ プラグイン有効後に、一度でも着用した衣装に切り替え可能",
+            "※ 一度接客したキャラのみ衣装変更可能",
             9, UITTheme.Text.Secondary, m_font, TextAnchor.UpperLeft);
         note2.style.whiteSpace = WhiteSpace.Normal;
         footer.Add(note2);
@@ -354,6 +401,23 @@ public class CostumePickerView : MonoBehaviour
         close.style.paddingTop = 0;
         close.style.paddingBottom = 0;
         m_panel.Add(close);
+    }
+
+    /// <summary>
+    /// ◀▶ ナビの表示制御とフィールドを更新する。Render/RenderSettings 両モードから呼ぶ。
+    /// </summary>
+    private void UpdateNavState(IReadOnlyList<CharID> visibleCasts, int selectedIndex)
+    {
+        if (m_castNameLabel != null && visibleCasts != null && selectedIndex >= 0 && selectedIndex < visibleCasts.Count)
+            m_castNameLabel.text = visibleCasts[selectedIndex].ToString();
+
+        bool showNav = visibleCasts != null && visibleCasts.Count >= 2;
+        if (m_castPrevButton != null)
+            m_castPrevButton.style.display = showNav ? DisplayStyle.Flex : DisplayStyle.None;
+        if (m_castNextButton != null)
+            m_castNextButton.style.display = showNav ? DisplayStyle.Flex : DisplayStyle.None;
+        m_castSelectedIndex = selectedIndex;
+        m_castCount = visibleCasts?.Count ?? 0;
     }
 
     private void OnDestroy()
