@@ -78,6 +78,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigHideGameUiInFreeCam;
     public static ConfigEntry<Key> ConfigTimeStopToggleKey;
     public static ConfigEntry<Key> ConfigScreenshotKey;
+    public static ConfigEntry<float> ConfigFastForwardSpeed;
     public static ConfigEntry<bool> ConfigCheatEnabled;
     public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
@@ -271,6 +272,12 @@ public class Plugin : BaseUnityPlugin
             ControllerHotkeyButton.A,
             "フリーカメラ中のスクリーンショット保存に使うコントローラボタン。既定 A。修飾ボタンと同時押しです。");
 
+        ConfigFastForwardSpeed = Config.Bind(
+            "Time",
+            "FastForwardSpeed",
+            10f,
+            "ゲームの倍速移動速度（F2）");
+
         ConfigDisableStockings = Config.Bind(
             "Appearance",
             "DisableStockings",
@@ -426,6 +433,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CastOrderUI.CastOrderController.Initialize(gameObject);
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
         Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
+        Patches.TimePatch.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
