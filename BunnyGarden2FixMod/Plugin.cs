@@ -62,6 +62,9 @@ public class Plugin : BaseUnityPlugin
     private static Plugin Instance;
     public static ConfigEntry<int> ConfigWidth;
     public static ConfigEntry<int> ConfigHeight;
+    public static ConfigEntry<int> ConfigExtraWidth;
+    public static ConfigEntry<int> ConfigExtraHeight;
+    public static ConfigEntry<bool> ConfigExtraActive;
     public static ConfigEntry<int> ConfigFrameRate;
     public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
     public static ConfigEntry<float> ConfigSensitivity;
@@ -89,6 +92,9 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<ControllerHotkeyButton> ConfigControllerFixedFreeCamToggle;
     public static ConfigEntry<ControllerHotkeyButton> ConfigControllerTimeStopToggle;
     public static ConfigEntry<ControllerHotkeyButton> ConfigControllerScreenshotToggle;
+    public static ConfigEntry<bool> ConfigCostumeChangerEnabled;
+    public static ConfigEntry<UnityEngine.InputSystem.Key> ConfigCostumeChangerHotkey;
+    public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -124,6 +130,28 @@ public class Plugin : BaseUnityPlugin
             "Height",
             1080,
             "解像度の高さ（縦）を指定します");
+
+        ConfigExtraWidth = Config.Bind(
+            "Resolution",
+            "ExtraWidth",
+            2560,
+            "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。\n" +
+            "既定 2560（WQHD）。16:9 を推奨。");
+
+        ConfigExtraHeight = Config.Bind(
+            "Resolution",
+            "ExtraHeight",
+            1440,
+            "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の高さ。\n" +
+            "既定 1440（WQHD）。16:9 を推奨。");
+
+        ConfigExtraActive = Config.Bind(
+            "Internal",
+            "ExtraActive",
+            false,
+            "【内部状態】ユーザーが OptionMenu で拡張解像度 (ExtraWidth×ExtraHeight) を\n" +
+            "選択中かどうかを記録します。ゲーム内オプション操作時に自動更新されます。\n" +
+            "手動変更しないでください。");
 
         ConfigFrameRate = Config.Bind(
             "Resolution",
@@ -219,7 +247,7 @@ public class Plugin : BaseUnityPlugin
             "Camera",
             "ControllerToggleScreenshot",
             ControllerHotkeyButton.A,
-            "フリーカメラ中のスクリーンショット保存に使うコントローラボタン。既定 A。");
+            "フリーカメラ中のスクリーンショット保存に使うコントローラボタン。既定 A。修飾ボタンと同時押しです。");
 
         ConfigDisableStockings = Config.Bind(
             "Appearance",
@@ -308,6 +336,24 @@ public class Plugin : BaseUnityPlugin
             "  黄 : 今日の旬アイテム（ボーナスあり）\n" +
             "  赤 : キャストが嫌いなもの（AddFavoriteLikability < 0）");
 
+        ConfigCostumeChangerEnabled = Config.Bind(
+            "CostumeChanger",
+            "Enabled",
+            true,
+            "true にすると衣装変更 UI とパッチを有効化します。");
+
+        ConfigCostumeChangerHotkey = Config.Bind(
+            "CostumeChanger",
+            "Hotkey",
+            UnityEngine.InputSystem.Key.F7,
+            "衣装変更 UI の表示トグルキー（UnityEngine.InputSystem.Key enum 名で指定）。");
+
+        ConfigRespectGameCostumeOverride = Config.Bind(
+            "CostumeChanger",
+            "RespectGameCostumeOverride",
+            true,
+            "true のとき、ゲーム本体が CostumeOverride を ForceXxx に設定している間は MOD 側の override を一時停止します。");
+
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
         StartCoroutine(UpdateChecker.Check());
@@ -316,6 +362,7 @@ public class Plugin : BaseUnityPlugin
         // async ステートマシンは Harmony でパッチできないため LateUpdate 方式で補正
         Patches.CameraZoomPatch.Initialize(gameObject);
         Patches.CastOrderPatch.Initialize(gameObject);
+        Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
@@ -331,6 +378,9 @@ public class Plugin : BaseUnityPlugin
 
     private void Update()
     {
+        if (Keyboard.current?[Key.F4].wasPressedThisFrame == true)
+            Config.Reload();
+
         bool ctrlPressed = Keyboard.current?.leftCtrlKey.isPressed == true || Keyboard.current?.rightCtrlKey.isPressed == true;
 
         if (ctrlPressed && Keyboard.current?[Key.F5].wasPressedThisFrame == true)
@@ -358,7 +408,8 @@ public class Plugin : BaseUnityPlugin
             ToggleFreeCam();
         }
 
-        if (isFreeCamActive && IsControllerButtonTriggered(ConfigControllerFixedFreeCamToggle.Value))
+        if (isFreeCamActive &&
+            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerFixedFreeCamToggle.Value))
         {
             SuppressGameInputTemporarily();
             ToggleFixedFreeCam();
@@ -371,13 +422,14 @@ public class Plugin : BaseUnityPlugin
         }
 
         if (isFreeCamActive && !isFixedFreeCam &&
-            IsControllerButtonTriggered(ConfigControllerTimeStopToggle.Value))
+            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerTimeStopToggle.Value))
         {
             SuppressGameInputTemporarily();
             ToggleTimeStop();
         }
 
-        if (isFreeCamActive && IsControllerButtonTriggered(ConfigControllerScreenshotToggle.Value))
+        if (isFreeCamActive &&
+            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerScreenshotToggle.Value))
         {
             SuppressGameInputTemporarily();
             CaptureFreeCamScreenshot();
@@ -391,13 +443,18 @@ public class Plugin : BaseUnityPlugin
 
         string controllerFreeCamLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
             ConfigControllerFreeCamToggle.Value);
-        string controllerFixedLabel = ConfigControllerFixedFreeCamToggle.Value.ToString();
-        string controllerTimeStopLabel = ConfigControllerTimeStopToggle.Value.ToString();
-        string controllerScreenshotLabel = ConfigControllerScreenshotToggle.Value.ToString();
+        string controllerOverlayLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
+            ControllerHotkeyButton.Start);
+        string controllerFixedLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
+            ConfigControllerFixedFreeCamToggle.Value);
+        string controllerTimeStopLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
+            ConfigControllerTimeStopToggle.Value);
+        string controllerScreenshotLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
+            ConfigControllerScreenshotToggle.Value);
 
         GUI.color = Color.green;
         GUI.Label(new Rect(10, 10, 1200, 30),
-            $"Free Camera: ON (F5 / {controllerFreeCamLabel}=OFF, Ctrl+F5 / Select+Start=HIDE)");
+            $"Free Camera: ON (F5 / {controllerFreeCamLabel}=OFF, Ctrl+F5 / {controllerOverlayLabel}=HIDE)");
         GUI.color = Color.yellow;
         GUI.Label(new Rect(10, 40, 900, 30),
             $"Fixed Mode: {(isFixedFreeCam ? "ON" : "OFF")} (F6 / {controllerFixedLabel}=TOGGLE)");
@@ -984,5 +1041,100 @@ public class FreeCamControllerShortcutInputSuppressionPatch
 
         result = false;
         return false;
+    }
+}
+// 以前ここには CostumePickerInputDisablePatch があり、Wardrobe 表示中に
+// IsInputDisabled を強制 true にしていたが、GBInput.LeftClick (ADV のクリック判定)
+// も IsInputDisabled ゲートを通るため、Wardrobe 表示中は ADV が一切進まなくなっていた。
+// Wardrobe 操作は CostumePickerController が Keyboard.current を直接ポーリングする
+// 設計なので本体 IsInputDisabled に依存しない → パッチを削除しゲーム本体の入力を通す。
+// ただし panel 裏のクリックが ADV に貫通するのを防ぐため、下の
+// SuppressClickOverWardrobePatch でカーソル位置によって個別にマスクする。
+
+/// <summary>
+/// カーソルが Wardrobe パネル矩形内にある間は GBInput.isMouseTriggered を false に差し替え、
+/// panel 裏のクリックで ADV が進行したり背後の uGUI ボタンが反応するのを防ぐ。
+/// panel 外クリックは素通しするため、ADV の進行や他操作は通常通り動作する。
+/// </summary>
+[HarmonyPatch(typeof(GBInput), "isMouseTriggered")]
+public class SuppressClickOverWardrobePatch
+{
+    private static bool Prefix(ref bool __result)
+    {
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        __result = false;
+        return false; // 元実装 (Mouse.current.leftButton.wasPressedThisFrame) をスキップ
+    }
+}
+
+/// <summary>
+/// カーソルが Wardrobe パネル矩形内にある間は GBInput.ScrollAxis を 0 に差し替え、
+/// panel 上でのマウスホイールが ADV/BackLog 呼び出し等の本体操作に流れるのを防ぐ。
+/// UI Toolkit 内部の ScrollView は EventSystem 側から独立して WheelEvent を受け取るため
+/// この差し替えでは影響を受けず、panel 内スクロールは従来通り動作する。
+/// HarmonyX の MethodType.Getter より確実な AccessTools.PropertyGetter で target を明示する。
+/// </summary>
+[HarmonyPatch]
+public class SuppressScrollOverWardrobePatch
+{
+    static System.Reflection.MethodBase TargetMethod()
+        => AccessTools.PropertyGetter(typeof(GBInput), nameof(GBInput.ScrollAxis));
+
+    private static bool Prefix(ref float __result)
+    {
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        __result = 0f;
+        return false;
+    }
+}
+
+/// <summary>
+/// カーソルが Wardrobe パネル矩形内にある間、CostumePicker が使用する GBInput アクション
+/// （AButton/Up/Down/Left/Right/StartButton/XButton/Auto）の一発押しを false に差し替える。
+/// 対象アクションは CostumePickerController.s_pickerActions で管理。
+/// </summary>
+[HarmonyPatch(typeof(GBInput), "isTriggered")]
+public class SuppressKeyOverWardrobePatch
+{
+    private static bool Prefix(UnityEngine.InputSystem.InputAction button, ref bool __result)
+    {
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput(button?.name)) return true;
+        __result = false;
+        return false;
+    }
+}
+
+/// <summary>
+/// カーソルが Wardrobe パネル矩形内にある間は GBInput.isTriggeredR を false に差し替え、
+/// リピート入力がゲーム側に流れるのを防ぐ。
+/// isTriggeredR はボタン情報を持たないため全アクションを対象とする。
+/// </summary>
+[HarmonyPatch(typeof(GBInput), "isTriggeredR")]
+public class SuppressKeyRepeatOverWardrobePatch
+{
+    private static bool Prefix(ref bool __result)
+    {
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        __result = false;
+        return false;
+    }
+}
+
+/// <summary>
+/// CurrentCast 切替時に、新 current キャラの直近 LoadArg (衣装/パンツ/ストッキング) を
+/// 履歴へフラッシュする。キャスト交代では新キャラの Preload が走り直さないため、
+/// CostumeChangerPatch.Postfix のタイミングでは current != 新キャラ だった分を救う。
+/// </summary>
+[HarmonyPatch(typeof(GB.Game.GameData), nameof(GB.Game.GameData.SetCurrentCast))]
+public class SetCurrentCastFlushHistoryPatch
+{
+    private static void Postfix(GB.Game.CharID id)
+    {
+        if (!Patches.CostumeChanger.WardrobeHistoryGate.ShouldRecord(id)) return;
+        if (!Patches.CostumeChanger.WardrobeLastLoadArg.TryGet(id,
+                out var costume, out var pt, out var pc, out var stocking)) return;
+        Patches.CostumeChanger.CostumeViewHistory.MarkViewed(id, costume);
+        Patches.CostumeChanger.PantiesViewHistory.MarkViewed(id, pt, pc);
+        Patches.CostumeChanger.StockingViewHistory.MarkViewed(id, stocking);
     }
 }

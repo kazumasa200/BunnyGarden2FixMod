@@ -53,6 +53,11 @@
     <None Remove="Assembly\MessagePack.Annotations.dll" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\settings.png" />
+    <EmbeddedResource Include="Resources\arrow-big-left.png" />
+  </ItemGroup>
+
   <!-- BepInEx 5 用パッケージ -->
   <ItemGroup Condition="'$(BepInExVersion)' == '5'">
     <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
