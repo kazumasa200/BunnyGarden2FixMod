@@ -102,6 +102,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigHideUIEnabled;
     public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
     public static ConfigEntry<bool> ConfigHideButtonGuide;
+    public static ConfigEntry<bool> ConfigHideLikabilityGauge;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -400,6 +401,12 @@ public class Plugin : BaseUnityPlugin
             "HideButtonGuide",
             false,
             "true にすると画面下のボタンガイド（操作ヒント）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
+
+        ConfigHideLikabilityGauge = Config.Bind(
+            "HideUI",
+            "HideLikabilityGauge",
+            false,
+            "true にするとラブカウンター（好感度ゲージ）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
 
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
@@ -1130,7 +1137,7 @@ public class FreeCamControllerShortcutInputSuppressionPatch
 // SuppressClickOverWardrobePatch でカーソル位置によって個別にマスクする。
 
 /// <summary>
-/// カーソルが Wardrobe パネル矩形内にある間は GBInput.isMouseTriggered を false に差し替え、
+/// カーソルが Wardrobe / HideUI パネル矩形内にある間は GBInput.isMouseTriggered を false に差し替え、
 /// panel 裏のクリックで ADV が進行したり背後の uGUI ボタンが反応するのを防ぐ。
 /// panel 外クリックは素通しするため、ADV の進行や他操作は通常通り動作する。
 /// </summary>
@@ -1139,14 +1146,15 @@ public class SuppressClickOverWardrobePatch
 {
     private static bool Prefix(ref bool __result)
     {
-        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
+            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
         __result = false;
-        return false; // 元実装 (Mouse.current.leftButton.wasPressedThisFrame) をスキップ
+        return false;
     }
 }
 
 /// <summary>
-/// カーソルが Wardrobe パネル矩形内にある間は GBInput.ScrollAxis を 0 に差し替え、
+/// カーソルが Wardrobe / HideUI パネル矩形内にある間は GBInput.ScrollAxis を 0 に差し替え、
 /// panel 上でのマウスホイールが ADV/BackLog 呼び出し等の本体操作に流れるのを防ぐ。
 /// UI Toolkit 内部の ScrollView は EventSystem 側から独立して WheelEvent を受け取るため
 /// この差し替えでは影響を受けず、panel 内スクロールは従来通り動作する。
@@ -1160,7 +1168,8 @@ public class SuppressScrollOverWardrobePatch
 
     private static bool Prefix(ref float __result)
     {
-        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
+            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
         __result = 0f;
         return false;
     }
@@ -1183,7 +1192,7 @@ public class SuppressKeyOverWardrobePatch
 }
 
 /// <summary>
-/// カーソルが Wardrobe パネル矩形内にある間は GBInput.isTriggeredR を false に差し替え、
+/// カーソルが Wardrobe / HideUI パネル矩形内にある間は GBInput.isTriggeredR を false に差し替え、
 /// リピート入力がゲーム側に流れるのを防ぐ。
 /// isTriggeredR はボタン情報を持たないため全アクションを対象とする。
 /// </summary>
@@ -1192,7 +1201,8 @@ public class SuppressKeyRepeatOverWardrobePatch
 {
     private static bool Prefix(ref bool __result)
     {
-        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput()) return true;
+        if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
+            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
         __result = false;
         return false;
     }

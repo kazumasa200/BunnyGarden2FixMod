@@ -9,7 +9,7 @@ namespace BunnyGarden2FixMod.Patches.HideMoneyUI;
 
 /// <summary>
 /// UI非表示設定パネルのビュー。
-/// 所持金非表示・ボタンガイド非表示を 2 行のトグルで管理する。
+/// 所持金非表示・ボタンガイド非表示・好感度ゲージ非表示を 3 行のトグルで管理する。
 /// </summary>
 public class HideMoneyUIView : MonoBehaviour
 {
@@ -17,13 +17,13 @@ public class HideMoneyUIView : MonoBehaviour
     {
         public bool HideMoneyInSpecialScenes;
         public bool HideButtonGuide;
+        public bool HideLikabilityGauge;
     }
 
     public event Action OnCloseClicked;
-
     public event Action OnToggleMoneyHide;
-
     public event Action OnToggleButtonGuide;
+    public event Action OnToggleLikabilityGauge;
 
     private UIDocument m_doc;
     private PanelSettings m_settings;
@@ -75,7 +75,7 @@ public class HideMoneyUIView : MonoBehaviour
             m_listContainer.Remove(m_listContainer[0]);
 
         // 行1: 所持金非表示
-        var row1 = BuildSettingRow("旅行・ラストシーンで所持金を非表示", data.HideMoneyInSpecialScenes);
+        var row1 = BuildSettingRow("旅行・告白シーンで所持金を非表示", data.HideMoneyInSpecialScenes);
         row1.RegisterCallback<ClickEvent>(_ => OnToggleMoneyHide?.Invoke());
         m_listContainer.Add(row1);
 
@@ -83,6 +83,11 @@ public class HideMoneyUIView : MonoBehaviour
         var row2 = BuildSettingRow("ボタンガイドを非表示", data.HideButtonGuide);
         row2.RegisterCallback<ClickEvent>(_ => OnToggleButtonGuide?.Invoke());
         m_listContainer.Add(row2);
+
+        // 行3: 好感度ゲージ非表示
+        var row3 = BuildSettingRow("ラブカウンターを非表示", data.HideLikabilityGauge);
+        row3.RegisterCallback<ClickEvent>(_ => OnToggleLikabilityGauge?.Invoke());
+        m_listContainer.Add(row3);
     }
 
     private VisualElement BuildSettingRow(string label, bool enabled)
@@ -162,7 +167,7 @@ public class HideMoneyUIView : MonoBehaviour
         m_panel.style.right = 16;
         m_panel.style.top = 20;
         m_panel.style.width = 340;
-        m_panel.style.height = 170;  // 2行分
+        m_panel.style.height = 206;  // 3行分
         m_panel.style.overflow = Overflow.Hidden;
         m_panel.style.paddingTop = 12;
         m_panel.style.paddingRight = 12;

@@ -34,6 +34,12 @@ namespace BunnyGarden2FixMod.Patches.HideMoneyUI;
 /// CanvasGroup.alpha = 0 で視覚的に隠す（SetActive は変更しない）。
 /// Footer は動的にコンテンツを差し替えるため、シーン遷移後も null チェックで自動再取得する。
 /// </para>
+///
+/// <para>
+/// <b>好感度ゲージ非表示</b><br/>
+/// <c>GB.LikabilityUI</c> コンポーネントを <c>FindFirstObjectByType</c> で取得し、
+/// その親（<c>m_likabilityUIContainer</c> 相当）に CanvasGroup を追加して alpha = 0 で非表示にする。
+/// </para>
 /// </summary>
 public class HideMoneyUIController : MonoBehaviour
 {
@@ -49,14 +55,20 @@ public class HideMoneyUIController : MonoBehaviour
     private HideMoneyUIView m_view;
     private CanvasGroup m_moneyCanvasGroup;
     private CanvasGroup m_footerCanvasGroup;
+    private CanvasGroup m_likabilityCanvasGroup;
+
+    public static bool ShouldSuppressMouseInput()
+    {
+        return Instance != null && Instance.IsPointerOverPanel();
+    }
 
     public bool ShouldSuppressGameInput(string actionName)
     {
-        if (!ShouldSuppressGameInput()) return false;
+        if (!IsPointerOverPanel()) return false;
         return actionName != null && (actionName == "Move" || actionName == "Look" || actionName == "Sprint");
     }
 
-    private bool ShouldSuppressGameInput()
+    private bool IsPointerOverPanel()
     {
         return m_view != null && m_view.IsShown && m_view.IsPointerOverPanel();
     }
@@ -71,9 +83,10 @@ public class HideMoneyUIController : MonoBehaviour
         }
         Instance = this;
         m_view = gameObject.AddComponent<HideMoneyUIView>();
-        m_view.OnCloseClicked     += HandleCloseClicked;
-        m_view.OnToggleMoneyHide  += HandleToggleMoneyHide;
-        m_view.OnToggleButtonGuide += HandleToggleButtonGuide;
+        m_view.OnCloseClicked          += HandleCloseClicked;
+        m_view.OnToggleMoneyHide       += HandleToggleMoneyHide;
+        m_view.OnToggleButtonGuide     += HandleToggleButtonGuide;
+        m_view.OnToggleLikabilityGauge += HandleToggleLikabilityGauge;
     }
 
     /// <summary>
@@ -92,9 +105,10 @@ public class HideMoneyUIController : MonoBehaviour
     {
         if (m_view != null)
         {
-            m_view.OnCloseClicked     -= HandleCloseClicked;
-            m_view.OnToggleMoneyHide  -= HandleToggleMoneyHide;
-            m_view.OnToggleButtonGuide -= HandleToggleButtonGuide;
+            m_view.OnCloseClicked          -= HandleCloseClicked;
+            m_view.OnToggleMoneyHide       -= HandleToggleMoneyHide;
+            m_view.OnToggleButtonGuide     -= HandleToggleButtonGuide;
+            m_view.OnToggleLikabilityGauge -= HandleToggleLikabilityGauge;
         }
         if (Instance == this) Instance = null;
     }
@@ -163,6 +177,18 @@ public class HideMoneyUIController : MonoBehaviour
             m_footerCanvasGroup.interactable   = !shouldHideGuide;
             m_footerCanvasGroup.blocksRaycasts = !shouldHideGuide;
         }
+
+        // ── 好感度ゲージ（LikabilityUI コンテナ）────────────────────
+        if (m_likabilityCanvasGroup == null)
+            FindLikabilityGauge();
+
+        if (m_likabilityCanvasGroup != null)
+        {
+            bool shouldHideLikability = Plugin.ConfigHideLikabilityGauge?.Value == true;
+            m_likabilityCanvasGroup.alpha          = shouldHideLikability ? 0f : 1f;
+            m_likabilityCanvasGroup.interactable   = !shouldHideLikability;
+            m_likabilityCanvasGroup.blocksRaycasts = !shouldHideLikability;
+        }
     }
 
     // ── MoneyUI 取得 ───────────────────────────────────────────────
@@ -222,6 +248,29 @@ public class HideMoneyUIController : MonoBehaviour
         catch (Exception ex)
         {
             PatchLogger.LogError($"[GameUIHider] Footer 検索エラー: {ex.Message}");
+        }
+    }
+
+    // ── 好感度ゲージ（LikabilityUI コンテナ）取得 ──────────────────
+
+    private void FindLikabilityGauge()
+    {
+        try
+        {
+            // LikabilityUI は UIManager の m_likabilityUIContainer 配下にある。
+            // いずれかの LikabilityUI コンポーネントを見つけてその親をコンテナとして扱う。
+            var likabilityUI = FindFirstObjectByType<LikabilityUI>(FindObjectsInactive.Include);
+            if (likabilityUI != null && likabilityUI.transform.parent != null)
+            {
+                var container = likabilityUI.transform.parent.gameObject;
+                m_likabilityCanvasGroup = container.GetComponent<CanvasGroup>()
+                                       ?? container.AddComponent<CanvasGroup>();
+                PatchLogger.LogInfo($"[GameUIHider] LikabilityUI コンテナを発見: {container.name}");
+            }
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogError($"[GameUIHider] LikabilityUI 検索エラー: {ex.Message}");
         }
     }
 
@@ -285,6 +334,7 @@ public class HideMoneyUIController : MonoBehaviour
         {
             HideMoneyInSpecialScenes = Plugin.ConfigHideMoneyInSpecialScenes?.Value ?? false,
             HideButtonGuide          = Plugin.ConfigHideButtonGuide?.Value ?? false,
+            HideLikabilityGauge      = Plugin.ConfigHideLikabilityGauge?.Value ?? false,
         };
         m_view.Show(data);
         PatchLogger.LogInfo("[GameUIHider] パネルオープン");
@@ -310,9 +360,19 @@ public class HideMoneyUIController : MonoBehaviour
         Plugin.ConfigHideButtonGuide.Value = !Plugin.ConfigHideButtonGuide.Value;
         PatchLogger.LogInfo($"[GameUIHider] ボタンガイド非表示: {(Plugin.ConfigHideButtonGuide.Value ? "ON" : "OFF")}");
 
-        // Footer の CanvasGroup を即時更新
         if (m_footerCanvasGroup == null) FindFooter();
 
-        Open(); // パネルを再描画
+        Open();
+    }
+
+    private void HandleToggleLikabilityGauge()
+    {
+        if (Plugin.ConfigHideLikabilityGauge == null) return;
+        Plugin.ConfigHideLikabilityGauge.Value = !Plugin.ConfigHideLikabilityGauge.Value;
+        PatchLogger.LogInfo($"[GameUIHider] 好感度ゲージ非表示: {(Plugin.ConfigHideLikabilityGauge.Value ? "ON" : "OFF")}");
+
+        if (m_likabilityCanvasGroup == null) FindLikabilityGauge();
+
+        Open();
     }
 }
