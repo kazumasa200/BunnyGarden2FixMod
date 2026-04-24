@@ -73,6 +73,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<float> ConfigSpeed;
     public static ConfigEntry<float> ConfigFastSpeed;
     public static ConfigEntry<float> ConfigSlowSpeed;
+    public static ConfigEntry<bool> ConfigMoreTalkReactions;
     public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
     public static ConfigEntry<bool> ConfigHideGameUiInFreeCam;
     public static ConfigEntry<Key> ConfigTimeStopToggleKey;
@@ -199,6 +200,12 @@ public class Plugin : BaseUnityPlugin
             0.5f,
             "フリーカメラの低速移動速度（Ctrl）");
 
+        ConfigMoreTalkReactions = Config.Bind(
+            "Animation",
+            "MoreTalkReactions",
+            false,
+            "true にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります。");
+            
         ConfigControllerTriggerDeadzone = Config.Bind(
             "Camera",
             "ControllerTriggerDeadzone",
