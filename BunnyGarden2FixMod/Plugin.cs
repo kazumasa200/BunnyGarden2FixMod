@@ -99,6 +99,9 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<UnityEngine.InputSystem.Key> ConfigCostumeChangerHotkey;
     public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
     public static ConfigEntry<bool> ConfigSteamLaunchCheck;
+    public static ConfigEntry<bool> ConfigHideUIEnabled;
+    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
+    public static ConfigEntry<bool> ConfigHideButtonGuide;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -206,7 +209,7 @@ public class Plugin : BaseUnityPlugin
             "MoreTalkReactions",
             false,
             "true にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります。");
-            
+
         ConfigControllerTriggerDeadzone = Config.Bind(
             "Camera",
             "ControllerTriggerDeadzone",
@@ -379,6 +382,25 @@ public class Plugin : BaseUnityPlugin
             "true にすると Steam 外から直接起動された場合に Steam 経由で自動的に再起動します。\n" +
             "デバッグ目的でゲームフォルダに steam_appid.txt（内容: 3443820）を置くと、この機能をバイパスできます。");
 
+        ConfigHideUIEnabled = Config.Bind(
+            "HideUI",
+            "Enabled",
+            true,
+            "true にすると一部UIを非表示にできる設定パネルを有効化します。F9キーで開きます。");
+
+        ConfigHideMoneyInSpecialScenes = Config.Bind(
+            "HideUI",
+            "HideInSpecialScenes",
+            true,
+            "true にすると旅行シーンおよびラストシーンで雰囲気をぶち壊す\n" +
+            "所持金UIを非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
+
+        ConfigHideButtonGuide = Config.Bind(
+            "HideUI",
+            "HideButtonGuide",
+            false,
+            "true にすると画面下のボタンガイド（操作ヒント）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
+
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
 
@@ -396,6 +418,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CameraZoomPatch.Initialize(gameObject);
         Patches.CastOrderUI.CastOrderController.Initialize(gameObject);
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
+        Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
@@ -982,6 +1005,27 @@ public class Plugin : BaseUnityPlugin
             return action.ToString();
 
         return $"{modifier}+{action}";
+    }
+
+    /// <summary>
+    /// 旧セクションのエントリが config ファイルに存在すれば値を読み取って辞書から削除し、値を返す。
+    /// 存在しない場合は <paramref name="defaultValue"/> をそのまま返す。
+    /// <para>
+    /// 使用パターン: 旧セクション削除後に同名キーを新セクションで <c>Config.Bind</c> すると、
+    /// 新セクション側がファイルにまだなければ <paramref name="defaultValue"/> がデフォルトとして
+    /// 採用される（= 旧値を引き継ぐ）。2回目以降は旧キーが存在しないため素通りし、
+    /// 新セクション既存ファイル値がそのまま使われる。
+    /// </para>
+    /// </summary>
+    private static T ReadAndRemoveOldEntry<T>(BepInEx.Configuration.ConfigFile config, string section, string key, T defaultValue)
+    {
+        var def = new BepInEx.Configuration.ConfigDefinition(section, key);
+        if (!config.ContainsKey(def)) return defaultValue;
+        var entry = (BepInEx.Configuration.ConfigEntry<T>)config[def];
+        T value = entry.Value;
+        config.Remove(def);
+        PatchLogger.LogInfo($"[Config] マイグレーション: [{section}].{key} = {value}");
+        return value;
     }
 }
 

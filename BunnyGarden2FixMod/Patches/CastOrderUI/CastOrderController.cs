@@ -20,7 +20,9 @@ public class CastOrderController : MonoBehaviour
 
     public static void Initialize(GameObject parent)
     {
-        parent.AddComponent<CastOrderController>();
+        var host = new GameObject("BG2CastOrderUI");
+        UnityEngine.Object.DontDestroyOnLoad(host);
+        host.AddComponent<CastOrderController>();
     }
 
     private CastOrderView m_view;
