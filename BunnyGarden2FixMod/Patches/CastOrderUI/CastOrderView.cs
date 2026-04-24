@@ -30,6 +30,7 @@ public class CastOrderView : MonoBehaviour
     }
 
     public event Action OnCloseClicked;
+
     public event Action OnAllLockToggled;  // true=全固定ON, false=解除
 
     private UIDocument m_doc;
@@ -238,7 +239,7 @@ public class CastOrderView : MonoBehaviour
 
         // キー操作説明
         var key1 = new UITKeyCapRow();
-        key1.Setup(new (string, string)[] { ("W", ""), ("S", "選択"), ("1-5", "入れ替え") }, m_font);
+        key1.Setup(new (string, string)[] { ("W", ""), ("S", "選択"), ("1-6", "入れ替え") }, m_font);
         key1.style.marginBottom = 4;
         footer.Add(key1);
 
