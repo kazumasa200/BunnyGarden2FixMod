@@ -44,6 +44,7 @@
 
   <ItemGroup>
     <None Remove="Assembly\Assembly-CSharp.dll" />
+    <None Remove="Assembly\DOTween.dll" />
     <None Remove="Assembly\UniTask.dll" />
     <None Remove="Assembly\Unity.InputSystem.dll" />
     <None Remove="Assembly\Unity.RenderPipelines.Universal.Runtime.dll" />
@@ -99,6 +100,9 @@
     </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>Assembly\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="DOTween">
+      <HintPath>Assembly\DOTween.dll</HintPath>
     </Reference>
     <Reference Include="MessagePack">
       <HintPath>Assembly\MessagePack.dll</HintPath>
