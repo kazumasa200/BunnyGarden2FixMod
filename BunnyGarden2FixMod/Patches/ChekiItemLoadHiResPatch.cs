@@ -1,9 +1,9 @@
-using System;
 using BunnyGarden2FixMod.ExSave;
 using BunnyGarden2FixMod.Utils;
 using GB.Game;
 using GB.ListSelector;
 using HarmonyLib;
+using System;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.UI;
@@ -40,7 +40,7 @@ public static class ChekiItemLoadHiResPatch
     private static AccessTools.FieldRef<ChekiItem, Sprite> s_spriteRef;
     private static AccessTools.FieldRef<ChekiItem, Image> s_imgRef;
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         try
         {

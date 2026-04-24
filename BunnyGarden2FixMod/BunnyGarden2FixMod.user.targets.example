@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <DeployTargetPath>E:\Games\Steam\steamapps\common\BUNNY GARDEN 2\BepInEx\plugins\$(AssemblyName).dll</DeployTargetPath>
+  </PropertyGroup>
+
+  <Target Name="DeployPluginToGame" AfterTargets="Build"
+          Condition="Exists('$([System.IO.Path]::GetDirectoryName($(DeployTargetPath)))')">
+    <Message Text="Deploying $(TargetPath) to $(DeployTargetPath)" Importance="high" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(DeployTargetPath)" OverwriteReadOnlyFiles="true" />
+  </Target>
+</Project>

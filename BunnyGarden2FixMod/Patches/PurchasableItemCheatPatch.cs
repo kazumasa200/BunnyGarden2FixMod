@@ -1,11 +1,11 @@
-using System;
-using System.Reflection;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using GB.Bar;
 using GB.Game;
 using GB.Game.Params;
 using HarmonyLib;
+using System;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -31,7 +31,7 @@ public static class PurchasableItemCheatPatch
     private static readonly FieldInfo s_baseField =
         AccessTools.Field(typeof(PurchasableItem), "m_base");
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[PurchasableItemCheatPatch] PurchasableItem.SetInfo をパッチしました（ドリンク・フード正解表示チート）");
         return true;
@@ -52,9 +52,9 @@ public static class PurchasableItemCheatPatch
             // そのまま使用して問題ない。
             if ((int)cast < 0 || (int)cast >= 6) return;
 
-            bool isFav     = purchasableParam.IsFavoriteItem(cast);
+            bool isFav = purchasableParam.IsFavoriteItem(cast);
             bool isDislike = purchasableParam.IsDislikeItem(cast);
-            bool isVogue   = false;
+            bool isVogue = false;
 
             if (!isFav && !isDislike)
             {

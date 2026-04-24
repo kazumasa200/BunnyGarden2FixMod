@@ -1,7 +1,7 @@
-using System;
-using System.Collections.Generic;
 using BunnyGarden2FixMod.Utils;
 using MessagePack;
+using System;
+using System.Collections.Generic;
 
 namespace BunnyGarden2FixMod.ExSave;
 
@@ -19,6 +19,13 @@ public class ExSaveData
     /// <summary>saveSlotId → ExSaveSlotData。キーは 0..8 を想定。</summary>
     [Key(0)]
     public Dictionary<int, ExSaveSlotData> Slots { get; set; } = new();
+
+    /// <summary>
+    /// スロットに紐づかない共通データ（衣装閲覧履歴等）。
+    /// MessagePack の [Key] 追記は後方互換なので、旧 .exmod (Key 0 のみ) は Common が空で Deserialize される。
+    /// </summary>
+    [Key(1)]
+    public ExSaveSlotData Common { get; set; } = new();
 
     /// <summary>格納されているスロット数。</summary>
     [IgnoreMember]
@@ -70,6 +77,20 @@ public class ExSaveData
             var data = MessagePackSerializer.Deserialize<ExSaveData>(bytes, s_options);
             if (data == null) return new ExSaveData();
             data.Slots ??= new Dictionary<int, ExSaveSlotData>();
+            data.Common ??= new ExSaveSlotData();
+            data.Common.Entries ??= new Dictionary<string, byte[]>();
+            List<string> commonNullKeys = null;
+            foreach (var ek in data.Common.Entries)
+            {
+                if (ek.Value == null)
+                {
+                    commonNullKeys ??= new List<string>();
+                    commonNullKeys.Add(ek.Key);
+                }
+            }
+            if (commonNullKeys != null)
+                foreach (var ek in commonNullKeys)
+                    data.Common.Entries[ek] = Array.Empty<byte>();
 
             // 欠損キー / 他言語ツール由来の null 要素を正規化
             var nullKeys = new List<int>();

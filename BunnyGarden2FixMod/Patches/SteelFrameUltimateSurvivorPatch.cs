@@ -16,13 +16,13 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(SteelFrame), nameof(SteelFrame.Update))]
 public static class SteelFrameUltimateSurvivorPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[UltimateSurvivor] SteelFrame.Update に落下無効パッチを登録");
         return true;
     }
 
-    static void Postfix(SteelFrame __instance)
+    private static void Postfix(SteelFrame __instance)
     {
         if (!Plugin.ConfigUltimateSurvivorEnabled.Value) return;
         if (__instance.m_state != SteelFrame.State.InGame) return;

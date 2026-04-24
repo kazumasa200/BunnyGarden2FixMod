@@ -1,8 +1,8 @@
-using System;
 using BunnyGarden2FixMod.ExSave;
 using BunnyGarden2FixMod.Utils;
 using GB.Game;
 using HarmonyLib;
+using System;
 using UnityEngine;
 
 namespace BunnyGarden2FixMod.Patches;
@@ -50,7 +50,7 @@ public static class ChekiSaveHiResPatch
         return arr?.Length ?? -1;
     }
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         try
         {
@@ -141,10 +141,10 @@ public static class ChekiSaveHiResPatch
             switch (format)
             {
                 case ChekiImageFormat.JPG:
-                {
-                    int quality = Mathf.Clamp(Plugin.ConfigChekiJpgQuality.Value, 1, 100);
-                    return ImageConversion.EncodeToJPG(tex, quality);
-                }
+                    {
+                        int quality = Mathf.Clamp(Plugin.ConfigChekiJpgQuality.Value, 1, 100);
+                        return ImageConversion.EncodeToJPG(tex, quality);
+                    }
 
                 case ChekiImageFormat.PNG:
                 default:

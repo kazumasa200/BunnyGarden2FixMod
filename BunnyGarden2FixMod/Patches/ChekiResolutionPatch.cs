@@ -1,7 +1,7 @@
-using System.Collections;
 using BunnyGarden2FixMod.Utils;
 using GB.Save;
 using HarmonyLib;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 
@@ -121,7 +121,7 @@ public static class ChekiResolutionPatch
     private static AccessTools.FieldRef<Saves, RenderTexture> s_rtRef;
     private static bool s_loggedApplied;
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         // FieldRefAccess は static initializer で例外を投げる可能性があるので Prepare で防御。
         // フィールドが存在しないゲームバージョンでは MOD ロードを壊さずこのパッチだけ無効化する。

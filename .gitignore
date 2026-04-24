@@ -363,3 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 /HeberekeBunnyGardenMod/Assembly/Assembly-CSharp.dll
 BunnyGarden2FixMod/Assembly
+.dotnet_home/
+dotnet-tools.json
+decompiled
+BunnyGarden2FixMod/BunnyGarden2FixMod.user.targets

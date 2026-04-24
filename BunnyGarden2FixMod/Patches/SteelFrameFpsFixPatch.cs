@@ -32,22 +32,22 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(SteelFrame), nameof(SteelFrame.Update))]
 public static class SteelFrameFpsFixPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[SteelFrameFpsFix] SteelFrame.Update にトランスパイラを登録");
         return true;
     }
 
     [HarmonyTranspiler]
-    static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
     {
         var codes = new List<CodeInstruction>(instructions);
 
         var velField = AccessTools.Field(typeof(SteelFrame), "m_vel");
         var posField = AccessTools.Field(typeof(SteelFrame), "m_pos");
-        var opAdd    = AccessTools.Method(typeof(Vector3), "op_Addition");
-        var getDt    = AccessTools.PropertyGetter(typeof(Time), "deltaTime");
-        var opMul    = AccessTools.Method(typeof(Vector3), "op_Multiply",
+        var opAdd = AccessTools.Method(typeof(Vector3), "op_Addition");
+        var getDt = AccessTools.PropertyGetter(typeof(Time), "deltaTime");
+        var opMul = AccessTools.Method(typeof(Vector3), "op_Multiply",
                            new[] { typeof(Vector3), typeof(float) });
 
         for (int i = 0; i < codes.Count - 2; i++)

@@ -1,4 +1,3 @@
-using System;
 using BunnyGarden2FixMod.ExSave;
 using BunnyGarden2FixMod.Utils;
 using GB;
@@ -6,6 +5,7 @@ using GB.Extra;
 using GB.Game;
 using GB.Save;
 using HarmonyLib;
+using System;
 
 namespace BunnyGarden2FixMod.Patches;
 
@@ -39,18 +39,18 @@ internal static class AlbumViewGate
 [HarmonyPatch(typeof(ExtraChekiSelector), "updateConfirm")]
 public static class ExtraChekiSelectorViewPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ExtraChekiSelectorViewPatch] 適用");
         return true;
     }
 
-    static void Prefix() => AlbumViewGate.InProgress = true;
+    private static void Prefix() => AlbumViewGate.InProgress = true;
 
     // updateConfirm の実行が例外や途中 return で終わっても、AlbumViewGate が
     // 残留すると次回の通常 CopyFrom が誤って閲覧モード扱いになる。
     // Finalizer は例外時も必ず実行されるため、二重防御として強制クリアする。
-    static void Finalizer()
+    private static void Finalizer()
     {
         if (AlbumViewGate.InProgress)
         {
@@ -93,7 +93,7 @@ public static class GameDataCopyFromPatch
 {
     private static AccessTools.FieldRef<SaveData, SavedGameData[]> s_savedSlotsRef;
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         try
         {
@@ -108,7 +108,7 @@ public static class GameDataCopyFromPatch
         }
     }
 
-    static void Postfix(GameData __instance, GameData __0)
+    private static void Postfix(GameData __instance, GameData __0)
     {
         // フラグは必ず消費する（Prefix が走ったが Postfix が途中で例外になっても残留しないよう）
         bool albumView = AlbumViewGate.InProgress;
@@ -176,13 +176,13 @@ public static class GameDataCopyFromPatch
 [HarmonyPatch(typeof(SaveData), nameof(SaveData.UpdateSaveSlot))]
 public static class SaveDataUpdateSlotPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[SaveDataUpdateSlotPatch] 適用");
         return true;
     }
 
-    static void Postfix(int slot)
+    private static void Postfix(int slot)
     {
         ExSaveStore.CurrentSaveSlot = slot;
         PatchLogger.LogInfo($"[SaveDataUpdateSlotPatch] CurrentSaveSlot={slot}");

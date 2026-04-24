@@ -1,9 +1,9 @@
-using System;
 using BunnyGarden2FixMod.ExSave;
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB.Save;
 using HarmonyLib;
+using System;
 
 namespace BunnyGarden2FixMod.Patches;
 
@@ -57,7 +57,7 @@ internal static class ExSaveLifecyclePatch
 [HarmonyPatch(typeof(Saves), nameof(Saves.Load))]
 public static class ExSaveOnLoadPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ExSaveOnLoadPatch] Saves.Load をパッチしました（サイドカー読込）");
         return true;
@@ -87,7 +87,7 @@ public static class ExSaveOnLoadPatch
 [HarmonyPatch(typeof(Saves), nameof(Saves.Save))]
 public static class ExSaveOnSavePatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ExSaveOnSavePatch] Saves.Save をパッチしました（サイドカー保存 wrap）");
         return true;
@@ -147,7 +147,7 @@ public static class ExSaveOnSavePatch
 [HarmonyPatch(typeof(Saves), nameof(Saves.CreateNewData))]
 public static class ExSaveOnCreateNewDataPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ExSaveOnCreateNewDataPatch] Saves.CreateNewData をパッチしました（全状態リセット）");
         return true;

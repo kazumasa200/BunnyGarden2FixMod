@@ -33,14 +33,14 @@ public static class GambleAlwaysWinPatch
     private const int MaxRerollAttempts = 1000;
     private const int RandUnit = 100; // executeGamble 内の num2 と同値
 
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[GambleAlwaysWin] ステートマシントランスパイラを準備中");
         return true;
     }
 
     // executeGamble のステートマシンの MoveNext() を対象にする
-    static MethodBase TargetMethod()
+    private static MethodBase TargetMethod()
     {
         var smType = typeof(Gamble)
             .GetNestedTypes(AccessTools.all)
@@ -64,7 +64,7 @@ public static class GambleAlwaysWinPatch
     }
 
     [HarmonyTranspiler]
-    static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
     {
         var codes = new List<CodeInstruction>(instructions);
 
@@ -136,12 +136,12 @@ public static class GambleAlwaysWinPatch
 
         var gambleParam = gamble.m_gambleParams.Get(gamble.m_rate);
         // AddGambleCount() はまだ呼ばれていないので、executeGamble が使った roundIdx と同一
-        int roundIdx   = GBSystem.Instance.RefGameData().GetGambleTotalPlayCount()
+        int roundIdx = GBSystem.Instance.RefGameData().GetGambleTotalPlayCount()
                          % gambleParam.RoundParamCount;
         int baseAmount = gambleParam.GetRoundParam(roundIdx).BaseAmount;
         int randAmount = gambleParam.GetRoundParam(roundIdx).RandomAmount;
 
-        int result   = winAmount;
+        int result = winAmount;
         int attempts = 0;
         while (result < 0 && attempts < MaxRerollAttempts)
         {

@@ -16,7 +16,7 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(GBInput), "CameraControll")]
 public class CameraControllPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[CameraControllPatch] GBInput.CameraControll をパッチしました（Karuta / KaraokeCamera / Twister / DrinkPurchase / Cheki カメラ回転）");
         return true;

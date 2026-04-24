@@ -41,7 +41,7 @@ internal static class ContinueVoiceState
 [HarmonyPatch(typeof(ConversationWindow), nameof(ConversationWindow.UpdateRoutine))]
 public static class ContinueVoiceOnTap_UpdateRoutinePatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ContinueVoiceOnTapPatch] ConversationWindow.UpdateRoutine をラップ");
         return true;
@@ -66,7 +66,7 @@ public static class ContinueVoiceOnTap_UpdateRoutinePatch
 [HarmonyPatch(typeof(ConversationWindow), nameof(ConversationWindow.ToNextText))]
 public static class ContinueVoiceOnTap_ToNextTextPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ContinueVoiceOnTapPatch] ConversationWindow.ToNextText をラップ");
         return true;
@@ -91,7 +91,7 @@ public static class ContinueVoiceOnTap_ToNextTextPatch
 [HarmonyPatch(typeof(GBSystem), nameof(GBSystem.StopVoice))]
 public static class ContinueVoiceOnTap_StopVoicePatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ContinueVoiceOnTapPatch] GBSystem.StopVoice の抑制ゲートを登録");
         return true;
@@ -107,7 +107,7 @@ public static class ContinueVoiceOnTap_StopVoicePatch
 [HarmonyPatch(typeof(EnvSceneBase), nameof(EnvSceneBase.FinishLipSync))]
 public static class ContinueVoiceOnTap_FinishLipSyncPatch
 {
-    static bool Prepare()
+    private static bool Prepare()
     {
         PatchLogger.LogInfo("[ContinueVoiceOnTapPatch] EnvSceneBase.FinishLipSync の抑制ゲートを登録");
         return true;

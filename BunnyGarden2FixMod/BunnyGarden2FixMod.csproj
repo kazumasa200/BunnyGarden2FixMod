@@ -16,7 +16,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>net.noeleve.BunnyGarden2FixMod</AssemblyName>
     <Product>BunnyGarden2FixMod</Product>
-    <Version>1.0.6.1</Version>
+    <Version>1.0.7</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <RestoreAdditionalProjectSources>
@@ -44,6 +44,7 @@
 
   <ItemGroup>
     <None Remove="Assembly\Assembly-CSharp.dll" />
+    <None Remove="Assembly\DOTween.dll" />
     <None Remove="Assembly\UniTask.dll" />
     <None Remove="Assembly\Unity.InputSystem.dll" />
     <None Remove="Assembly\Unity.RenderPipelines.Universal.Runtime.dll" />
@@ -51,6 +52,11 @@
     <None Remove="Assembly\UnityEngine.UI.dll" />
     <None Remove="Assembly\MessagePack.dll" />
     <None Remove="Assembly\MessagePack.Annotations.dll" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\settings.png" />
+    <EmbeddedResource Include="Resources\arrow-big-left.png" />
   </ItemGroup>
 
   <!-- BepInEx 5 用パッケージ -->
@@ -83,6 +89,9 @@
     <Reference Include="Unity.RenderPipelines.Universal.Runtime">
       <HintPath>Assembly\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
     </Reference>
+    <Reference Include="Unity.RenderPipelines.Core.Runtime">
+      <HintPath>Assembly\Unity.RenderPipelines.Core.Runtime.dll</HintPath>
+    </Reference>
     <Reference Include="Unity.InputSystem">
       <HintPath>Assembly\Unity.InputSystem.dll</HintPath>
     </Reference>
@@ -91,6 +100,9 @@
     </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>Assembly\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="DOTween">
+      <HintPath>Assembly\DOTween.dll</HintPath>
     </Reference>
     <Reference Include="MessagePack">
       <HintPath>Assembly\MessagePack.dll</HintPath>
@@ -101,4 +113,6 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <Import Project="BunnyGarden2FixMod.user.targets" Condition="Exists('BunnyGarden2FixMod.user.targets')" />
 </Project>

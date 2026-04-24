@@ -1,11 +1,12 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using BepInEx;
+using BunnyGarden2FixMod.Patches.CostumeChanger;
 using BunnyGarden2FixMod.Utils;
 using GB.Save;
 using GB.Save.Pc;
 using GB.Save.Steam;
+using System;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace BunnyGarden2FixMod.ExSave;
 
@@ -47,6 +48,14 @@ public static class ExSaveStore
     /// チェキ撮影や閲覧時はここに読み書きする。
     /// </summary>
     public static ExSaveSlotData CurrentSession { get; private set; } = new ExSaveSlotData();
+
+    /// <summary>
+    /// スロットに紐づかない共通データ（衣装/パンツ/ストッキング閲覧履歴等）。
+    /// <see cref="AllSlots"/>.Common への直接参照なので、ここへの書き込みはそのまま次回
+    /// <c>Saves.Save</c> フックで永続化される。LoadFromPath / Reset で AllSlots が再代入されても
+    /// プロパティとして毎回解決するため追従する。
+    /// </summary>
+    public static ExSaveSlotData CommonData => AllSlots.Common;
 
     /// <summary>
     /// 現在のロード/セーブ先スロット番号。
@@ -123,6 +132,9 @@ public static class ExSaveStore
         CurrentSession = new ExSaveSlotData();
         CurrentSaveSlot = -1;
         CurrentMainPath = null;
+        // 底データを入替えたので ViewHistory 側の dedup キャッシュも無効化する
+        // （次回 MarkViewed で新データに対して再登録が走るように）
+        InvalidateCommonCaches();
     }
 
     /// <summary>
@@ -183,6 +195,7 @@ public static class ExSaveStore
         {
             AllSlots = new ExSaveData();
             PatchLogger.LogInfo($"[ExSave] サイドカー無し、空データで開始: {path ?? "(null)"}");
+            InvalidateCommonCaches();
             return;
         }
         try
@@ -199,6 +212,19 @@ public static class ExSaveStore
             AllSlots = new ExSaveData();
             PatchLogger.LogWarning($"[ExSave] ロード失敗、空データで続行: {path} ({ex})");
         }
+        // ロード（成功/失敗問わず）で AllSlots が差替わったので dedup キャッシュ無効化。
+        InvalidateCommonCaches();
+    }
+
+    /// <summary>
+    /// Common バケットに書き込む <see cref="ExSaveSlotData"/> 派生データの dedup キャッシュを
+    /// 無効化する。<see cref="AllSlots"/> 入替タイミング（Reset / LoadFromPath）で呼ぶ。
+    /// </summary>
+    private static void InvalidateCommonCaches()
+    {
+        CostumeViewHistory.ResetDedup();
+        PantiesViewHistory.ResetDedup();
+        StockingViewHistory.ResetDedup();
     }
 
     public static async Task SaveToPathAsync(string mainSavePath)

@@ -1,10 +1,10 @@
+using BunnyGarden2FixMod.Utils;
+using GB;
+using HarmonyLib;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using BunnyGarden2FixMod.Utils;
-using GB;
-using HarmonyLib;
 using TMPro;
 
 namespace BunnyGarden2FixMod.Patches;
@@ -32,12 +32,16 @@ public static class ConversationChoiceCheatPatch
 {
     private static readonly FieldInfo s_shuffleTableField =
         AccessTools.Field(typeof(ConversationChoice), "m_shuffleTable");
+
     private static readonly FieldInfo s_currentUIField =
         AccessTools.Field(typeof(ConversationChoice), "m_currentUI");
+
     private static readonly FieldInfo s_choiceIndexField =
         AccessTools.Field(typeof(ConversationChoice), "m_choiceIndex");
+
     private static readonly MethodInfo s_isLikUpMethod =
         AccessTools.Method(typeof(ConversationChoice), "IsLikabilityUpChoice");
+
     private static readonly MethodInfo s_isLikDownMethod =
         AccessTools.Method(typeof(ConversationChoice), "IsLikabilityDownChoice");
 
@@ -59,7 +63,7 @@ public static class ConversationChoiceCheatPatch
         try
         {
             var shuffleTable = s_shuffleTableField.GetValue(__instance) as List<int>;
-            var currentUI    = s_currentUIField.GetValue(__instance);
+            var currentUI = s_currentUIField.GetValue(__instance);
             if (shuffleTable == null || currentUI == null) return;
 
             var getChoiceItemsMethod = currentUI.GetType().GetMethod(
@@ -78,7 +82,7 @@ public static class ConversationChoiceCheatPatch
                 {
                     s_choiceIndexField.SetValue(__instance, shuffleTable[i]);
                     bool isCorrect = (bool)s_isLikUpMethod.Invoke(__instance, null);
-                    bool isDown    = (bool)s_isLikDownMethod.Invoke(__instance, null);
+                    bool isDown = (bool)s_isLikDownMethod.Invoke(__instance, null);
                     marks[i] = isCorrect ? "★" : (isDown ? "▼" : null);
                 }
             }
