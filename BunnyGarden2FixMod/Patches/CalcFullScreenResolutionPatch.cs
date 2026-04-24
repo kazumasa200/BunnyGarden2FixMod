@@ -8,8 +8,8 @@ namespace BunnyGarden2FixMod.Patches;
 /// <summary>
 /// フルスクリーンの解像度計算を上書きするパッチ。
 ///
-/// GBSystem.Update() は CalcFullScreenResolution() の戻り値が 16:9 かどうかを
-/// ハードコードの 1.7777778f でチェックし、外れるとリセットを繰り返す。
+/// 通常は既存どおり 16:9 を返しつつ、FullscreenUltrawideEnabled=true かつ
+/// ゲームプレイ中のフルスクリーン時だけモニターのネイティブ解像度を返す。
 ///
 /// ■ 入力が正確に 16:9 の場合（例: 1920×1080, 3840×2160, 2560×1440）
 ///   → そのまま返す。モニター解像度を超える値（スーパーサンプリング）も許可。
@@ -26,13 +26,18 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(GBSystem), "CalcFullScreenResolution")]
 public class CalcFullScreenResolutionPatch
 {
-    private const float Aspect16x9 = 16f / 9f; // GBSystem が要求する固定アスペクト比
-
     private static bool Prefix(ref ValueTuple<int, int, bool> __result)
     {
         int configW = Plugin.ConfigWidth.Value;
         int configH = Plugin.ConfigHeight.Value;
         Resolution mon = Screen.currentResolution;
+
+        if (GameplayFullscreenUltrawideSupport.ShouldUseNativeFullscreen())
+        {
+            (int width, int height) target = GameplayFullscreenUltrawideSupport.GetTargetResolution();
+            __result = new ValueTuple<int, int, bool>(target.width, target.height, true);
+            return false;
+        }
 
         // 入力が正確に 16:9 かどうかを整数演算で判定（浮動小数点誤差を排除）
         bool isExact16x9 = configW * 9 == configH * 16;
@@ -56,22 +61,22 @@ public class CalcFullScreenResolutionPatch
 
             // Option A: 入力の幅を基準に算出
             int wA = Math.Min(configW, mon.width);
-            int hA = (int)(wA / Aspect16x9);
+            int hA = (int)(wA / GameplayFullscreenUltrawideSupport.Aspect16x9);
             if (hA > mon.height)
             {
                 // 高さがモニターを超える場合は高さ上限で再計算
                 hA = mon.height;
-                wA = (int)(hA * Aspect16x9);
+                wA = (int)(hA * GameplayFullscreenUltrawideSupport.Aspect16x9);
             }
 
             // Option B: 入力の高さを基準に算出
             int hB = Math.Min(configH, mon.height);
-            int wB = (int)(hB * Aspect16x9);
+            int wB = (int)(hB * GameplayFullscreenUltrawideSupport.Aspect16x9);
             if (wB > mon.width)
             {
                 // 幅がモニターを超える場合は幅上限で再計算
                 wB = mon.width;
-                hB = (int)(wB / Aspect16x9);
+                hB = (int)(wB / GameplayFullscreenUltrawideSupport.Aspect16x9);
             }
 
             // ピクセル数が多い（より高解像度な）候補を採用
