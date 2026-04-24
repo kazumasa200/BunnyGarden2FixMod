@@ -225,7 +225,7 @@ Wardrobeパネル表示中、以下のキーで操作できます。
 | キー | デフォルト | 説明 |
 |------|-----------|------|
 | `Enabled` | `true` | `true` にすると F9 キーで UI 非表示設定パネルを開けるようにします |
-| `HideInSpecialScenes` | `true` | `true` にすると旅行シーン・告白シーンで所持金 UI を非表示にします |
+| `HideInSpecialScenes` | `true` | `true` にすると旅行シーン・ラストシーンで所持金 UI を非表示にします |
 | `HideButtonGuide` | `false` | `true` にすると画面下のボタンガイド（操作ヒント）を常時非表示にします |
 
 #### 操作方法（F9パネル）
