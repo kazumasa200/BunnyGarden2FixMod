@@ -76,30 +76,22 @@ public static class SwimWearStockingPatch
     /// </summary>
     internal static void OnSceneUnloaded()
     {
-        int destroyed = 0;
-        foreach (var m in s_transplantedCache.Values)
-        {
-            if (m != null)
-            {
-                Object.Destroy(m);
-                destroyed++;
-            }
-        }
+        // Mesh オブジェクト自体は Destroy しない:
+        //   水着キャラ GameObject が DontDestroyOnLoad 等でシーンを跨いで生存するケースがあり、
+        //   その SMR が transplanted/resolved mesh を参照している。ここで Destroy すると
+        //   次シーンで SMR が fake-null mesh を抱えて肌が消える。
+        //   キャッシュ辞書だけクリアし、Mesh は SMR が手放した時点で Unity GC に回収させる。
+        int transplantedCount = s_transplantedCache.Count;
         s_transplantedCache.Clear();
 
-        int resolvedDestroyed = 0;
-        foreach (var pair in s_resolvedCache.Values)
-        {
-            if (pair.donor != null) { Object.Destroy(pair.donor); resolvedDestroyed++; }
-            if (pair.skin != null) { Object.Destroy(pair.skin); resolvedDestroyed++; }
-        }
+        int resolvedCount = s_resolvedCache.Count;
         s_resolvedCache.Clear();
         s_resolvedAppliedIds.Clear();
 
         // s_backups.LowerOriginalMesh / LowerFootOriginalMesh はゲーム本体所有の sharedMesh のため
         // Destroy せず参照のみクリアする（Destroy するとゲーム側のメッシュが消えて破綻する）。
         s_backups.Clear();
-        PatchLogger.LogInfo($"[SwimWearStockingPatch] シーンアンロード: transplanted {destroyed} 件、resolved {resolvedDestroyed} 件破棄");
+        PatchLogger.LogInfo($"[SwimWearStockingPatch] シーンアンロード: cache クリア (transplanted {transplantedCount} 件、resolved {resolvedCount} 件)");
     }
 
     /// <summary>

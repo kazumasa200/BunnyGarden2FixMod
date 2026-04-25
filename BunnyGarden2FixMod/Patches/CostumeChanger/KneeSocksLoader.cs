@@ -160,15 +160,15 @@ public class KneeSocksLoader : MonoBehaviour
     {
         s_snapshots.Clear();
 
-        // 移植済みメッシュを破棄してリークを防ぐ
-        int destroyed = 0;
-        foreach (var m in s_transplantedLowerCache.Values)
-        {
-            if (m != null) { Object.Destroy(m); destroyed++; }
-        }
+        // 移植済みメッシュは Destroy しない:
+        //   キャラ GameObject が DontDestroyOnLoad 等でシーンを跨いで生存するケースがあり、
+        //   その lower SMR が transplanted mesh を参照したまま次シーンに入ると、ここで Destroy
+        //   していると fake-null mesh を抱えて肌が消える。
+        //   キャッシュ辞書だけクリアし、Mesh は SMR が手放した時点で Unity GC に回収させる。
+        int transplantedCount = s_transplantedLowerCache.Count;
         s_transplantedLowerCache.Clear();
 
-        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロード: スナップショットクリア、transplanted mesh {destroyed} 件破棄。");
+        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
     }
 
     /// <summary>
@@ -242,7 +242,8 @@ public class KneeSocksLoader : MonoBehaviour
 
         // z-fighting 対策: skin_kneehigh=100 がニーハイ専用シェイプのため理想的。
         // skin_kneehigh は Luna Casual の mesh_skin_lower にしか存在しないため、他キャラ／コスチュームには移植が必要。
-        if (lower != null)
+        // タイトル戻りなどで sharedMesh が null 化することがあるため lower.sharedMesh も確認する。
+        if (lower != null && lower.sharedMesh != null)
         {
             int kneehighIdx = lower.sharedMesh.GetBlendShapeIndex("blendShape_skin_lower.skin_kneehigh");
             if (kneehighIdx >= 0)
@@ -320,6 +321,7 @@ public class KneeSocksLoader : MonoBehaviour
 
     private static float GetBlendShapeWeight(SkinnedMeshRenderer renderer, string name)
     {
+        if (renderer == null || renderer.sharedMesh == null) return 0f;
         int idx = renderer.sharedMesh.GetBlendShapeIndex(name);
         return idx >= 0 ? renderer.GetBlendShapeWeight(idx) : 0f;
     }
