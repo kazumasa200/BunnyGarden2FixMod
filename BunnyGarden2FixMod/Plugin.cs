@@ -103,6 +103,11 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
     public static ConfigEntry<bool> ConfigHideButtonGuide;
     public static ConfigEntry<bool> ConfigHideLikabilityGauge;
+    public static ConfigEntry<bool> ConfigSwimWearStocking;
+    public static ConfigEntry<float> ConfigStockingOffset;
+    public static ConfigEntry<float> ConfigStockingSkinShrink;
+    public static ConfigEntry<float> ConfigStockingSkinFalloffRadius;
+    public static ConfigEntry<float> ConfigStockingShapeFalloffRadius;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -408,6 +413,56 @@ public class Plugin : BaseUnityPlugin
             false,
             "true にするとラブカウンター（好感度ゲージ）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
 
+        ConfigSwimWearStocking = Config.Bind(
+            "CostumeChanger",
+            "SwimWearStocking",
+            true,
+            "true にすると水着コスチューム着用中にストッキングを適用できるようになります。\n" +
+            "水着モデルには本来ストッキング用ブレンドシェイプがないため、同キャラの Uniform コスチュームからデータを移植します。");
+
+        ConfigStockingOffset = Config.Bind(
+            "CostumeChanger",
+            "StockingOffset",
+            0f,
+            new BepInEx.Configuration.ConfigDescription(
+                "水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。\n" +
+                "押し出すと水着の食い込み（タイトな演出）が再現できるが、stocking が水着を貫通する。\n" +
+                "0 で無効化。デフォルト 0 (無効)。",
+                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
+
+        ConfigStockingSkinShrink = Config.Bind(
+            "CostumeChanger",
+            "StockingSkinShrink",
+            0.001f,
+            new BepInEx.Configuration.ConfigDescription(
+                "水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に\n" +
+                "保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を\n" +
+                "stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込む。\n" +
+                "押し込むと、肌の貫通はなくなるが、水着の食い込み（タイトな演出）が再現できない。\n" +
+                "0 で無効化。デフォルト 0.001 (1mm)。",
+                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
+
+        ConfigStockingSkinFalloffRadius = Config.Bind(
+            "CostumeChanger",
+            "StockingSkinFalloffRadius",
+            0.001f,
+            new BepInEx.Configuration.ConfigDescription(
+                "肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n" +
+                "距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぐ。0 で無効化（一様押し込み）。\n" +
+                "デフォルト 0.001 (1mm)。",
+                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
+
+        ConfigStockingShapeFalloffRadius = Config.Bind(
+            "CostumeChanger",
+            "StockingShapeFalloffRadius",
+            0.001f,
+            new BepInEx.Configuration.ConfigDescription(
+                "skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、\n" +
+                "隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n" +
+                "距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消する。\n" +
+                "0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。",
+                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
+
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
 
@@ -426,6 +481,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CastOrderUI.CastOrderController.Initialize(gameObject);
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
         Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
+        Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");

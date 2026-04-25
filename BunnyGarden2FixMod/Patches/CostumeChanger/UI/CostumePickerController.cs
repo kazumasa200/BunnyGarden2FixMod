@@ -2,6 +2,7 @@ using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
 using GB.Game;
+using GB.Scene;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -105,6 +106,11 @@ public class CostumePickerController : MonoBehaviour
         m_view.OnBackClicked += HandleBackClicked;
         m_view.OnResetAllClicked += HandleResetAllClicked;
         m_view.OnUnlockAllClicked += HandleUnlockAllClicked;
+        m_view.OnStockingOffsetChanged += HandleStockingOffsetChanged;
+        m_view.OnStockingSkinShrinkChanged += HandleStockingSkinShrinkChanged;
+        m_view.OnStockingFalloffChanged += HandleStockingFalloffChanged;
+        m_view.OnStockingShapeFalloffChanged += HandleStockingShapeFalloffChanged;
+        m_view.OnTuneResetClicked += HandleTuneResetClicked;
     }
 
     private void OnDestroy()
@@ -119,6 +125,11 @@ public class CostumePickerController : MonoBehaviour
             m_view.OnBackClicked -= HandleBackClicked;
             m_view.OnResetAllClicked -= HandleResetAllClicked;
             m_view.OnUnlockAllClicked -= HandleUnlockAllClicked;
+            m_view.OnStockingOffsetChanged -= HandleStockingOffsetChanged;
+            m_view.OnStockingSkinShrinkChanged -= HandleStockingSkinShrinkChanged;
+            m_view.OnStockingFalloffChanged -= HandleStockingFalloffChanged;
+            m_view.OnStockingShapeFalloffChanged -= HandleStockingShapeFalloffChanged;
+            m_view.OnTuneResetClicked -= HandleTuneResetClicked;
         }
         if (Instance == this) Instance = null;
     }
@@ -749,7 +760,23 @@ public class CostumePickerController : MonoBehaviour
         var env = GBSystem.Instance?.GetActiveEnvScene();
         if (env != null)
         {
-            if (StockingOverrideStore.IsKneeSocksType(type))
+            bool isSwim = IsSwimWear(env, m_activeChar);
+
+            if (isSwim)
+            {
+                // 水着は SwimWearStockingPatch が override store を source of truth として
+                // 全タイプ（0=解除 / 1–4=パンスト / 5–7=ニーソックス）を同期処理する。
+                // type 引数は SwimWearStockingPatch 側で無視されるので 0 を渡す。
+                try
+                {
+                    env.ApplyStockings(m_activeChar, 0);
+                }
+                catch (Exception ex)
+                {
+                    PatchLogger.LogWarning($"[CostumePicker] 水着ストッキング切替失敗: {ex}");
+                }
+            }
+            else if (StockingOverrideStore.IsKneeSocksType(type))
             {
                 // ニーソックス系: 直接メッシュ差し替え（env.ApplyStockings は type 0–4 専用）
                 var charObj = env.FindCharacter(m_activeChar);
@@ -779,6 +806,17 @@ public class CostumePickerController : MonoBehaviour
             }
         }
         m_view.Render(BuildRenderData());
+    }
+
+    /// <summary>
+    /// 現在シーン内の <paramref name="id"/> の CharacterHandle から Costume を取得し、
+    /// SwimWear かどうかを判定する。まだロードされていない／見つからない場合は false。
+    /// </summary>
+    private static bool IsSwimWear(EnvSceneBase env, CharID id)
+    {
+        if (env == null || env.m_characters == null) return false;
+        var handle = env.m_characters.Find(x => x != null && x.GetCharID() == id);
+        return handle?.m_lastLoadArg?.Costume == CostumeType.SwimWear;
     }
 
     private void ResetAllTabs()
@@ -1085,7 +1123,95 @@ public class CostumePickerController : MonoBehaviour
             UnlockAllEnabled = IsEndingClearedFor(m_activeChar),
             VisibleCasts = m_visibleCasts.AsReadOnly(),
             VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
+            StockingOffset = Plugin.ConfigStockingOffset?.Value ?? 0f,
+            StockingSkinShrink = Plugin.ConfigStockingSkinShrink?.Value ?? 0f,
+            StockingFalloffRadius = Plugin.ConfigStockingSkinFalloffRadius?.Value ?? 0f,
+            StockingShapeFalloffRadius = Plugin.ConfigStockingShapeFalloffRadius?.Value ?? 0f,
+            StockingOffsetMax = 0.01f,
+            StockingSkinShrinkMax = 0.01f,
+            StockingFalloffRadiusMax = 0.01f,
+            StockingShapeFalloffRadiusMax = 0.01f,
         };
+    }
+
+    private void HandleStockingOffsetChanged(float meters)
+    {
+        if (Plugin.ConfigStockingOffset == null) return;
+        Plugin.ConfigStockingOffset.Value = Mathf.Clamp(meters, 0f, 0.01f);
+        ReapplyStockingForTune();
+    }
+
+    private void HandleStockingSkinShrinkChanged(float meters)
+    {
+        if (Plugin.ConfigStockingSkinShrink == null) return;
+        Plugin.ConfigStockingSkinShrink.Value = Mathf.Clamp(meters, 0f, 0.01f);
+        ReapplyStockingForTune();
+    }
+
+    private void HandleStockingFalloffChanged(float meters)
+    {
+        if (Plugin.ConfigStockingSkinFalloffRadius == null) return;
+        Plugin.ConfigStockingSkinFalloffRadius.Value = Mathf.Clamp(meters, 0f, 0.01f);
+        ReapplyStockingForTune();
+    }
+
+    private void HandleStockingShapeFalloffChanged(float meters)
+    {
+        if (Plugin.ConfigStockingShapeFalloffRadius == null) return;
+        Plugin.ConfigStockingShapeFalloffRadius.Value = Mathf.Clamp(meters, 0f, 0.01f);
+        ReapplyStockingForTune();
+    }
+
+    /// <summary>
+    /// パンスト微調整 4 項目（Offset / SkinShrink / FalloffRadius / ShapeFalloff）を
+    /// ConfigEntry の DefaultValue にまとめて戻し、UI と適用結果を更新する。
+    /// </summary>
+    private void HandleTuneResetClicked()
+    {
+        ResetConfigToDefault(Plugin.ConfigStockingOffset);
+        ResetConfigToDefault(Plugin.ConfigStockingSkinShrink);
+        ResetConfigToDefault(Plugin.ConfigStockingSkinFalloffRadius);
+        ResetConfigToDefault(Plugin.ConfigStockingShapeFalloffRadius);
+        ReapplyStockingForTune();
+
+        // スライダーの表示も更新する（プログラム側で値を変えただけだとスライダーは追従しない）。
+        // 設定画面の slider 群は RenderSettings 経由で更新する（Render は picker タブ用）。
+        if (m_view != null) m_view.RenderSettings(BuildSettingsData());
+    }
+
+    private static void ResetConfigToDefault(BepInEx.Configuration.ConfigEntry<float> entry)
+    {
+        if (entry == null) return;
+        if (entry.DefaultValue is float def) { entry.Value = def; return; }
+        // DefaultValue が float でないと無音でリセット失敗 → ユーザーから不可視の崩れになるので Warning。
+        PatchLogger.LogWarning(
+            $"[CostumePickerController] Config '{entry.Definition?.Key}' の DefaultValue が float ではありません: " +
+            $"{entry.DefaultValue?.GetType().FullName ?? "null"}。リセットをスキップしました。");
+    }
+
+    /// <summary>
+    /// 微調整スライダー値変更後のライブ再適用。
+    /// 水着で stocking override が掛かっているキャラに対し、SwimWearStockingPatch の
+    /// 食い込み解消を新パラメータで再構築する。非水着・override 無し・KneeSocks の場合は no-op。
+    /// </summary>
+    private void ReapplyStockingForTune()
+    {
+        if (m_activeChar >= CharID.NUM) return;
+        if (!StockingOverrideStore.TryGet(m_activeChar, out var stk)) return;
+        if (StockingOverrideStore.IsKneeSocksType(stk)) return;
+        var env = GBSystem.Instance?.GetActiveEnvScene();
+        if (env == null) return;
+        if (!IsSwimWear(env, m_activeChar)) return;
+
+        SwimWearStockingPatch.InvalidateForReapply(m_activeChar);
+        try
+        {
+            env.ApplyStockings(m_activeChar, 0); // SwimWearStockingPatch は override store を見るので type 引数は無視
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[CostumePicker] tune 再適用失敗: {ex}");
+        }
     }
 
     /// <summary>

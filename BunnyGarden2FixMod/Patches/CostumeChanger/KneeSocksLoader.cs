@@ -43,17 +43,48 @@ public class KneeSocksLoader : MonoBehaviour
         public float SkinKneehighBlend;
         public Mesh OriginalStockingsMesh;
         public Transform[] OriginalStockingsBones;
+        // blendShape 移植により sharedMesh を差し替えた場合のみセット（それ以外は null）
+        public Mesh LowerOriginalMesh;
     }
 
     private static readonly Dictionary<int, CharacterSnapshot> s_snapshots = new();
     private static CharacterHandle s_handle; // GC 防止: CharacterHandle が破棄されると SMR も破棄される
     private static SkinnedMeshRenderer s_kneeSocks;
+    // Luna Casual の mesh_skin_lower（skin_kneehigh blendShape のドナー）
+    private static Mesh s_donorSkinLower;
+    // 元 sharedMesh の InstanceID → blendShape 移植済みメッシュのキャッシュ。
+    // ドナーは固定（Luna Casual）で移植結果は元メッシュごとに決定的なため、charId なしのキーで安全。
+    // 異なるキャラが同一 sharedMesh を共有する場合は意図的に同じ結果を再利用する。
+    // ライフサイクル: シーン継続中は再利用（Restore 後も保持）、シーンアンロード時に Object.Destroy で破棄。
+    private static readonly Dictionary<int, Mesh> s_transplantedLowerCache = new();
 
     // インデックスは KneeSocksStockingType(type)。[0]=null（デフォルトは s_kneeSocks.material 直接使用）
     private static readonly Material[] s_stockingMaterials = new Material[3];
 
     /// <summary>マテリアルプリロード中かどうかを返す。DisableStockingPatch などのガードに使用する。</summary>
     public static bool IsPreloading { get; private set; }
+
+    /// <summary>
+    /// 水着×ニーソックス用: kneehigh SMR を借用してマテリアルを取得するためのアクセサ。
+    /// </summary>
+    internal static SkinnedMeshRenderer KneeSocksSmr => s_kneeSocks;
+
+    /// <summary>
+    /// 水着×ニーソックス用: Luna Casual の mesh_skin_lower ドナーを SwimWearStockingPatch に公開する。
+    /// プリロード未完了時は null を返す。
+    /// </summary>
+    internal static Mesh DonorSkinLower => s_donorSkinLower;
+
+    /// <summary>
+    /// 指定 override type（5-7）に対応する kneehigh マテリアルを返す。未ロード時は s_kneeSocks の既定マテリアルを返す。
+    /// </summary>
+    internal static Material GetMaterialForOverride(int overrideType)
+    {
+        int idx = StockingOverrideStore.KneeSocksStockingType(overrideType);
+        if (idx > 0 && idx < s_stockingMaterials.Length && s_stockingMaterials[idx] != null)
+            return s_stockingMaterials[idx];
+        return s_kneeSocks != null ? s_kneeSocks.sharedMaterial : null;
+    }
 
     public static void Initialize(GameObject parent)
     {
@@ -83,6 +114,19 @@ public class KneeSocksLoader : MonoBehaviour
             PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] mesh_kneehigh が見つかりませんでした。ニーソックスは使用できません。");
         else
             PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
+
+        // Luna Casual の mesh_skin_lower から skin_kneehigh blendShape をドナーとしてキャッシュ
+        var donorLowerSmr = parent.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+            .FirstOrDefault(m => m.name == "mesh_skin_lower");
+        if (donorLowerSmr != null && donorLowerSmr.sharedMesh != null)
+        {
+            s_donorSkinLower = donorLowerSmr.sharedMesh;
+            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_skin_lower ドナーをキャッシュしました (verts={s_donorSkinLower.vertexCount} shapes={s_donorSkinLower.blendShapeCount})。");
+        }
+        else
+        {
+            PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] mesh_skin_lower が見つかりませんでした。skin_kneehigh 移植はフォールバック動作になります。");
+        }
 
         // ダミーキャラの mesh_stockings に ApplyStocking を呼んでマテリアルをキャッシュする
         var stockingsMesh = parent.GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -115,7 +159,16 @@ public class KneeSocksLoader : MonoBehaviour
     private static void OnSceneUnloaded(Scene scene)
     {
         s_snapshots.Clear();
-        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロードに伴いスナップショットをクリアしました。");
+
+        // 移植済みメッシュは Destroy しない:
+        //   キャラ GameObject が DontDestroyOnLoad 等でシーンを跨いで生存するケースがあり、
+        //   その lower SMR が transplanted mesh を参照したまま次シーンに入ると、ここで Destroy
+        //   していると fake-null mesh を抱えて肌が消える。
+        //   キャッシュ辞書だけクリアし、Mesh は SMR が手放した時点で Unity GC に回収させる。
+        int transplantedCount = s_transplantedLowerCache.Count;
+        s_transplantedLowerCache.Clear();
+
+        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
     }
 
     /// <summary>
@@ -154,6 +207,7 @@ public class KneeSocksLoader : MonoBehaviour
                 SkinKneehighBlend = lower != null ? GetBlendShapeWeight(lower, "blendShape_skin_lower.skin_kneehigh") : 0f,
                 OriginalStockingsMesh = stockings.sharedMesh,
                 OriginalStockingsBones = stockings.bones,
+                LowerOriginalMesh = null,
             };
         }
 
@@ -186,11 +240,59 @@ public class KneeSocksLoader : MonoBehaviour
             : s_kneeSocks.material;
         stockings.bones = mappedBones;
 
-        // blendshape 修正: stocking スロットを使うので skin_stocking=100, skin_kneehigh=0
-        if (lower != null)
+        // z-fighting 対策: skin_kneehigh=100 がニーハイ専用シェイプのため理想的。
+        // skin_kneehigh は Luna Casual の mesh_skin_lower にしか存在しないため、他キャラ／コスチュームには移植が必要。
+        // タイトル戻りなどで sharedMesh が null 化することがあるため lower.sharedMesh も確認する。
+        if (lower != null && lower.sharedMesh != null)
         {
-            SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", 100f);
-            SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", 0f);
+            int kneehighIdx = lower.sharedMesh.GetBlendShapeIndex("blendShape_skin_lower.skin_kneehigh");
+            if (kneehighIdx >= 0)
+            {
+                // 既存に skin_kneehigh がある（Luna Casual 等）: そのまま weight を設定
+                SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", 0f);
+                SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", 100f);
+            }
+            else if (s_donorSkinLower != null)
+            {
+                // skin_kneehigh がない場合: Luna Casual ドナーから nearest-neighbor 移植
+                int origId = lower.sharedMesh.GetInstanceID();
+                if (!s_transplantedLowerCache.TryGetValue(origId, out var transplanted) || transplanted == null)
+                {
+                    transplanted = MeshBlendShapeTransplanter.Transplant(
+                        lower.sharedMesh,
+                        s_donorSkinLower,
+                        new[] { "blendShape_skin_lower.skin_kneehigh" },
+                        nameof(KneeSocksLoader));
+                    if (transplanted != null)
+                        s_transplantedLowerCache[origId] = transplanted;
+                }
+
+                if (transplanted != null)
+                {
+                    // snapshot に元 sharedMesh を記録してから差し替え
+                    var snap = s_snapshots[instanceId];
+                    snap.LowerOriginalMesh = lower.sharedMesh;
+                    s_snapshots[instanceId] = snap;
+
+                    lower.sharedMesh = transplanted;
+                    SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", 0f);
+                    SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", 100f);
+                }
+                else
+                {
+                    // 移植結果が null（shape なし等）: フォールバック
+                    PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] 移植結果が null のためフォールバック (skin_stocking=100)");
+                    SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", 100f);
+                    SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", 0f);
+                }
+            }
+            else
+            {
+                // ドナー未取得: フォールバック（skin_stocking=100 で z-fighting を最低限抑制）
+                PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] ドナー mesh_skin_lower 未取得のためフォールバック (skin_stocking=100)");
+                SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", 100f);
+                SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", 0f);
+            }
         }
 
         PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ニーソックスを適用しました: {character.name}");
@@ -203,6 +305,8 @@ public class KneeSocksLoader : MonoBehaviour
     {
         if (IsPreloading) return; // プリロード中の dummy handle への誤適用を防ぐ
         if (handle?.Chara == null) return;
+        // 水着は SwimWearStockingPatch が専用ロジックで処理するためスキップ
+        if (handle.m_lastLoadArg != null && handle.m_lastLoadArg.Costume == CostumeType.SwimWear) return;
         var id = handle.GetCharID();
         if (!StockingOverrideStore.TryGet(id, out var stk) || !StockingOverrideStore.IsKneeSocksType(stk)) return;
         Apply(handle.Chara, stk);
@@ -210,12 +314,14 @@ public class KneeSocksLoader : MonoBehaviour
 
     private static void SetBlendShape(SkinnedMeshRenderer renderer, string name, float weight)
     {
+        if (renderer == null || renderer.sharedMesh == null) return;
         int idx = renderer.sharedMesh.GetBlendShapeIndex(name);
         if (idx >= 0) renderer.SetBlendShapeWeight(idx, weight);
     }
 
     private static float GetBlendShapeWeight(SkinnedMeshRenderer renderer, string name)
     {
+        if (renderer == null || renderer.sharedMesh == null) return 0f;
         int idx = renderer.sharedMesh.GetBlendShapeIndex(name);
         return idx >= 0 ? renderer.GetBlendShapeWeight(idx) : 0f;
     }
@@ -243,6 +349,10 @@ public class KneeSocksLoader : MonoBehaviour
         if (socks != null) socks.gameObject.SetActive(snap.SocksActive);
         if (lower != null)
         {
+            // 移植により sharedMesh を差し替えていた場合は先に元に戻す（blendShape index が変わるため）
+            if (snap.LowerOriginalMesh != null)
+                lower.sharedMesh = snap.LowerOriginalMesh;
+
             SetBlendShape(lower, "blendShape_skin_lower.skin_stocking", snap.SkinStockingBlend);
             SetBlendShape(lower, "blendShape_skin_lower.skin_kneehigh", snap.SkinKneehighBlend);
         }

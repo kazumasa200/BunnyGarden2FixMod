@@ -52,6 +52,8 @@
     <None Remove="Assembly\UnityEngine.UI.dll" />
     <None Remove="Assembly\MessagePack.dll" />
     <None Remove="Assembly\MessagePack.Annotations.dll" />
+    <None Remove="Assembly\Unity.Addressables.dll" />
+    <None Remove="Assembly\Unity.ResourceManager.dll" />
   </ItemGroup>
 
   <ItemGroup>
@@ -110,6 +112,14 @@
     </Reference>
     <Reference Include="MessagePack.Annotations">
       <HintPath>Assembly\MessagePack.Annotations.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.Addressables">
+      <HintPath>Assembly\Unity.Addressables.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.ResourceManager">
+      <HintPath>Assembly\Unity.ResourceManager.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

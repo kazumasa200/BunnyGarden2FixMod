@@ -55,6 +55,18 @@ public class CostumePickerView : MonoBehaviour
 
         /// <summary>VisibleCasts の中で現在ピッカーが対象としているキャストのインデックス。</summary>
         public int VisibleCastSelectedIndex;
+
+        // パンスト微調整 (m 単位)
+        public float StockingOffset;
+        public float StockingSkinShrink;
+        public float StockingFalloffRadius;
+        public float StockingShapeFalloffRadius;
+
+        // 各スライダーの最大値 (m 単位、Config.AcceptableValueRange と一致)
+        public float StockingOffsetMax;
+        public float StockingSkinShrinkMax;
+        public float StockingFalloffRadiusMax;
+        public float StockingShapeFalloffRadiusMax;
     }
 
     public event Action<int> OnTabClicked;
@@ -72,6 +84,15 @@ public class CostumePickerView : MonoBehaviour
     public event Action OnResetAllClicked;
 
     public event Action OnUnlockAllClicked;
+
+    /// <summary>パンスト微調整スライダーの値変更 (引数は m 単位)。</summary>
+    public event Action<float> OnStockingOffsetChanged;
+
+    public event Action<float> OnStockingSkinShrinkChanged;
+
+    public event Action<float> OnStockingFalloffChanged;
+    public event Action<float> OnStockingShapeFalloffChanged;
+    public event Action OnTuneResetClicked;
 
     private UIDocument m_doc;
     private PanelSettings m_settings;
@@ -93,6 +114,13 @@ public class CostumePickerView : MonoBehaviour
     private Button m_resetAllButton;          // W/S キー選択ハイライトのため保持
     private Button m_unlockAllButton;         // enable/disable 切替のため保持
     private Label m_unlockAllNote;            // 常時表示の説明ラベル（将来ラベル差替え予定なら必要）
+
+    // パンスト微調整スライダー（設定画面下部）
+    private UITSlider m_offsetSlider;
+    private UITSlider m_skinShrinkSlider;
+    private UITSlider m_falloffSlider;
+    private UITSlider m_shapeFalloffSlider;
+    private Button m_tuneResetButton;
 
     private enum ViewMode
     { Picker, Settings }
@@ -146,7 +174,20 @@ public class CostumePickerView : MonoBehaviour
             m_unlockAllButton.SetEnabled(data.UnlockAllEnabled);
             m_unlockAllButton.style.opacity = data.UnlockAllEnabled ? 1f : 0.4f;
         }
+        UpdateSlider(m_offsetSlider, data.StockingOffset, data.StockingOffsetMax);
+        UpdateSlider(m_skinShrinkSlider, data.StockingSkinShrink, data.StockingSkinShrinkMax);
+        UpdateSlider(m_falloffSlider, data.StockingFalloffRadius, data.StockingFalloffRadiusMax);
+        UpdateSlider(m_shapeFalloffSlider, data.StockingShapeFalloffRadius, data.StockingShapeFalloffRadiusMax);
     }
+
+    private static void UpdateSlider(UITSlider s, float current, float max)
+    {
+        if (s == null) return;
+        if (max > 0f) s.SetRange(0f, max);
+        s.SetValue(current);
+    }
+
+    private static string FormatMm(float meters) => $"{meters * 1000f:F1}mm";
 
     /// <summary>
     /// 設定画面 2 ボタンのキー操作選択ハイライトを更新する。0=Reset, 1=UnlockAll。
@@ -381,6 +422,47 @@ public class CostumePickerView : MonoBehaviour
             9, UITTheme.Text.Secondary, m_font, TextAnchor.UpperLeft);
         m_unlockAllNote.style.whiteSpace = WhiteSpace.Normal;
         m_settingsContent.Add(m_unlockAllNote);
+
+        // ─── 水着のパンスト微調整セクション ───
+        var tuneHeading = UITFactory.CreateLabel(
+            "水着のパンスト微調整",
+            11, UITTheme.Text.Accent, m_font, TextAnchor.MiddleLeft);
+        tuneHeading.style.marginTop = 16;
+        tuneHeading.style.marginBottom = 4;
+        m_settingsContent.Add(tuneHeading);
+
+        m_offsetSlider = AddTuneSlider("パンスト押し出し", 0.01f, v => OnStockingOffsetChanged?.Invoke(v));
+        m_skinShrinkSlider = AddTuneSlider("肌押し込み", 0.01f, v => OnStockingSkinShrinkChanged?.Invoke(v));
+        m_falloffSlider = AddTuneSlider("境界フェード", 0.01f, v => OnStockingFalloffChanged?.Invoke(v));
+        // 肌縮みフェードは blendShape 全 frame の再構築を伴って重いので、ドラッグ完了時のみ反映する。
+        m_shapeFalloffSlider = AddTuneSlider("肌縮みフェード", 0.01f, v => OnStockingShapeFalloffChanged?.Invoke(v), commitOnly: true);
+
+        var tuneNote = UITFactory.CreateLabel(
+            "※ パンスト押し出し: 水着の食い込みは出るが水着を貫通\n" +
+            "※ 肌押し込み: 貫通はしないが水着の食い込みは出ない",
+            9, UITTheme.Text.Secondary, m_font, TextAnchor.UpperLeft);
+        tuneNote.style.whiteSpace = WhiteSpace.Normal;
+        tuneNote.style.marginTop = 4;
+        m_settingsContent.Add(tuneNote);
+
+        m_tuneResetButton = UITFactory.CreateButton(
+            "パンスト設定をリセット",
+            () => OnTuneResetClicked?.Invoke(),
+            11, m_font);
+        m_tuneResetButton.style.marginTop = 8;
+        m_tuneResetButton.style.paddingTop = 4;
+        m_tuneResetButton.style.paddingBottom = 4;
+        m_settingsContent.Add(m_tuneResetButton);
+    }
+
+    private UITSlider AddTuneSlider(string label, float maxMeters, Action<float> onChanged, bool commitOnly = false)
+    {
+        var s = new UITSlider();
+        s.Setup(label, 0f, maxMeters, m_font, FormatMm);
+        if (commitOnly) s.OnValueCommitted += onChanged;
+        else s.OnValueChanged += onChanged;
+        m_settingsContent.Add(s);
+        return s;
     }
 
     private void BuildHeaderButtons()
