@@ -156,7 +156,6 @@ public class UITSlider : VisualElement
         const float kTrackerHeight = 4f;
         const float kTrackerTop = (kSliderHeight - kTrackerHeight) / 2f;
         const float kDraggerSize = 12f;
-        const float kDraggerTop = (kSliderHeight - kDraggerSize) / 2f;
 
         var tracker = slider.Q(className: "unity-base-slider__tracker");
         if (tracker != null)
@@ -189,8 +188,11 @@ public class UITSlider : VisualElement
         {
             dragger.style.width = kDraggerSize;
             dragger.style.height = kDraggerSize;
-            dragger.style.marginTop = 0;
-            dragger.style.top = kDraggerTop;
+            // Unity 既定 USS は top: 50% + margin-top: -draggerHeight/2 で縦中央寄せする想定だが、
+            // テーマ USS が借用元と異なると margin-top が dragger サイズと一致せず下寄りになる。
+            // 自前のサイズ (kDraggerSize) で margin-top を再計算してセンター合わせを保証する。
+            dragger.style.top = new Length(50f, LengthUnit.Percent);
+            dragger.style.marginTop = -kDraggerSize / 2f;
             dragger.style.backgroundColor = UITTheme.Tab.ActiveFill;
             dragger.style.borderTopLeftRadius = kDraggerSize / 2f;
             dragger.style.borderTopRightRadius = kDraggerSize / 2f;
