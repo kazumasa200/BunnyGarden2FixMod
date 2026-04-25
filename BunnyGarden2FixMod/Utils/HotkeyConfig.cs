@@ -5,22 +5,6 @@ using UnityEngine.InputSystem;
 
 namespace BunnyGarden2FixMod.Utils;
 
-public enum ControllerButton
-{
-    None,
-    A,
-    B,
-    X,
-    Y,
-    L,
-    R,
-    ZL,
-    ZR,
-    Start,
-    Select,
-}
-
-
 public class HotkeyConfig
 {
     public ConfigEntry<Key>? KeyConfig { get; }
@@ -34,8 +18,8 @@ public class HotkeyConfig
         ControllerButton defaultButton,
         string description)
     {
-        KeyConfig = config.Bind(section, $"{key}Key", defaultKey, $"{description} (Keyboard)");
-        ButtonConfig = config.Bind(section, $"{key}Button", defaultButton, $"{description} (Gamepad)");
+        KeyConfig = config.Bind(section, KeyboardKey(key), defaultKey, $"{description} (Keyboard)");
+        ButtonConfig = config.Bind(section, GamepadKey(key), defaultButton, $"{description} (Gamepad)");
     }
 
     public HotkeyConfig(
@@ -45,7 +29,7 @@ public class HotkeyConfig
         Key defaultKey,
         string description)
     {
-        KeyConfig = config.Bind(section, $"{key}Key", defaultKey, $"{description} (Keyboard)");
+        KeyConfig = config.Bind(section, KeyboardKey(key), defaultKey, $"{description} (Keyboard)");
     }
 
     public HotkeyConfig(
@@ -55,8 +39,12 @@ public class HotkeyConfig
         ControllerButton defaultButton,
         string description)
     {
-        ButtonConfig = config.Bind(section, $"{key}Button", defaultButton, $"{description} (Gamepad)");
+        ButtonConfig = config.Bind(section, GamepadKey(key), defaultButton, $"{description} (Gamepad)");
     }
+
+    public static string GamepadKey(string key) => $"{key}Button";
+
+    public static string KeyboardKey(string key) => $"{key}Key";
 
     public override string ToString()
     {

@@ -39,7 +39,7 @@ public static class PurchasableItemCheatPatch
 
     private static void Postfix(PurchasableItem __instance, PurchasableParam purchasableParam)
     {
-        if (!Plugin.ConfigCheatEnabled.Value) return;
+        if (!Plugin.ConfigCheatLikability.Value) return;
         try
         {
             if (GBSystem.Instance == null) return;

@@ -59,7 +59,7 @@ public static class ConversationChoiceCheatPatch
 
     private static void Postfix(ConversationChoice __instance)
     {
-        if (!Plugin.ConfigCheatEnabled.Value) return;
+        if (!Plugin.ConfigCheatLikability.Value) return;
         try
         {
             var shuffleTable = s_shuffleTableField.GetValue(__instance) as List<int>;

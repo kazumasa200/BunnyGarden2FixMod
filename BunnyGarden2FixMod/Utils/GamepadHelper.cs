@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -6,6 +7,21 @@ using UnityEngine.InputSystem.DualShock;
 #nullable enable
 
 namespace BunnyGarden2FixMod.Utils;
+
+public enum ControllerButton
+{
+    None,
+    A,
+    B,
+    X,
+    Y,
+    L,
+    R,
+    ZL,
+    ZR,
+    Start,
+    Select,
+}
 
 public static class GamepadHelper
 {
@@ -44,59 +60,38 @@ public static class GamepadHelper
 
     private static Vector2 ReadRawStick(System.Func<Gamepad, Vector2> selector)
     {
-        foreach (var gamepad in Gamepad.all)
-        {
-            Vector2 value = selector(gamepad);
-            if (value.sqrMagnitude > 0f)
-                return value;
-        }
-
-        return Vector2.zero;
+        return Gamepad.all
+            .Select(selector)
+            .FirstOrDefault(value => value.sqrMagnitude > 0f);
     }
 
     private static float ReadRawTrigger(ControllerButton button)
     {
-        foreach (var gamepad in Gamepad.all)
-        {
-            float value = button switch
+        return Gamepad.all
+            .Select(gamepad => button switch
             {
                 ControllerButton.ZL => gamepad.leftTrigger.ReadValue(),
                 ControllerButton.ZR => gamepad.rightTrigger.ReadValue(),
                 _ => 0f,
-            };
-
-            if (value > 0f)
-                return value;
-        }
-
-        return 0f;
+            })
+            .FirstOrDefault(value => value > 0f);
     }
 
     private static bool IsRawTriggered(ControllerButton button)
     {
-        foreach (var gamepad in Gamepad.all)
-        {
-            var control = GetRawGamepadButton(gamepad, button);
-            if (control?.wasPressedThisFrame == true)
-                return true;
-        }
-
-        return false;
+        return Gamepad.all
+            .Select(gamepad => GetRawGamepadButton(gamepad, button))
+            .Any(control => control?.wasPressedThisFrame == true);
     }
 
     private static bool IsRawHeld(ControllerButton button)
     {
-        foreach (var gamepad in Gamepad.all)
-        {
-            var control = GetRawGamepadButton(gamepad, button);
-            if (control?.isPressed == true)
-                return true;
-        }
-
-        return false;
+        return Gamepad.all
+            .Select(gamepad => GetRawGamepadButton(gamepad, button))
+            .Any(control => control?.isPressed == true);
     }
 
-    private static ButtonControl? GetRawGamepadButton(Gamepad gamepad, ControllerButton button)
+    private static ButtonControl? GetRawGamepadButton(Gamepad? gamepad, ControllerButton button)
     {
         if (gamepad == null)
             return null;

@@ -186,7 +186,7 @@ public class CostumePickerController : MonoBehaviour
         if (kb == null) return;
 
         // トグル
-        if (kb[Plugin.ConfigCostumeChangerHotkey.Value].wasPressedThisFrame)
+        if (Plugin.ConfigCostumeChangerShow.IsTriggered())
         {
             if (m_view.IsShown)
             {

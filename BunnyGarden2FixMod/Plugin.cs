@@ -40,55 +40,83 @@ public enum ChekiImageFormat
 public class Plugin : BaseUnityPlugin
 {
     private static Plugin Instance;
-    public static ConfigEntry<int> ConfigWidth;
-    public static ConfigEntry<int> ConfigHeight;
-    public static ConfigEntry<int> ConfigExtraWidth;
-    public static ConfigEntry<int> ConfigExtraHeight;
-    public static ConfigEntry<bool> ConfigExtraActive;
-    public static ConfigEntry<int> ConfigFrameRate;
-    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
-    public static ConfigEntry<bool> ConfigDisableChromaticAberration;
+
+    // Animation
+    public static ConfigEntry<bool> ConfigMoreTalkReactions;
+
+    // Appearance
+    public static ConfigEntry<bool> ConfigDisableStockings;
+
+    // Camera
     public static ConfigEntry<float> ConfigSensitivity;
     public static ConfigEntry<float> ConfigSpeed;
     public static ConfigEntry<float> ConfigFastSpeed;
     public static ConfigEntry<float> ConfigSlowSpeed;
-    public static ConfigEntry<bool> ConfigMoreTalkReactions;
-    public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
     public static ConfigEntry<bool> ConfigHideGameUiInFreeCam;
-    public static ConfigEntry<bool> ConfigCheatEnabled;
-    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
+    public static ConfigEntry<bool> ConfigControllerEnabled;
+    public static HotkeyConfig ConfigFixedFreeCamToggle;
+    public static HotkeyConfig ConfigFreeCamToggle;
+
+    // Cheat
+    public static ConfigEntry<bool> ConfigCastOrder;
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
-    public static ConfigEntry<bool> ConfigDisableStockings;
-    public static ConfigEntry<bool> ConfigContinueVoiceOnTap;
+    public static ConfigEntry<bool> ConfigCheatLikability;
+    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
+
+    // Cheki
     public static ConfigEntry<bool> ConfigChekiHighResEnabled;
-    public static ConfigEntry<int> ConfigChekiSize;
     public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat;
     public static ConfigEntry<int> ConfigChekiJpgQuality;
-    public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
-    public static ConfigEntry<bool> ConfigCastOrderEnabled;
-    public static ConfigEntry<bool> ConfigControllerEnabled;
-    public static ConfigEntry<ControllerButton> ConfigControllerModifier;
-    public static HotkeyConfig ConfigOverlayToggle;
-    public static HotkeyConfig ConfigFreeCamToggle;
-    public static HotkeyConfig ConfigFixedFreeCamToggle;
-    public static HotkeyConfig ConfigTimeStopToggle;
-    public static HotkeyConfig ConfigFrameAdvance;
-    public static HotkeyConfig ConfigFastForward;
-    public static ConfigEntry<float> ConfigFastForwardSpeed;
-    public static HotkeyConfig ConfigCaptureScreenshot;
+    public static ConfigEntry<int> ConfigChekiSize;
+
+    // Conversation
+    public static ConfigEntry<bool> ConfigContinueVoiceOnTap;
+
+    // CostumeChanger
     public static ConfigEntry<bool> ConfigCostumeChangerEnabled;
-    public static ConfigEntry<UnityEngine.InputSystem.Key> ConfigCostumeChangerHotkey;
+    public static HotkeyConfig ConfigCostumeChangerShow;
     public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
-    public static ConfigEntry<bool> ConfigSteamLaunchCheck;
-    public static ConfigEntry<bool> ConfigHideUIEnabled;
-    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
-    public static ConfigEntry<bool> ConfigHideButtonGuide;
-    public static ConfigEntry<bool> ConfigHideLikabilityGauge;
     public static ConfigEntry<bool> ConfigSwimWearStocking;
     public static ConfigEntry<float> ConfigStockingOffset;
     public static ConfigEntry<float> ConfigStockingSkinShrink;
     public static ConfigEntry<float> ConfigStockingSkinFalloffRadius;
     public static ConfigEntry<float> ConfigStockingShapeFalloffRadius;
+
+    // Ending
+    public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
+
+    // General
+    public static HotkeyConfig ConfigCaptureScreenshot;
+    public static ConfigEntry<bool> ConfigSteamLaunchCheck;
+    public static HotkeyConfig ConfigOverlayToggle;
+
+    // Graphics
+    public static ConfigEntry<int> ConfigWidth;
+    public static ConfigEntry<int> ConfigHeight;
+    public static ConfigEntry<int> ConfigExtraWidth;
+    public static ConfigEntry<int> ConfigExtraHeight;
+    public static ConfigEntry<int> ConfigFrameRate;
+    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
+    public static ConfigEntry<bool> ConfigDisableChromaticAberration;
+
+    // HideUI
+    public static ConfigEntry<bool> ConfigHideUIEnabled;
+    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
+    public static ConfigEntry<bool> ConfigHideButtonGuide;
+    public static ConfigEntry<bool> ConfigHideLikabilityGauge;
+
+    // Input
+    public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
+    public static ConfigEntry<ControllerButton> ConfigControllerModifier;
+
+    // Internal
+    public static ConfigEntry<bool> ConfigExtraActive;
+
+    // Time
+    public static HotkeyConfig ConfigTimeStopToggle;
+    public static HotkeyConfig ConfigFrameAdvance;
+    public static HotkeyConfig ConfigFastForward;
+    public static ConfigEntry<float> ConfigFastForwardSpeed;
 
     internal static event Action GUICallback;
 
@@ -106,27 +134,31 @@ public class Plugin : BaseUnityPlugin
     private void Awake()
     {
         Instance = this;
+        Logger = base.Logger;
+        PatchLogger.Initialize(Logger);
+        ConfigMigration.Migrate(Config);
+
         ConfigWidth = Config.Bind(
-            "Resolution",
+            "Graphics",
             "Width",
             1920,
             "解像度の幅（横）を指定します");
 
         ConfigHeight = Config.Bind(
-            "Resolution",
+            "Graphics",
             "Height",
             1080,
             "解像度の高さ（縦）を指定します");
 
         ConfigExtraWidth = Config.Bind(
-            "Resolution",
+            "Graphics",
             "ExtraWidth",
             2560,
             "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。\n" +
             "既定 2560（WQHD）。16:9 を推奨。");
 
         ConfigExtraHeight = Config.Bind(
-            "Resolution",
+            "Graphics",
             "ExtraHeight",
             1440,
             "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の高さ。\n" +
@@ -141,13 +173,13 @@ public class Plugin : BaseUnityPlugin
             "手動変更しないでください。");
 
         ConfigFrameRate = Config.Bind(
-            "Resolution",
+            "Graphics",
             "FrameRate",
             60,
             "フレームレート上限を指定します。-1にすると上限を撤廃します。");
 
         ConfigAntiAliasing = Config.Bind(
-            "AntiAliasing",
+            "Graphics",
             "AntiAliasingType",
             AntiAliasingType.MSAA8x,
             "アンチエイリアシングの種類を指定します。右の方ほど画質が良くなりますが、動作が重くなります。Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x");
@@ -189,7 +221,7 @@ public class Plugin : BaseUnityPlugin
             "true にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります。");
 
         ConfigControllerTriggerDeadzone = Config.Bind(
-            "Camera",
+            "Input",
             "ControllerTriggerDeadzone",
             0.35f,
             "フリーカメラで ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合は上げてください。");
@@ -208,7 +240,7 @@ public class Plugin : BaseUnityPlugin
 
         ConfigControllerModifier = Config.Bind(
             "Input",
-            "ControllerToggleModifier",
+            "ControllerModifier",
             ControllerButton.Select,
             "コントローラ入力修飾ボタン。");
 
@@ -322,9 +354,9 @@ public class Plugin : BaseUnityPlugin
             true,
             "true にするとエンディング中に撮影済みのチェキをスライドショーで表示します。");
 
-        ConfigCastOrderEnabled = Config.Bind(
+        ConfigCastOrder = Config.Bind(
+            "Cheat",
             "CastOrder",
-            "Enabled",
             false,
             "true にするとバーに入る前にキャストの出勤順序を変更できます。\n" +
             "F1 キーで編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。");
@@ -341,9 +373,9 @@ public class Plugin : BaseUnityPlugin
             false,
             "true にするとギャンブルで負けなくなります。");
 
-        ConfigCheatEnabled = Config.Bind(
+        ConfigCheatLikability = Config.Bind(
             "Cheat",
-            "Enabled",
+            "Likability",
             false,
             "true にすると会話選択肢・ドリンク・フードの正解をゲーム内に表示します。\n" +
             "【会話選択肢】選択肢テキストの先頭に記号が追加されます。\n" +
@@ -360,11 +392,12 @@ public class Plugin : BaseUnityPlugin
             true,
             "true にすると衣装変更 UI とパッチを有効化します。");
 
-        ConfigCostumeChangerHotkey = Config.Bind(
+        ConfigCostumeChangerShow = new HotkeyConfig(Config,
             "CostumeChanger",
-            "Hotkey",
+            "Show",
             Key.F7,
-            "衣装変更 UI の表示トグルキー（UnityEngine.InputSystem.Key enum 名で指定）。");
+            ControllerButton.None,
+            "衣装変更 UI の表示トグルキー。");
 
         ConfigRespectGameCostumeOverride = Config.Bind(
             "CostumeChanger",
@@ -453,9 +486,6 @@ public class Plugin : BaseUnityPlugin
                 "距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消する。\n" +
                 "0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。",
                 new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
-
-        Logger = base.Logger;
-        PatchLogger.Initialize(Logger);
 
         // Steam 外起動を検出した場合は Steam 経由で再起動して即終了
         if (ConfigSteamLaunchCheck.Value && SteamLaunchChecker.CheckAndRelaunchIfNeeded())
@@ -618,27 +648,6 @@ public class Plugin : BaseUnityPlugin
 
             isCapturingScreenshot = false;
         }
-    }
-
-    /// <summary>
-    /// 旧セクションのエントリが config ファイルに存在すれば値を読み取って辞書から削除し、値を返す。
-    /// 存在しない場合は <paramref name="defaultValue"/> をそのまま返す。
-    /// <para>
-    /// 使用パターン: 旧セクション削除後に同名キーを新セクションで <c>Config.Bind</c> すると、
-    /// 新セクション側がファイルにまだなければ <paramref name="defaultValue"/> がデフォルトとして
-    /// 採用される（= 旧値を引き継ぐ）。2回目以降は旧キーが存在しないため素通りし、
-    /// 新セクション既存ファイル値がそのまま使われる。
-    /// </para>
-    /// </summary>
-    private static T ReadAndRemoveOldEntry<T>(BepInEx.Configuration.ConfigFile config, string section, string key, T defaultValue)
-    {
-        var def = new BepInEx.Configuration.ConfigDefinition(section, key);
-        if (!config.ContainsKey(def)) return defaultValue;
-        var entry = (BepInEx.Configuration.ConfigEntry<T>)config[def];
-        T value = entry.Value;
-        config.Remove(def);
-        PatchLogger.LogInfo($"[Config] マイグレーション: [{section}].{key} = {value}");
-        return value;
     }
 }
 
