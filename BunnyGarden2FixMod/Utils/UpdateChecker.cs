@@ -190,7 +190,7 @@ internal static class UpdateChecker
         tmp.color = color == default ? Color.white : color;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
-        tmp.enableWordWrapping = false;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
         tmp.overflowMode = TextOverflowModes.Overflow;
     }
 
@@ -232,7 +232,7 @@ internal static class UpdateChecker
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.fontStyle = FontStyles.Bold;
-        tmp.enableWordWrapping = false;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
         tmp.overflowMode = TextOverflowModes.Overflow;
 
         return btn;

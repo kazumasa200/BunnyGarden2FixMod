@@ -173,7 +173,7 @@ public static class CostumeChangerPatch
         {
             // includeInactive: true — Enter() が gameObject.SetActive(true) を呼ぶ前の
             // ロード中フェーズでも FittingRoom インスタンスを検出するために必要。
-            s_fittingRoomCache = Object.FindObjectOfType<FittingRoom>(true);
+            s_fittingRoomCache = Object.FindFirstObjectByType<FittingRoom>(FindObjectsInactive.Include);
         }
         // Unity の == null はシーン遷移で破棄された参照も null と判定する
         if (s_fittingRoomCache == null) return false;

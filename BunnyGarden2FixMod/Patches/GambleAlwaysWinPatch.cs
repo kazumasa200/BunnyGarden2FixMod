@@ -131,7 +131,7 @@ public static class GambleAlwaysWinPatch
         if (!Plugin.ConfigGambleAlwaysWinEnabled.Value) return winAmount;
         if (winAmount >= 0) return winAmount;
 
-        var gamble = Object.FindObjectOfType<Gamble>();
+        var gamble = Object.FindFirstObjectByType<Gamble>();
         if (gamble == null) return 0;
 
         var gambleParam = gamble.m_gambleParams.Get(gamble.m_rate);
