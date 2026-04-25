@@ -1,24 +1,18 @@
-using BepInEx;
-using BepInEx.Configuration;
-using BepInEx.Logging;
-using System;
-using System.IO;
-
 #if BIE6
 using BepInEx.Unity.Mono;
 #endif
 
-using BunnyGarden2FixMod.Controllers;
+using System;
+using System.IO;
+using System.Linq;
+using BepInEx;
+using BepInEx.Configuration;
+using BepInEx.Logging;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using HarmonyLib;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Controls;
-using UnityEngine.InputSystem.DualShock;
-using UnityEngine.Rendering.Universal;
-using UnityEngine.EventSystems;
 
 namespace BunnyGarden2FixMod;
 
@@ -42,21 +36,6 @@ public enum ChekiImageFormat
     JPG,
 }
 
-public enum ControllerHotkeyButton
-{
-    None,
-    A,
-    B,
-    X,
-    Y,
-    L,
-    R,
-    ZL,
-    ZR,
-    Start,
-    Select,
-}
-
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class Plugin : BaseUnityPlugin
 {
@@ -76,8 +55,6 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigMoreTalkReactions;
     public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
     public static ConfigEntry<bool> ConfigHideGameUiInFreeCam;
-    public static ConfigEntry<Key> ConfigTimeStopToggleKey;
-    public static ConfigEntry<Key> ConfigScreenshotKey;
     public static ConfigEntry<bool> ConfigCheatEnabled;
     public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
@@ -90,11 +67,15 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
     public static ConfigEntry<bool> ConfigCastOrderEnabled;
     public static ConfigEntry<bool> ConfigControllerEnabled;
-    public static ConfigEntry<ControllerHotkeyButton> ConfigControllerModifier;
-    public static ConfigEntry<ControllerHotkeyButton> ConfigControllerFreeCamToggle;
-    public static ConfigEntry<ControllerHotkeyButton> ConfigControllerFixedFreeCamToggle;
-    public static ConfigEntry<ControllerHotkeyButton> ConfigControllerTimeStopToggle;
-    public static ConfigEntry<ControllerHotkeyButton> ConfigControllerScreenshotToggle;
+    public static ConfigEntry<ControllerButton> ConfigControllerModifier;
+    public static HotkeyConfig ConfigOverlayToggle;
+    public static HotkeyConfig ConfigFreeCamToggle;
+    public static HotkeyConfig ConfigFixedFreeCamToggle;
+    public static HotkeyConfig ConfigTimeStopToggle;
+    public static HotkeyConfig ConfigFrameAdvance;
+    public static HotkeyConfig ConfigFastForward;
+    public static ConfigEntry<float> ConfigFastForwardSpeed;
+    public static HotkeyConfig ConfigCaptureScreenshot;
     public static ConfigEntry<bool> ConfigCostumeChangerEnabled;
     public static ConfigEntry<UnityEngine.InputSystem.Key> ConfigCostumeChangerHotkey;
     public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
@@ -109,25 +90,16 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<float> ConfigStockingSkinFalloffRadius;
     public static ConfigEntry<float> ConfigStockingShapeFalloffRadius;
 
-    private GameObject freeCamObject;
-    private Camera freeCam;
-    private Camera originalCam;
-    private FreeCameraController controller;
-    private readonly Dictionary<EventSystem, bool> eventSystemNavigationStates = new();
-    private readonly Dictionary<Canvas, bool> canvasEnabledStates = new();
-    private bool isGameUiSuppressed;
-    private float previousTimeScale = 1f;
-    private bool isFreeCamOverlayVisible = true;
+    internal static event Action GUICallback;
+
+    private Patches.FreeCamera.FreeCameraManager freeCamera;
+    private bool isOverlayVisible = true;
     private bool isCapturingScreenshot;
     private static float suppressGameInputUntilUnscaledTime = -1f;
     private const float ControllerShortcutSuppressDuration = 0.18f;
 
     private static readonly string ScreenshotDirectory = Path.Combine(Paths.BepInExRootPath, "screenshots",
         MyPluginInfo.PLUGIN_GUID);
-
-    public static bool isFreeCamActive = false;
-    public static bool isFixedFreeCam = false;
-    public static bool isTimeStopped = false;
 
     internal new static ManualLogSource Logger;
 
@@ -228,53 +200,72 @@ public class Plugin : BaseUnityPlugin
             true,
             "true にするとフリーカメラ中にゲーム本体の UI(Canvas) を非表示にします。");
 
-        ConfigTimeStopToggleKey = Config.Bind(
-            "Camera",
-            "TimeStopToggleKey",
-            Key.T,
-            "フリーカメラ中の時間停止 ON/OFF に使うキーボードキー。既定 T。");
-
-        ConfigScreenshotKey = Config.Bind(
-            "Camera",
-            "ScreenshotKey",
-            Key.P,
-            "フリーカメラ中のスクリーンショット保存に使うキーボードキー。既定 P。");
-
         ConfigControllerEnabled = Config.Bind(
             "Camera",
             "ControllerEnabled",
             true,
-            "true にするとフリーカメラの切り替えと操作にゲームパッド入力を使用できます。");
+            "true にするとフリーカメラの操作にゲームパッド入力を使用できます。");
 
         ConfigControllerModifier = Config.Bind(
-            "Camera",
+            "Input",
             "ControllerToggleModifier",
-            ControllerHotkeyButton.Select,
-            "フリーカメラ切り替え用コントローラ修飾ボタン。既定 Select。");
+            ControllerButton.Select,
+            "コントローラ入力修飾ボタン。");
 
-        ConfigControllerFreeCamToggle = Config.Bind(
-            "Camera",
-            "ControllerToggleFreeCam",
-            ControllerHotkeyButton.Y,
-            "フリーカメラ ON/OFF に使うコントローラボタン。既定 Y。");
+        ConfigOverlayToggle = new HotkeyConfig(Config,
+            "General",
+            "ToggleOverlay",
+            Key.F12,
+            ControllerButton.Start,
+            "ガイドオーバーレイの表示/非表示を切り替えるホットキー。");
 
-        ConfigControllerFixedFreeCamToggle = Config.Bind(
+        ConfigFreeCamToggle = new HotkeyConfig(Config,
             "Camera",
-            "ControllerToggleFixedFreeCam",
-            ControllerHotkeyButton.X,
-            "フリーカメラ固定 ON/OFF に使うコントローラボタン。既定 X。");
+            "ToggleFreeCam",
+            Key.F5,
+            ControllerButton.Y,
+            "フリーカメラ ON/OFF に使うホットキー。");
 
-        ConfigControllerTimeStopToggle = Config.Bind(
+        ConfigFixedFreeCamToggle = new HotkeyConfig(Config,
             "Camera",
-            "ControllerToggleTimeStop",
-            ControllerHotkeyButton.B,
-            "フリーカメラ中の時間停止 ON/OFF に使うコントローラボタン。既定 B。");
+            "ToggleFixedFreeCam",
+            Key.F6,
+            ControllerButton.X,
+            "フリーカメラ固定 ON/OFF に使うホットキー。");
 
-        ConfigControllerScreenshotToggle = Config.Bind(
-            "Camera",
-            "ControllerToggleScreenshot",
-            ControllerHotkeyButton.A,
-            "フリーカメラ中のスクリーンショット保存に使うコントローラボタン。既定 A。修飾ボタンと同時押しです。");
+        ConfigTimeStopToggle = new HotkeyConfig(Config,
+            "Time",
+            "ToggleTimeStop",
+            Key.T,
+            ControllerButton.B,
+            "時間停止 ON/OFF に使うホットキー。");
+
+        ConfigFrameAdvance = new HotkeyConfig(Config,
+            "Time",
+            "FrameAdvance",
+            Key.F,
+            ControllerButton.None,
+            "1フレーム進めるホットキー。これを押すと、1フレームだけ時間が進みます。");
+
+        ConfigFastForward = new HotkeyConfig(Config,
+            "Time",
+            "FastForward",
+            Key.G,
+            ControllerButton.None,
+            "時間を早送りするホットキー。これを押すと、時間が通常より速く進みます。");
+
+        ConfigFastForwardSpeed = Config.Bind(
+            "Time",
+            "FastForwardSpeed",
+            10f,
+            "時間を早送りするホットキーを押している間の時間の進む速さの倍率。");
+
+        ConfigCaptureScreenshot = new HotkeyConfig(Config,
+            "General",
+            "CaptureScreenshot",
+            Key.P,
+            ControllerButton.A,
+            "スクリーンショット保存に使うホットキー。");
 
         ConfigDisableStockings = Config.Bind(
             "Appearance",
@@ -372,7 +363,7 @@ public class Plugin : BaseUnityPlugin
         ConfigCostumeChangerHotkey = Config.Bind(
             "CostumeChanger",
             "Hotkey",
-            UnityEngine.InputSystem.Key.F7,
+            Key.F7,
             "衣装変更 UI の表示トグルキー（UnityEngine.InputSystem.Key enum 名で指定）。");
 
         ConfigRespectGameCostumeOverride = Config.Bind(
@@ -482,6 +473,8 @@ public class Plugin : BaseUnityPlugin
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
         Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
         Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
+        freeCamera = Patches.FreeCamera.FreeCameraManager.Initialize(gameObject);
+        Patches.TimeController.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
@@ -489,8 +482,6 @@ public class Plugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
-        DisableTimeStopIfNeeded();
-
         if (ReferenceEquals(Instance, this))
             Instance = null;
     }
@@ -500,134 +491,31 @@ public class Plugin : BaseUnityPlugin
         if (Keyboard.current?[Key.F4].wasPressedThisFrame == true)
             Config.Reload();
 
-        bool ctrlPressed = Keyboard.current?.leftCtrlKey.isPressed == true || Keyboard.current?.rightCtrlKey.isPressed == true;
+        if (ConfigOverlayToggle.IsTriggered())
+            ToggleOverlay();
 
-        if (ctrlPressed && Keyboard.current?[Key.F5].wasPressedThisFrame == true)
-            ToggleFreeCamOverlay();
-        else if (Keyboard.current?[Key.F5].wasPressedThisFrame == true)
-            ToggleFreeCam();
-
-        if (Keyboard.current?[Key.F6].wasPressedThisFrame == true)
-            ToggleFixedFreeCam();
-
-        if (isFreeCamActive && Keyboard.current?[ConfigTimeStopToggleKey.Value].wasPressedThisFrame == true)
-            ToggleTimeStop();
-
-        if (isFreeCamActive && Keyboard.current?[ConfigScreenshotKey.Value].wasPressedThisFrame == true)
-            CaptureFreeCamScreenshot();
-
-        RefreshGameUiSuppression();
-
-        if (!ConfigControllerEnabled.Value)
-            return;
-
-        if (IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerFreeCamToggle.Value))
-        {
-            SuppressGameInputTemporarily();
-            ToggleFreeCam();
-        }
-
-        if (isFreeCamActive &&
-            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerFixedFreeCamToggle.Value))
-        {
-            SuppressGameInputTemporarily();
-            ToggleFixedFreeCam();
-        }
-
-        if (isFreeCamActive && IsControllerComboTriggered(ConfigControllerModifier.Value, ControllerHotkeyButton.Start))
-        {
-            SuppressGameInputTemporarily();
-            ToggleFreeCamOverlay();
-        }
-
-        if (isFreeCamActive && !isFixedFreeCam &&
-            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerTimeStopToggle.Value))
-        {
-            SuppressGameInputTemporarily();
-            ToggleTimeStop();
-        }
-
-        if (isFreeCamActive &&
-            IsControllerComboTriggered(ConfigControllerModifier.Value, ConfigControllerScreenshotToggle.Value))
-        {
-            SuppressGameInputTemporarily();
-            CaptureFreeCamScreenshot();
-        }
+        if (ConfigCaptureScreenshot.IsTriggered())
+            CaptureScreenshot();
     }
 
     private void OnGUI()
     {
-        if (!isFreeCamActive || !isFreeCamOverlayVisible)
+        if (!isOverlayVisible || isCapturingScreenshot)
             return;
 
-        string controllerFreeCamLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
-            ConfigControllerFreeCamToggle.Value);
-        string controllerOverlayLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
-            ControllerHotkeyButton.Start);
-        string controllerFixedLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
-            ConfigControllerFixedFreeCamToggle.Value);
-        string controllerTimeStopLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
-            ConfigControllerTimeStopToggle.Value);
-        string controllerScreenshotLabel = GetControllerBindingLabel(ConfigControllerModifier.Value,
-            ConfigControllerScreenshotToggle.Value);
-
-        GUI.color = Color.green;
-        GUI.Label(new Rect(10, 10, 1200, 30),
-            $"Free Camera: ON (F5 / {controllerFreeCamLabel}=OFF, Ctrl+F5 / {controllerOverlayLabel}=HIDE)");
-        GUI.color = Color.yellow;
-        GUI.Label(new Rect(10, 40, 900, 30),
-            $"Fixed Mode: {(isFixedFreeCam ? "ON" : "OFF")} (F6 / {controllerFixedLabel}=TOGGLE)");
-        GUI.color = Color.cyan;
-        GUI.Label(new Rect(10, 70, 900, 30),
-            $"Time Stop: {(isTimeStopped ? "ON" : "OFF")} (T / {controllerTimeStopLabel}=TOGGLE)");
-        GUI.color = Color.magenta;
-        GUI.Label(new Rect(10, 100, 900, 30),
-            $"Screenshot: {ConfigScreenshotKey.Value} / {controllerScreenshotLabel}=SAVE PNG");
-        GUI.color = Color.white;
-        GUI.Label(new Rect(10, 130, 1300, 30),
-            "Move: Arrow/WASD or Left Stick, Up/Down: E/Q or ZR/ZL, Look: Mouse or Right Stick, Speed: Shift/Ctrl or R/L");
-        GUI.color = Color.white;
-    }
-
-    private void ToggleFreeCam()
-    {
-        isFreeCamActive = !isFreeCamActive;
-
-        if (isFreeCamActive)
-            CreateFreeCam();
-        else
-        {
-            DisableTimeStopIfNeeded();
-            DestroyFreeCam();
-            isFixedFreeCam = false;
-        }
-
-        RefreshGameUiSuppression(force: true);
-
-        PatchLogger.LogInfo($"フリーカメラ: {(isFreeCamActive ? "ON" : "OFF")}");
-    }
-
-    private void DisableFreeCamForSystemUi(string reason)
-    {
-        if (!isFreeCamActive)
-            return;
-
-        DisableTimeStopIfNeeded();
-        DestroyFreeCam();
-        isFreeCamActive = false;
-        isFixedFreeCam = false;
-        RefreshGameUiSuppression(force: true);
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-        PatchLogger.LogInfo($"フリーカメラを自動解除しました: {reason}");
+        GUILayout.BeginArea(new Rect(10, 10, Screen.width / 2, Screen.height - 10));
+        GUICallback?.Invoke();
+        GUILayout.EndArea();
     }
 
     internal static void DisableFreeCamForSystemUiIfNeeded(string reason)
     {
-        Instance?.DisableFreeCamForSystemUi(reason);
+        Instance?.freeCamera?.Deactivate();
+
+        PatchLogger.LogInfo($"フリーカメラを自動解除しました: {reason}");
     }
 
-    private static void SuppressGameInputTemporarily()
+    public static void SuppressGameInputTemporarily()
     {
         suppressGameInputUntilUnscaledTime = Time.unscaledTime + ControllerShortcutSuppressDuration;
     }
@@ -637,75 +525,50 @@ public class Plugin : BaseUnityPlugin
         return Time.unscaledTime < suppressGameInputUntilUnscaledTime;
     }
 
-    private void ToggleFixedFreeCam()
+    internal static Camera FindCurrentCamera()
     {
-        if (isFreeCamActive)
+        var mainCam = Camera.main;
+        if (mainCam != null)
         {
-            isFixedFreeCam = !isFixedFreeCam;
-            if (isFixedFreeCam)
-                DisableTimeStopIfNeeded();
-            RefreshGameUiSuppression(force: true);
-            PatchLogger.LogInfo($"フリーカメラ固定モード: {(isFixedFreeCam ? "ON" : "OFF")}");
-        }
-    }
-
-    private void ToggleFreeCamOverlay()
-    {
-        if (!isFreeCamActive)
-            return;
-
-        isFreeCamOverlayVisible = !isFreeCamOverlayVisible;
-        PatchLogger.LogInfo($"フリーカメラ表示: {(isFreeCamOverlayVisible ? "ON" : "OFF")}");
-    }
-
-    private void ToggleTimeStop()
-    {
-        if (!isFreeCamActive || isFixedFreeCam)
-            return;
-
-        if (isTimeStopped)
-        {
-            DisableTimeStopIfNeeded();
-            PatchLogger.LogInfo("時間停止: OFF");
-            return;
+            Plugin.Logger.LogInfo($"Camera.main = {mainCam.name}");
+            return mainCam;
         }
 
-        previousTimeScale = Time.timeScale;
-        Time.timeScale = 0f;
-        isTimeStopped = true;
-        PatchLogger.LogInfo("時間停止: ON");
+        // tag に頼らず depth 最大のカメラを代替として使用
+        var cam = Camera.allCameras.OrderByDescending(c => c.depth).FirstOrDefault();
+        if (cam == null)
+        {
+            Plugin.Logger.LogError("有効なカメラが見つかりません。");
+            return null;
+        }
+        Plugin.Logger.LogInfo($"代替カメラを使用: {cam.name}");
+
+        return cam;
     }
 
-    private void DisableTimeStopIfNeeded()
+    private void ToggleOverlay()
     {
-        if (!isTimeStopped)
-            return;
-
-        Time.timeScale = previousTimeScale;
-        isTimeStopped = false;
+        isOverlayVisible = !isOverlayVisible;
+        PatchLogger.LogInfo($"表示: {(isOverlayVisible ? "ON" : "OFF")}");
     }
 
-    private void CaptureFreeCamScreenshot()
+    private void CaptureScreenshot()
     {
-        if (!isFreeCamActive || freeCam == null || isCapturingScreenshot)
-            return;
-
-        StartCoroutine(CaptureFreeCamScreenshotCoroutine());
+        StartCoroutine(CaptureScreenshotCoroutine());
     }
 
-    private System.Collections.IEnumerator CaptureFreeCamScreenshotCoroutine()
+    private System.Collections.IEnumerator CaptureScreenshotCoroutine()
     {
         isCapturingScreenshot = true;
-        Camera captureCam = freeCam;
+        Camera captureCam = FindCurrentCamera();
         yield return new WaitForEndOfFrame();
 
-        if (!isFreeCamActive || captureCam == null)
+        if (captureCam == null)
         {
             isCapturingScreenshot = false;
             yield break;
         }
 
-        string path = null;
         RenderTexture rt = null;
         Texture2D tex = null;
         RenderTexture previousActive = RenderTexture.active;
@@ -717,10 +580,13 @@ public class Plugin : BaseUnityPlugin
             int height = Mathf.Max(1, captureCam.pixelHeight);
 
             Directory.CreateDirectory(ScreenshotDirectory);
-            path = Path.Combine(ScreenshotDirectory,
-                $"freecam_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
+            string path = Path.Combine(ScreenshotDirectory,
+                $"bg2_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
 
-            rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+            rt = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32)
+            {
+                antiAliasing = 8
+            };
             tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
             captureCam.targetTexture = rt;
@@ -731,11 +597,11 @@ public class Plugin : BaseUnityPlugin
             tex.Apply(false, false);
 
             File.WriteAllBytes(path, ImageConversion.EncodeToPNG(tex));
-            PatchLogger.LogInfo($"フリーカメラスクリーンショットを保存しました: {path}");
+            PatchLogger.LogInfo($"スクリーンショットを保存しました: {path}");
         }
         catch (Exception ex)
         {
-            PatchLogger.LogError($"フリーカメラスクリーンショット保存失敗: {ex.Message}");
+            PatchLogger.LogError($"スクリーンショット保存失敗: {ex.Message}");
         }
         finally
         {
@@ -752,322 +618,6 @@ public class Plugin : BaseUnityPlugin
 
             isCapturingScreenshot = false;
         }
-    }
-
-    private void CreateFreeCam()
-    {
-        // シーン内の全カメラを診断ログ出力
-        var allCameras = Camera.allCameras;
-        PatchLogger.LogInfo($"[FreeCam診断] シーン内カメラ数: {allCameras.Length}");
-        foreach (var cam in allCameras)
-        {
-            var brain = cam.GetComponent("CinemachineBrain");
-            PatchLogger.LogInfo($"  - {cam.name} | tag={cam.tag} | depth={cam.depth} | enabled={cam.enabled} | CinemachineBrain={brain != null}");
-        }
-
-        originalCam = Camera.main;
-        if (originalCam == null)
-        {
-            // tag に頼らず depth 最大のカメラを代替として使用
-            foreach (var cam in allCameras)
-            {
-                if (originalCam == null || cam.depth > originalCam.depth)
-                    originalCam = cam;
-            }
-
-            if (originalCam == null)
-            {
-                PatchLogger.LogError("[FreeCam診断] 有効なカメラが見つかりません。フリーカメラを起動できません");
-                isFreeCamActive = false;
-                return;
-            }
-            PatchLogger.LogInfo($"[FreeCam診断] 代替カメラを使用: {originalCam.name}");
-        }
-        else
-        {
-            PatchLogger.LogInfo($"[FreeCam診断] Camera.main = {originalCam.name}");
-        }
-
-        freeCamObject = new GameObject("BG2FreeCam");
-        freeCam = freeCamObject.AddComponent<Camera>();
-        freeCam.CopyFrom(originalCam);
-        freeCamObject.transform.SetPositionAndRotation(
-            originalCam.transform.position,
-            originalCam.transform.rotation);
-
-        // URP ポストプロセス設定をコピー（CinemachineBrain には触らない）
-        CopyUrpCameraData(originalCam, freeCam);
-
-        controller = freeCamObject.AddComponent<FreeCameraController>();
-        freeCamObject.AddComponent<AudioListener>();
-
-        originalCam.enabled = false;
-        var originalListener = originalCam.GetComponent<AudioListener>();
-        if (originalListener != null)
-            originalListener.enabled = false;
-
-        PatchLogger.LogInfo("フリーカメラを作成しました");
-    }
-
-    private static void CopyUrpCameraData(Camera src, Camera dst)
-    {
-        var srcData = src.GetUniversalAdditionalCameraData();
-        var dstData = dst.GetUniversalAdditionalCameraData();
-        if (srcData == null || dstData == null)
-            return;
-
-        dstData.renderPostProcessing = srcData.renderPostProcessing;
-        dstData.antialiasing = srcData.antialiasing;
-        dstData.antialiasingQuality = srcData.antialiasingQuality;
-        dstData.stopNaN = srcData.stopNaN;
-        dstData.dithering = srcData.dithering;
-        dstData.renderShadows = srcData.renderShadows;
-        dstData.volumeLayerMask = srcData.volumeLayerMask;
-        dstData.volumeTrigger = srcData.volumeTrigger;
-    }
-
-    private void DestroyFreeCam()
-    {
-        if (freeCamObject != null)
-        {
-            Destroy(freeCamObject);
-            freeCamObject = null;
-            freeCam = null;
-            controller = null;
-        }
-
-        if (originalCam != null)
-        {
-            originalCam.enabled = true;
-
-            var originalListener = originalCam.GetComponent<AudioListener>();
-            if (originalListener != null)
-                originalListener.enabled = true;
-        }
-    }
-
-    private void RefreshGameUiSuppression(bool force = false)
-    {
-        bool shouldSuppress = isFreeCamActive && !isFixedFreeCam && !ShouldExposeGameUiDuringFreeCam();
-        if (!force && shouldSuppress == isGameUiSuppressed)
-            return;
-
-        isGameUiSuppressed = shouldSuppress;
-
-        EventSystem[] eventSystems = FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        if (!shouldSuppress)
-        {
-            foreach (var pair in eventSystemNavigationStates)
-            {
-                if (pair.Key != null)
-                    pair.Key.sendNavigationEvents = pair.Value;
-            }
-
-            eventSystemNavigationStates.Clear();
-
-            foreach (var pair in canvasEnabledStates)
-            {
-                if (pair.Key != null)
-                    pair.Key.enabled = pair.Value;
-            }
-
-            canvasEnabledStates.Clear();
-            return;
-        }
-
-        foreach (var eventSystem in eventSystems)
-        {
-            if (eventSystem == null)
-                continue;
-
-            if (!eventSystemNavigationStates.ContainsKey(eventSystem))
-                eventSystemNavigationStates[eventSystem] = eventSystem.sendNavigationEvents;
-
-            eventSystem.sendNavigationEvents = false;
-            eventSystem.SetSelectedGameObject(null);
-        }
-
-        if (!ConfigHideGameUiInFreeCam.Value)
-            return;
-
-        foreach (var canvas in canvases)
-        {
-            if (!ShouldHideCanvas(canvas))
-                continue;
-
-            if (!canvasEnabledStates.ContainsKey(canvas))
-                canvasEnabledStates[canvas] = canvas.enabled;
-
-            canvas.enabled = false;
-        }
-    }
-
-    private static bool ShouldExposeGameUiDuringFreeCam()
-    {
-        var gbSystem = GBSystem.Instance;
-        if (gbSystem == null)
-            return false;
-
-        if (gbSystem.IsInConfirmQuit || gbSystem.IsPauseMenuActive())
-            return true;
-
-        var confirmDialog = gbSystem.GetConfirmDialog();
-        return confirmDialog != null && confirmDialog.IsActive();
-    }
-
-    private bool ShouldHideCanvas(Canvas canvas)
-    {
-        if (canvas == null)
-            return false;
-
-        if (freeCamObject != null && canvas.transform.IsChildOf(freeCamObject.transform))
-            return false;
-
-        return canvas.renderMode != RenderMode.WorldSpace;
-    }
-
-    private static bool IsControllerComboTriggered(ControllerHotkeyButton modifier, ControllerHotkeyButton action)
-    {
-        if (action == ControllerHotkeyButton.None)
-            return false;
-
-        if (modifier == ControllerHotkeyButton.None || modifier == action)
-            return IsControllerButtonTriggered(action);
-
-        return IsControllerButtonPressing(modifier) && IsControllerButtonTriggered(action);
-    }
-
-    private static bool IsControllerButtonTriggered(ControllerHotkeyButton button)
-    {
-        return IsRawGamepadButtonTriggered(button);
-    }
-
-    private static bool IsControllerButtonPressing(ControllerHotkeyButton button)
-    {
-        return IsRawGamepadButtonPressing(button);
-    }
-
-    internal static bool IsControllerButtonHeld(ControllerHotkeyButton button)
-    {
-        if (!ConfigControllerEnabled.Value)
-            return false;
-
-        if (button == ControllerHotkeyButton.ZL || button == ControllerHotkeyButton.ZR)
-            return ReadControllerTriggerValue(button) >= ConfigControllerTriggerDeadzone.Value;
-
-        return IsControllerButtonPressing(button);
-    }
-
-    internal static Vector2 ReadControllerLeftStick()
-    {
-        return ReadRawGamepadStick(gamepad => gamepad.leftStick.ReadValue());
-    }
-
-    internal static Vector2 ReadControllerRightStick()
-    {
-        return ReadRawGamepadStick(gamepad => gamepad.rightStick.ReadValue());
-    }
-
-    internal static float ReadControllerTriggerValue(ControllerHotkeyButton button)
-    {
-        return ReadRawGamepadTrigger(button);
-    }
-
-    private static bool IsRawGamepadButtonTriggered(ControllerHotkeyButton button)
-    {
-        foreach (var gamepad in Gamepad.all)
-        {
-            var control = GetRawGamepadButton(gamepad, button);
-            if (control?.wasPressedThisFrame == true)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsRawGamepadButtonPressing(ControllerHotkeyButton button)
-    {
-        foreach (var gamepad in Gamepad.all)
-        {
-            var control = GetRawGamepadButton(gamepad, button);
-            if (control?.isPressed == true)
-                return true;
-        }
-
-        return false;
-    }
-
-    private static Vector2 ReadRawGamepadStick(System.Func<Gamepad, Vector2> selector)
-    {
-        foreach (var gamepad in Gamepad.all)
-        {
-            Vector2 value = selector(gamepad);
-            if (value.sqrMagnitude > 0f)
-                return value;
-        }
-
-        return Vector2.zero;
-    }
-
-    private static float ReadRawGamepadTrigger(ControllerHotkeyButton button)
-    {
-        foreach (var gamepad in Gamepad.all)
-        {
-            float value = button switch
-            {
-                ControllerHotkeyButton.ZL => gamepad.leftTrigger.ReadValue(),
-                ControllerHotkeyButton.ZR => gamepad.rightTrigger.ReadValue(),
-                _ => 0f,
-            };
-
-            if (value > 0f)
-                return value;
-        }
-
-        return 0f;
-    }
-
-    private static ButtonControl GetRawGamepadButton(Gamepad gamepad, ControllerHotkeyButton button)
-    {
-        if (gamepad == null)
-            return null;
-
-        return button switch
-        {
-            ControllerHotkeyButton.A => gamepad.buttonSouth,
-            ControllerHotkeyButton.B => gamepad.buttonEast,
-            ControllerHotkeyButton.X => gamepad.buttonWest,
-            ControllerHotkeyButton.Y => gamepad.buttonNorth,
-            ControllerHotkeyButton.L => gamepad.leftShoulder,
-            ControllerHotkeyButton.R => gamepad.rightShoulder,
-            ControllerHotkeyButton.ZL => gamepad.leftTrigger,
-            ControllerHotkeyButton.ZR => gamepad.rightTrigger,
-            ControllerHotkeyButton.Start => gamepad.startButton,
-            ControllerHotkeyButton.Select => GetRawSelectButton(gamepad),
-            _ => null,
-        };
-    }
-
-    private static ButtonControl GetRawSelectButton(Gamepad gamepad)
-    {
-        var dualShockGamepad = gamepad as DualShockGamepad;
-        if (dualShockGamepad != null)
-            return dualShockGamepad.touchpadButton;
-
-        return gamepad.selectButton;
-    }
-
-    private static string GetControllerBindingLabel(ControllerHotkeyButton modifier, ControllerHotkeyButton action)
-    {
-        if (action == ControllerHotkeyButton.None)
-            return "Disabled";
-
-        if (modifier == ControllerHotkeyButton.None || modifier == action)
-            return action.ToString();
-
-        return $"{modifier}+{action}";
     }
 
     /// <summary>
@@ -1097,7 +647,7 @@ public class FreeCamInputDisablePatch
 {
     private static void Postfix(ref bool __result)
     {
-        if (Plugin.isFreeCamActive && !Plugin.isFixedFreeCam)
+        if (Patches.FreeCamera.FreeCameraManager.IsActive && !Patches.FreeCamera.FreeCameraManager.IsFixed)
             __result = true;
     }
 }
@@ -1139,7 +689,7 @@ public class FreeCamControllerShortcutInputSuppressionPatch
     [HarmonyPrefix]
     private static bool SuppressTriggeredRepeat(ref bool __result)
     {
-        if (!Plugin.isFreeCamActive || !Plugin.ShouldSuppressGameInput())
+        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
             return true;
 
         __result = false;
@@ -1150,7 +700,7 @@ public class FreeCamControllerShortcutInputSuppressionPatch
     [HarmonyPrefix]
     private static bool SuppressStick(InputAction stick, ref Vector2 __result)
     {
-        if (!Plugin.isFreeCamActive || !Plugin.ShouldSuppressGameInput())
+        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
             return true;
 
         if (stick?.activeControl?.device is not Gamepad)
@@ -1164,7 +714,7 @@ public class FreeCamControllerShortcutInputSuppressionPatch
     [HarmonyPrefix]
     private static bool SuppressCameraControl(ref Vector2 __result)
     {
-        if (!Plugin.isFreeCamActive || !Plugin.ShouldSuppressGameInput())
+        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
             return true;
 
         __result = Vector2.zero;
@@ -1173,7 +723,7 @@ public class FreeCamControllerShortcutInputSuppressionPatch
 
     private static bool TrySuppress(InputAction button, ref bool result)
     {
-        if (!Plugin.isFreeCamActive || !Plugin.ShouldSuppressGameInput())
+        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
             return true;
 
         if (button?.activeControl?.device is not Gamepad)
