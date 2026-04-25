@@ -291,7 +291,7 @@ internal static class MeshPenetrationResolver
         }
 
         sw.Stop();
-        PatchLogger.LogInfo(
+        PatchLogger.LogDebug(
             $"[{logTag}] penetration resolve: donor={donorMesh.name}({donorVerts.Length}v) ref={referenceMesh.name}({refVerts.Length}v) " +
             $"stockingPushed={pushed} skippedInv={skippedInverted} fallback={stockingFallback} stockingMax={maxStockingPush:F4}m " +
             $"skinPushed={skinHits} skinSkippedInv={skinSkippedInverted} skinFallback={skinFallback} skinMax={maxSkinPush:F4}m " +

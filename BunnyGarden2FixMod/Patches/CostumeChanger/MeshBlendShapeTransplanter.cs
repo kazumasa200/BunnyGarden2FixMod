@@ -108,7 +108,7 @@ internal static class MeshBlendShapeTransplanter
         }
 
         sw.Stop();
-        PatchLogger.LogInfo(
+        PatchLogger.LogDebug(
             $"[{logTag}] blendShape 移植完了: target={targetMesh.name} verts={targetVerts.Length} donors={donors.Count} shapes={shapesAdded} nearest={nearestMsTotal}ms total={sw.ElapsedMilliseconds}ms");
 
         // 移植できた shape が 0 件の場合は不要なメッシュを返さない

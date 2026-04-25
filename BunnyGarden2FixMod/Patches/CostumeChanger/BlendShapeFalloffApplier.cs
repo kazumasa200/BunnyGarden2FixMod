@@ -105,7 +105,7 @@ internal static class BlendShapeFalloffApplier
         }
 
         sw.Stop();
-        PatchLogger.LogInfo(
+        PatchLogger.LogDebug(
             $"[{logTag}] blendShape falloff: mesh={mesh.name} verts={verts.Length} scaled={scaledShapes}/{shapeCount} radius={falloffRadius:F4}m anchors={anchorVerts.Length} faded={faded} minScale={minScale:F2} anchor={anchorMs}ms total={sw.ElapsedMilliseconds}ms");
 
         return scaledShapes;

@@ -416,7 +416,7 @@ public class Plugin : BaseUnityPlugin
         ConfigSwimWearStocking = Config.Bind(
             "CostumeChanger",
             "SwimWearStocking",
-            false,
+            true,
             "true にすると水着コスチューム着用中にストッキングを適用できるようになります。\n" +
             "水着モデルには本来ストッキング用ブレンドシェイプがないため、同キャラの Uniform コスチュームからデータを移植します。");
 
