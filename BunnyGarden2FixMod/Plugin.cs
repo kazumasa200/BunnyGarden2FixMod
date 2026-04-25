@@ -103,6 +103,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
     public static ConfigEntry<bool> ConfigHideButtonGuide;
     public static ConfigEntry<bool> ConfigHideLikabilityGauge;
+    public static ConfigEntry<bool> ConfigSwimWearStocking;
 
     private GameObject freeCamObject;
     private Camera freeCam;
@@ -408,6 +409,13 @@ public class Plugin : BaseUnityPlugin
             false,
             "true にするとラブカウンター（好感度ゲージ）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
 
+        ConfigSwimWearStocking = Config.Bind(
+            "CostumeChanger",
+            "SwimWearStocking",
+            false,
+            "true にすると水着コスチューム着用中にストッキングを適用できるようになります。\n" +
+            "水着モデルには本来ストッキング用ブレンドシェイプがないため、同キャラの Uniform コスチュームからデータを移植します。");
+
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
 
@@ -426,6 +434,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CastOrderUI.CastOrderController.Initialize(gameObject);
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
         Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
+        Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");

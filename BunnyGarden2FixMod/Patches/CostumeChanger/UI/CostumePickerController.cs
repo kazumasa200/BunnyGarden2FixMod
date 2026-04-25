@@ -2,6 +2,7 @@ using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
 using GB.Game;
+using GB.Scene;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -749,7 +750,23 @@ public class CostumePickerController : MonoBehaviour
         var env = GBSystem.Instance?.GetActiveEnvScene();
         if (env != null)
         {
-            if (StockingOverrideStore.IsKneeSocksType(type))
+            bool isSwim = IsSwimWear(env, m_activeChar);
+
+            if (isSwim)
+            {
+                // 水着は SwimWearStockingPatch が override store を source of truth として
+                // 全タイプ（0=解除 / 1–4=パンスト / 5–7=ニーソックス）を同期処理する。
+                // type 引数は SwimWearStockingPatch 側で無視されるので 0 を渡す。
+                try
+                {
+                    env.ApplyStockings(m_activeChar, 0);
+                }
+                catch (Exception ex)
+                {
+                    PatchLogger.LogWarning($"[CostumePicker] 水着ストッキング切替失敗: {ex}");
+                }
+            }
+            else if (StockingOverrideStore.IsKneeSocksType(type))
             {
                 // ニーソックス系: 直接メッシュ差し替え（env.ApplyStockings は type 0–4 専用）
                 var charObj = env.FindCharacter(m_activeChar);
@@ -779,6 +796,17 @@ public class CostumePickerController : MonoBehaviour
             }
         }
         m_view.Render(BuildRenderData());
+    }
+
+    /// <summary>
+    /// 現在シーン内の <paramref name="id"/> の CharacterHandle から Costume を取得し、
+    /// SwimWear かどうかを判定する。まだロードされていない／見つからない場合は false。
+    /// </summary>
+    private static bool IsSwimWear(EnvSceneBase env, CharID id)
+    {
+        if (env == null || env.m_characters == null) return false;
+        var handle = env.m_characters.Find(x => x != null && x.GetCharID() == id);
+        return handle?.m_lastLoadArg?.Costume == CostumeType.SwimWear;
     }
 
     private void ResetAllTabs()
