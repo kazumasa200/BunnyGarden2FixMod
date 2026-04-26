@@ -13,6 +13,7 @@ using GB;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 namespace BunnyGarden2FixMod;
 
@@ -85,6 +86,8 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<float> ConfigStockingSkinShrink;
     public static ConfigEntry<float> ConfigStockingSkinFalloffRadius;
     public static ConfigEntry<float> ConfigStockingShapeFalloffRadius;
+    public static ConfigEntry<bool> ConfigPantiesAltSlotMatch;
+    public static ConfigEntry<bool> ConfigPantiesAltSlotOverrideOnly;
 
     // Ending
     public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
@@ -504,6 +507,25 @@ public class Plugin : BaseUnityPlugin
                 "0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。",
                 new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
 
+        ConfigPantiesAltSlotMatch = Config.Bind(
+            "CostumeChanger",
+            "PantiesAltSlotMatch",
+            true,
+            "true にすると水着 / バニーガール衣装でも Panties 切替が反映されるようになります。\n" +
+            "ゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、\n" +
+            "MOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。\n" +
+            "差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は false で無効化できます。");
+
+        ConfigPantiesAltSlotOverrideOnly = Config.Bind(
+            "CostumeChanger",
+            "PantiesAltSlotOverrideOnly",
+            true,
+            "PantiesAltSlotMatch の適用範囲を制限します。\n" +
+            "true  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。\n" +
+            "        他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。\n" +
+            "false : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。\n" +
+            "PantiesAltSlotMatch=false のときはこの設定は無視されます。");
+
         // Steam 外起動を検出した場合は Steam 経由で再起動して即終了
         if (ConfigSteamLaunchCheck.Value && SteamLaunchChecker.CheckAndRelaunchIfNeeded())
         {
@@ -522,6 +544,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
         freeCamera = Patches.FreeCamera.FreeCameraManager.Initialize(gameObject);
         Patches.TimeController.Initialize(gameObject);
+        SceneManager.sceneUnloaded += Patches.CostumeChanger.PantiesAltSlotMatchPatch.OnSceneUnloaded;
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
         PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");

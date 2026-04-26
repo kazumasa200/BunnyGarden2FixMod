@@ -55,6 +55,11 @@ internal static class MeshPenetrationResolver
         var refNormals = referenceMesh.normals;
         if (refVerts.Length == 0 || refNormals.Length != refVerts.Length) return (null, null);
 
+        // falloff 距離は blendShape 適用前の base 座標で測る (skinAnchorVerts も base のため、
+        // post-push の refVerts と比較すると境界で常に push 量だけ離れて falloff が無効化する)。
+        bool needFalloffBase = skinPushAmount > 0f && skinAnchorVerts != null && skinAnchorVerts.Length > 0 && skinFalloffRadius > 0f;
+        Vector3[] refVertsBase = needFalloffBase ? (Vector3[])refVerts.Clone() : null;
+
         // referenceShape weight=100 を再現する
         if (!string.IsNullOrEmpty(referenceShape))
         {
@@ -84,19 +89,18 @@ internal static class MeshPenetrationResolver
         var donorGrid = skinPushAmount > 0f ? new SpatialGridIndex(donorVerts) : null;
         long gridMs = sw.ElapsedMilliseconds - gridStart;
 
-        // skin push の anchor falloff scale を skin 頂点ごとに事前計算
         // skinScale[i] = clamp(distToAnchor / falloffRadius, 0, 1)
         var skinScale = new float[refVerts.Length];
         long anchorMs = 0;
-        if (skinPushAmount > 0f && skinAnchorVerts != null && skinAnchorVerts.Length > 0 && skinFalloffRadius > 0f)
+        if (needFalloffBase)
         {
             long aStart = sw.ElapsedMilliseconds;
             var anchorGrid = new SpatialGridIndex(skinAnchorVerts);
             for (int i = 0; i < refVerts.Length; i++)
             {
-                int j = anchorGrid.FindNearest(refVerts[i]);
+                int j = anchorGrid.FindNearest(refVertsBase[i]);
                 if (j < 0) { skinScale[i] = 1f; continue; }
-                float d = (refVerts[i] - skinAnchorVerts[j]).magnitude;
+                float d = (refVertsBase[i] - skinAnchorVerts[j]).magnitude;
                 skinScale[i] = Mathf.Clamp01(d / skinFalloffRadius);
             }
             anchorMs = sw.ElapsedMilliseconds - aStart;
@@ -189,8 +193,18 @@ internal static class MeshPenetrationResolver
         // 押し込み方向は donor 側の重み付け法線 vnAvg（pass1 の snAvg と対称）を採用する。
         // skin 頂点自体の法線 sn を使うと、近傍 donor 群と方向が乖離して押し込みが横方向に
         // 流れることがあるため。
-        int skinHits = 0, skinSkippedInverted = 0, skinFallback = 0;
+        int skinHits = 0, skinSkippedInverted = 0, skinFallback = 0, skinOutOfRange = 0;
+        // donor のカバー外 (例: ストッキング上端より上の腹部) の skin 頂点を弾く。
+        // 遠方 donor の K-nearest 平均は仮想 surface が歪んで偽 push を生む。
+        // 閾値は donor mesh 平均エッジ長 ~2-3mm の 3-4 倍。
+        const float maxNeighborDist = 0.010f;
         long skinDetectMs = 0;
+        // skinScale 帯別 push 量集計: 0=boundary(<0.25) / 1=mid(<0.75) / 2=full(>=0.75)
+        const float bandBoundaryMax = 0.25f;
+        const float bandMidMax = 0.75f;
+        var bandCount = new int[3];
+        var bandMax = new float[3];
+        var bandSum = new float[3];
         if (skinPushAmount > 0f && donorGrid != null && hasDonorNormals)
         {
             long pStart = sw.ElapsedMilliseconds;
@@ -202,6 +216,15 @@ internal static class MeshPenetrationResolver
                 neighbors.Clear();
                 donorGrid.FindKNearest(s, neighborK, neighbors);
                 if (neighbors.Count == 0) continue;
+                {
+                    int n0 = neighbors[0];
+                    var vp0 = donorVerts[n0] + donorDisp[n0];
+                    if ((vp0 - s).sqrMagnitude > maxNeighborDist * maxNeighborDist)
+                    {
+                        skinOutOfRange++;
+                        continue;
+                    }
+                }
                 if (neighbors.Count < neighborK) skinFallback++;
 
                 {
@@ -244,6 +267,11 @@ internal static class MeshPenetrationResolver
                 {
                     skinDisp[i] = -vnAvg * pushDist;
                     skinHits++;
+
+                    int band = skinScale[i] < bandBoundaryMax ? 0 : (skinScale[i] < bandMidMax ? 1 : 2);
+                    bandCount[band]++;
+                    bandSum[band] += pushDist;
+                    if (pushDist > bandMax[band]) bandMax[band] = pushDist;
                 }
             }
             skinDetectMs = sw.ElapsedMilliseconds - pStart;
@@ -291,10 +319,16 @@ internal static class MeshPenetrationResolver
         }
 
         sw.Stop();
+        float bandMean0 = bandCount[0] > 0 ? bandSum[0] / bandCount[0] : 0f;
+        float bandMean1 = bandCount[1] > 0 ? bandSum[1] / bandCount[1] : 0f;
+        float bandMean2 = bandCount[2] > 0 ? bandSum[2] / bandCount[2] : 0f;
         PatchLogger.LogDebug(
             $"[{logTag}] penetration resolve: donor={donorMesh.name}({donorVerts.Length}v) ref={referenceMesh.name}({refVerts.Length}v) " +
             $"stockingPushed={pushed} skippedInv={skippedInverted} fallback={stockingFallback} stockingMax={maxStockingPush:F4}m " +
-            $"skinPushed={skinHits} skinSkippedInv={skinSkippedInverted} skinFallback={skinFallback} skinMax={maxSkinPush:F4}m " +
+            $"skinPushed={skinHits} skinSkippedInv={skinSkippedInverted} skinFallback={skinFallback} skinOutOfRange={skinOutOfRange} skinMax={maxSkinPush:F4}m " +
+            $"skinBand[B/M/F]: n={bandCount[0]}/{bandCount[1]}/{bandCount[2]} " +
+            $"max=({bandMax[0]:F4}/{bandMax[1]:F4}/{bandMax[2]:F4})m " +
+            $"mean=({bandMean0:F4}/{bandMean1:F4}/{bandMean2:F4})m " +
             $"grid={gridMs}ms anchor={anchorMs}ms stocking={stockingMs}ms skinDetect={skinDetectMs}ms total={sw.ElapsedMilliseconds}ms");
 
         return (adjDonor, adjSkin);
