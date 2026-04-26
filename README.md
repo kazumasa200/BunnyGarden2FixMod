@@ -66,6 +66,7 @@
 | `FrameRate` | `60` | フレームレート上限。`-1` にすると上限を撤廃します |
 | `AntiAliasingType` | `MSAA8x` | アンチエイリアスの種類。`Off` / `FXAA` / `TAA` / `MSAA2x` / `MSAA4x` / `MSAA8x` から選択。右に行くほど高品質ですが重くなります |
 | `DisableChromaticAberration` | `false` | `true` にすると色収差エフェクト（画面の端がにじんで見える効果）を無効化します |
+| `DisableDepthOfField` | `false` | `true` にすると被写界深度エフェクト（画面の一部がぼやける効果）を無効化します |
 
 ### [Animation] アニメーション
 
