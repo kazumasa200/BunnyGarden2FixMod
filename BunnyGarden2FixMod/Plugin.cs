@@ -49,6 +49,7 @@ public class Plugin : BaseUnityPlugin
 
     // Camera
     public static ConfigEntry<float> ConfigSensitivity;
+
     public static ConfigEntry<float> ConfigSpeed;
     public static ConfigEntry<float> ConfigFastSpeed;
     public static ConfigEntry<float> ConfigSlowSpeed;
@@ -59,12 +60,14 @@ public class Plugin : BaseUnityPlugin
 
     // Cheat
     public static ConfigEntry<bool> ConfigCastOrder;
+
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
     public static ConfigEntry<bool> ConfigCheatLikability;
     public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
 
     // Cheki
     public static ConfigEntry<bool> ConfigChekiHighResEnabled;
+
     public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat;
     public static ConfigEntry<int> ConfigChekiJpgQuality;
     public static ConfigEntry<int> ConfigChekiSize;
@@ -74,6 +77,7 @@ public class Plugin : BaseUnityPlugin
 
     // CostumeChanger
     public static ConfigEntry<bool> ConfigCostumeChangerEnabled;
+
     public static HotkeyConfig ConfigCostumeChangerShow;
     public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
     public static ConfigEntry<bool> ConfigSwimWearStocking;
@@ -87,11 +91,13 @@ public class Plugin : BaseUnityPlugin
 
     // General
     public static HotkeyConfig ConfigCaptureScreenshot;
+
     public static ConfigEntry<bool> ConfigSteamLaunchCheck;
     public static HotkeyConfig ConfigOverlayToggle;
 
     // Graphics
     public static ConfigEntry<int> ConfigWidth;
+
     public static ConfigEntry<int> ConfigHeight;
     public static ConfigEntry<int> ConfigExtraWidth;
     public static ConfigEntry<int> ConfigExtraHeight;
@@ -101,12 +107,14 @@ public class Plugin : BaseUnityPlugin
 
     // HideUI
     public static ConfigEntry<bool> ConfigHideUIEnabled;
+
     public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
     public static ConfigEntry<bool> ConfigHideButtonGuide;
     public static ConfigEntry<bool> ConfigHideLikabilityGauge;
 
     // Input
     public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
+
     public static ConfigEntry<ControllerButton> ConfigControllerModifier;
 
     // Internal
@@ -114,6 +122,7 @@ public class Plugin : BaseUnityPlugin
 
     // Time
     public static HotkeyConfig ConfigTimeStopToggle;
+
     public static HotkeyConfig ConfigFrameAdvance;
     public static HotkeyConfig ConfigFastForward;
     public static ConfigEntry<float> ConfigFastForwardSpeed;
@@ -242,49 +251,55 @@ public class Plugin : BaseUnityPlugin
             "Input",
             "ControllerModifier",
             ControllerButton.Select,
-            "コントローラ入力修飾ボタン。");
+            "フリーカメラ・時間停止など各コントローラーホットキーを使う際に同時押しする修飾ボタン\n" +
+            "ゲーム本来のコントローラー操作との競合を防ぐために使用します。");
 
         ConfigOverlayToggle = new HotkeyConfig(Config,
             "General",
             "ToggleOverlay",
             Key.F12,
             ControllerButton.Start,
-            "ガイドオーバーレイの表示/非表示を切り替えるホットキー。");
+            "フリーカメラの操作ガイドオーバーレイの表示/非表示を切り替えるホットキー\n" +
+            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
 
         ConfigFreeCamToggle = new HotkeyConfig(Config,
             "Camera",
             "ToggleFreeCam",
             Key.F5,
             ControllerButton.Y,
-            "フリーカメラ ON/OFF に使うホットキー。");
+            "フリーカメラの ON/OFF を切り替えるホットキー\n" +
+            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
 
         ConfigFixedFreeCamToggle = new HotkeyConfig(Config,
             "Camera",
             "ToggleFixedFreeCam",
             Key.F6,
             ControllerButton.X,
-            "フリーカメラ固定 ON/OFF に使うホットキー。");
+            "フリーカメラ起動中に、カメラ位置を固定する固定モードの ON/OFF を切り替えるホットキー\n" +
+            "フリーカメラ起動中のみ有効です。コントローラーの場合は ControllerModifier と同時押しが必要です。");
 
         ConfigTimeStopToggle = new HotkeyConfig(Config,
             "Time",
             "ToggleTimeStop",
             Key.T,
             ControllerButton.B,
-            "時間停止 ON/OFF に使うホットキー。");
+            "時間停止の ON/OFF を切り替えるホットキー。フリーカメラ中の撮影構図決めなどに使用します。\n" +
+            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
 
         ConfigFrameAdvance = new HotkeyConfig(Config,
             "Time",
             "FrameAdvance",
             Key.F,
             ControllerButton.None,
-            "1フレーム進めるホットキー。これを押すと、1フレームだけ時間が進みます。");
+            "時間停止中に 1 フレームだけ進めるホットキー。時間停止中のみ有効です。");
 
         ConfigFastForward = new HotkeyConfig(Config,
             "Time",
             "FastForward",
             Key.G,
             ControllerButton.None,
-            "時間を早送りするホットキー。これを押すと、時間が通常より速く進みます。");
+            "押している間のみ時間を早送りするホットキー（ホールド）。\n" +
+            "早送り倍率は FastForwardSpeed で設定できます。");
 
         ConfigFastForwardSpeed = Config.Bind(
             "Time",
@@ -297,7 +312,9 @@ public class Plugin : BaseUnityPlugin
             "CaptureScreenshot",
             Key.P,
             ControllerButton.A,
-            "スクリーンショット保存に使うホットキー。");
+            "フリーカメラ中にゲーム UI・MOD オーバーレイを写さずスクリーンショットを保存するホットキー。\n" +
+            "BepInEx/screenshots フォルダに PNG で保存されます。\n" +
+            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
 
         ConfigDisableStockings = Config.Bind(
             "Appearance",
