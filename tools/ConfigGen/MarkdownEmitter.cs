@@ -83,11 +83,16 @@ public static class MarkdownEmitter
         }
     }
 
-    /// <summary>Markdown テーブルセル用に改行を &lt;br&gt; に、`|` をエスケープする。</summary>
+    /// <summary>
+    /// Markdown テーブルセル用にエスケープと改行変換を行う。
+    /// `\` を先に二重化してから `|` を `\|` にすることで、入力に既に `\` が含まれていた場合でも
+    /// 順序由来の崩れが起きないようにする（CodeEmitter.ToCSharpStringLiteral と同じ並び）。
+    /// </summary>
     private static string Cell(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
         return text
+            .Replace("\\", "\\\\")
             .Replace("|", "\\|")
             .Replace("\r\n", "\n")
             .Replace("\n", "<br>");

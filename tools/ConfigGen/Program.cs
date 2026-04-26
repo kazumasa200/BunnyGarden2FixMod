@@ -72,11 +72,17 @@ internal static class Program
     private static (string yamlPath, string outPath, string? outMdPath) ParseArgs(string[] args)
     {
         string? yaml = null, output = null, outputMd = null;
-        for (int i = 0; i < args.Length - 1; i++)
+        for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] == "--yaml") yaml = args[++i];
-            else if (args[i] == "--out") output = args[++i];
-            else if (args[i] == "--out-md") outputMd = args[++i];
+            if (args[i] == "--yaml" || args[i] == "--out" || args[i] == "--out-md")
+            {
+                // 値が後続するフラグ。末尾に値なしで残った場合に黙殺せず明示的にエラーにする。
+                if (i + 1 >= args.Length)
+                    throw new ArgumentException($"{args[i]} requires a value");
+                if (args[i] == "--yaml") yaml = args[++i];
+                else if (args[i] == "--out") output = args[++i];
+                else outputMd = args[++i];
+            }
         }
         if (yaml == null || output == null)
             throw new ArgumentException("Usage: ConfigGen --yaml <input.yaml> --out <output.cs> [--out-md <output.md>]");
