@@ -12,13 +12,17 @@
       label: 解像度幅
       type: int
       default: 1920
-      description: 横方向のピクセル数。
+      description: |
+        横方向のピクセル数。
+        16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
 
     - name: Height
       label: 解像度高さ
       type: int
       default: 1080
-      description: 縦方向のピクセル数。
+      description: |
+        縦方向のピクセル数。
+        16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
 
     - name: ExtraWidth
       label: 拡張解像度幅
@@ -26,7 +30,7 @@
       default: 2560
       description: |
         ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）の幅。
-        既定 2560（WQHD）。16:9 を推奨。
+        既定 2560（WQHD）。16:9 以外の値は自動的に最大 16:9 に変換されます。
 
     - name: ExtraHeight
       label: 拡張解像度高さ
@@ -34,7 +38,7 @@
       default: 1440
       description: |
         ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）の高さ。
-        既定 1440（WQHD）。16:9 を推奨。
+        既定 1440（WQHD）。16:9 以外の値は自動的に最大 16:9 に変換されます。
 
     - name: FrameRate
       label: FPS 上限
@@ -143,6 +147,7 @@
       type: hotkey
       defaultKey: F5
       defaultButton: Y
+      description: フリーカメラの ON/OFF を切り替えます。
       controllerDescription: ControllerModifier と同時押しが必要です。
 
     - name: FixedFreeCamToggle
@@ -223,6 +228,8 @@
         チェキ（撮影写真）の保存解像度を Size で指定した値に変更します。false で本体既定（320x320）。
         互換性: 本体セーブには常に 320x320 版が保存されるため、MOD を外しても主セーブは破損しません。
         高解像度版は MOD 独自のサイドカーファイル（主セーブ + .exmod）に格納します。
+        保存先は `BepInEx/data/net.noeleve.BunnyGarden2FixMod/`（Steam Cloud Save 対象外）。
+        PC 移行時はこのフォルダを手動でコピーしてください。
         スロット対応: セーブスロット単位で高解像度データを分離管理します。
         副作用: 高解像度化でメモリ／セーブサイズが増加します（1024 時: 約 48MB/12 枚）。
       ui:
