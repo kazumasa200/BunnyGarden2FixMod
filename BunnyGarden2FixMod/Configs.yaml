@@ -500,6 +500,31 @@
         step: 0.0001
         format: '{0:F4}'
 
+    - name: PantiesAltSlotMatch
+      label: 水着/バニーガールで Panties 切替を反映
+      type: bool
+      default: true
+      description: |
+        水着 / バニーガール衣装でも Panties 切替を反映するようにします。
+        ゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、
+        MOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。
+        差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は OFF で無効化できます。
+      ui:
+        kind: toggle
+
+    - name: PantiesAltSlotOverrideOnly
+      label: Panties フォールバックを override 指定キャラのみに限定
+      type: bool
+      default: true
+      description: |
+        PantiesAltSlotMatch の適用範囲を制限します。
+        ON  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。
+              他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。
+        OFF : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。
+        PantiesAltSlotMatch=OFF のときはこの設定は無視されます。
+      ui:
+        kind: toggle
+
     - name: CostumeChangerShow
       label: 衣装変更 UI 表示
       key: Show

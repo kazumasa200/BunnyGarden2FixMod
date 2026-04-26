@@ -65,6 +65,8 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<float> ConfigStockingSkinShrink         => Configs.StockingSkinShrink;
     public static ConfigEntry<float> ConfigStockingSkinFalloffRadius  => Configs.StockingSkinFalloffRadius;
     public static ConfigEntry<float> ConfigStockingShapeFalloffRadius => Configs.StockingShapeFalloffRadius;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotMatch        => Configs.PantiesAltSlotMatch;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotOverrideOnly => Configs.PantiesAltSlotOverrideOnly;
 
     // Ending
     public static ConfigEntry<bool> ConfigEndingChekiSlideshow => Configs.EndingChekiSlideshow;

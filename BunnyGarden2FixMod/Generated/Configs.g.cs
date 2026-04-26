@@ -85,6 +85,10 @@ public static class Configs
     public static ConfigEntry<float> StockingSkinFalloffRadius;
     /// <summary>BlendShape フェード半径 (m)</summary>
     public static ConfigEntry<float> StockingShapeFalloffRadius;
+    /// <summary>水着/バニーガールで Panties 切替を反映</summary>
+    public static ConfigEntry<bool> PantiesAltSlotMatch;
+    /// <summary>Panties フォールバックを override 指定キャラのみに限定</summary>
+    public static ConfigEntry<bool> PantiesAltSlotOverrideOnly;
     /// <summary>衣装変更 UI 表示</summary>
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig CostumeChangerShow;
     /// <summary>Steam 経由起動を強制</summary>
@@ -369,6 +373,23 @@ skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) 
 距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消します。
 0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。",
                 new AcceptableValueRange<float>(0.0f, 0.01f)));
+
+        PantiesAltSlotMatch = cfg.Bind("CostumeChanger", "PantiesAltSlotMatch",
+            true,
+            @"水着/バニーガールで Panties 切替を反映
+水着 / バニーガール衣装でも Panties 切替を反映するようにします。
+ゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、
+MOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。
+差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は OFF で無効化できます。");
+
+        PantiesAltSlotOverrideOnly = cfg.Bind("CostumeChanger", "PantiesAltSlotOverrideOnly",
+            true,
+            @"Panties フォールバックを override 指定キャラのみに限定
+PantiesAltSlotMatch の適用範囲を制限します。
+ON  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。
+      他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。
+OFF : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。
+PantiesAltSlotMatch=OFF のときはこの設定は無視されます。");
 
         CostumeChangerShow = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
             "CostumeChanger", "Show",
@@ -748,8 +769,26 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
-            Category = "General",
+            Category = "CostumeChanger",
             Order    = 260,
+            Label    = "水着/バニーガールで Panties 切替を反映",
+            Desc     = "水着 / バニーガール衣装でも Panties 切替を反映するようにします。\nゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、\nMOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。\n差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は OFF で無効化できます。\n",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => PantiesAltSlotMatch),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Order    = 270,
+            Label    = "Panties フォールバックを override 指定キャラのみに限定",
+            Desc     = "PantiesAltSlotMatch の適用範囲を制限します。\nON  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。\n      他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。\nOFF : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。\nPantiesAltSlotMatch=OFF のときはこの設定は無視されます。\n",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => PantiesAltSlotOverrideOnly),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "General",
+            Order    = 280,
             Label    = "MOD UI スケール",
             Desc     = "MOD 提供の UI（F7 衣装変更 / F9 設定パネル / F1 出勤順）の表示倍率。\nゲーム本体 UI には影響しません。変更はパネルを閉じて開き直すと反映されます。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -762,7 +801,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 270,
+            Order    = 290,
             Label    = "旅行・特別シーンで所持金を非表示",
             Desc     = "旅行シーンおよび特別なシーンで雰囲気を損なう所持金 UI を非表示にします。\nF9 パネルまたはこのコンフィグで ON/OFF できます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -771,7 +810,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 280,
+            Order    = 300,
             Label    = "ボタンガイドを常時非表示",
             Desc     = "画面下のボタンガイド（操作ヒント）を常時非表示にします。\nF9 パネルまたはこのコンフィグで ON/OFF できます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -780,7 +819,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 290,
+            Order    = 310,
             Label    = "好感度ゲージを非表示",
             Desc     = "ラブカウンター（好感度ゲージ）を常時非表示にします。\nF9 パネルまたはこのコンフィグで ON/OFF できます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -789,7 +828,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Game",
-            Order    = 300,
+            Order    = 320,
             Label    = "早送り倍率",
             Desc     = "FastForward ホットキー押下中の Time.timeScale 倍率。",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
