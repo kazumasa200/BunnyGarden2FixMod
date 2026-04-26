@@ -331,9 +331,10 @@ public class SettingsView : MonoBehaviour
     {
         var row = new VisualElement();
         row.style.flexDirection = FlexDirection.Row;
-        row.style.justifyContent = Justify.SpaceBetween;
         row.style.alignItems = Align.Center;
-        row.style.height = 28;
+        // height ではなく minHeight にすることで、UITSlider の名前ラベルが折り返した際に
+        // 行高さが追従して伸びる（短いラベルなら 28px のまま）。
+        row.style.minHeight = 28;
         row.style.marginBottom = 2;
         row.style.paddingLeft = 8;
         row.style.paddingRight = 8;
@@ -342,28 +343,6 @@ public class SettingsView : MonoBehaviour
         row.style.borderTopRightRadius = 3;
         row.style.borderBottomLeftRadius = 3;
         row.style.borderBottomRightRadius = 3;
-
-        var label = new Label(entry.Label);
-        label.style.color = new Color(0.84f, 0.87f, 0.91f, 1f);
-        label.style.fontSize = 11;
-        if (entry.Kind == UIKind.Slider)
-        {
-            // スライダー行はラベル幅を固定し、長文は省略表示することで行が横に広がらないようにする
-            label.style.width = 100;
-            label.style.minWidth = 100;
-            label.style.maxWidth = 100;
-            label.style.flexGrow = 0;
-            label.style.flexShrink = 0;
-            label.style.whiteSpace = WhiteSpace.NoWrap;
-            label.style.overflow = Overflow.Hidden;
-            label.style.textOverflow = TextOverflow.Ellipsis;
-        }
-        else
-        {
-            label.style.flexGrow = 1;
-        }
-        if (m_font != null) label.style.unityFont = m_font;
-        row.Add(label);
 
         // 自前 tooltip: 行に hover → 500ms 後にマウス位置に description を表示
         // Unity UI Toolkit の tooltip プロパティは BepInEx ランタイムでは表示されないため自前管理する
@@ -388,25 +367,23 @@ public class SettingsView : MonoBehaviour
         if (entry.Kind == UIKind.Toggle)
         {
             var sw = new UITSwitch();
-            sw.Setup(entry.Accessor.GetFloat() >= 0.5f);
+            sw.Setup(entry.Label, entry.Accessor.GetFloat() >= 0.5f, m_font);
             sw.OnValueChanged += v => entry.Accessor.SetFloat(v ? 1f : 0f);
-            row.RegisterCallback<ClickEvent>(_ => sw.Toggle());
+            // row の paddingLeft=8/Right=8 帯は UITSwitch が覆わないため、その細い余白クリックも
+            // 取りこぼさないよう row 側で Toggle を呼ぶ。UITSwitch 内クリックは sw 自身が処理済み
+            // なので、target が row 自身のときだけ拾うことで二重 toggle を防ぐ。
+            row.RegisterCallback<ClickEvent>(evt => { if (evt.target == row) sw.Toggle(); });
             row.Add(sw);
             return (row, sw, null);
         }
         else
         {
-            // スライダー行は flex fill でバーが残り幅を埋めるため SpaceBetween を解除する
-            row.style.justifyContent = Justify.FlexStart;
             var sl = new UITSlider();
-            // UITSlider.Setup: Setup(string label, float min, float max, Font font = null, Func<float,string> formatter = null)
-            sl.Setup(string.Empty, entry.SliderMin, entry.SliderMax, m_font,
-                v => string.Format(entry.Format, v));
+            sl.Setup(entry.Label, entry.SliderMin, entry.SliderMax, m_font, v => string.Format(entry.Format, v));
             // SetValue は m_suppressEvents により OnValueChanged を発火させない安全な初期値設定
             sl.SetValue(entry.Accessor.GetFloat());
             sl.SetStep(entry.SliderStep);
             sl.OnValueChanged += v => entry.Accessor.SetFloat(v);
-            sl.SetCompactLayout(valueWidth: 30f, sliderFlex: true);
             row.Add(sl);
             return (row, null, sl);
         }
