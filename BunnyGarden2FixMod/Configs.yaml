@@ -1,0 +1,441 @@
+# Master declaration for all BepInEx Config entries used by FixMod.
+# Source of truth — Generated/Configs.g.cs is built from this by tools/ConfigGen.
+# Phase 1: section/key/default は既存 .cfg と完全一致を厳守する。
+# upstream PR #25 (Refactor Plugin) で section/key が再編成されたため整合済み。
+# HotkeyConfig（KB+Pad 統合型）の entry は YAML 非対応のため Plugin.cs で直接 Bind。
+
+- section: Graphics
+  configs:
+    - name: Width
+      type: int
+      default: 1920
+      description: 解像度の幅（横）を指定します
+
+    - name: Height
+      type: int
+      default: 1080
+      description: 解像度の高さ（縦）を指定します
+
+    - name: ExtraWidth
+      type: int
+      default: 2560
+      description: |
+        ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。
+        既定 2560（WQHD）。16:9 を推奨。
+
+    - name: ExtraHeight
+      type: int
+      default: 1440
+      description: |
+        ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の高さ。
+        既定 1440（WQHD）。16:9 を推奨。
+
+    - name: FrameRate
+      type: int
+      default: 60
+      range: [30, 240]
+      description: フレームレート上限を指定します。-1にすると上限を撤廃します。
+      ui:
+        kind: slider
+        label: FPS 上限
+        step: 1
+        format: '{0} fps'
+
+    - name: AntiAliasing
+      key: AntiAliasingType
+      type: enum
+      enumType: BunnyGarden2FixMod.AntiAliasingType
+      default: MSAA8x
+      description: アンチエイリアシングの種類を指定します。右の方ほど画質が良くなりますが、動作が重くなります。Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x
+
+    - name: DisableChromaticAberration
+      type: bool
+      default: false
+      description: true にすると色収差エフェクト(画面の端のほうがにじんで見える効果)を無効化します。
+      ui:
+        kind: toggle
+        label: 色収差を無効化
+
+- section: Internal
+  configs:
+    - name: ExtraActive
+      type: bool
+      default: false
+      description: |
+        【内部状態】ユーザーが OptionMenu で拡張解像度 (ExtraWidth×ExtraHeight) を
+        選択中かどうかを記録します。ゲーム内オプション操作時に自動更新されます。
+        手動変更しないでください。
+
+- section: Camera
+  configs:
+    - name: Sensitivity
+      type: float
+      default: 10
+      range: [0.05, 30.0]
+      description: フリーカメラのマウス感度
+      ui:
+        kind: slider
+        label: 感度
+        step: 0.05
+        format: '{0:F2}'
+
+    - name: Speed
+      type: float
+      default: 2.5
+      range: [0.5, 10.0]
+      description: フリーカメラの移動速度
+      ui:
+        kind: slider
+        label: 移動速度
+        step: 0.1
+        format: '{0:F2}'
+
+    - name: FastSpeed
+      type: float
+      default: 20
+      range: [2.0, 60.0]
+      description: フリーカメラの高速移動速度（Shift）
+      ui:
+        kind: slider
+        label: 高速移動速度 (Shift)
+        step: 0.5
+        format: '{0:F1}'
+
+    - name: SlowSpeed
+      type: float
+      default: 0.5
+      range: [0.05, 2.0]
+      description: フリーカメラの低速移動速度（Ctrl）
+      ui:
+        kind: slider
+        label: 低速移動速度 (Ctrl)
+        step: 0.05
+        format: '{0:F2}'
+
+    - name: HideGameUiInFreeCam
+      type: bool
+      default: true
+      description: true にするとフリーカメラ中にゲーム本体の UI(Canvas) を非表示にします。
+      ui:
+        kind: toggle
+        label: FreeCam 中に UI を非表示
+
+    - name: ControllerEnabled
+      type: bool
+      default: true
+      description: true にするとフリーカメラの操作にゲームパッド入力を使用できます。
+      ui:
+        kind: toggle
+        label: コントローラ操作を有効化
+
+- section: Animation
+  configs:
+    - name: MoreTalkReactions
+      type: bool
+      default: false
+      description: true にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります。
+      ui:
+        kind: toggle
+        label: 会話リアクションを多様化
+
+- section: Input
+  configs:
+    - name: ControllerTriggerDeadzone
+      type: float
+      default: 0.35
+      range: [0.05, 0.95]
+      description: フリーカメラで ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合は上げてください。
+      ui:
+        kind: slider
+        label: コントローラ ZL/ZR デッドゾーン
+        step: 0.05
+        format: '{0:F2}'
+
+    - name: ControllerModifier
+      type: enum
+      enumType: BunnyGarden2FixMod.Utils.ControllerButton
+      default: Select
+      description: |
+        フリーカメラ・時間停止など各コントローラーホットキーを使う際に同時押しする修飾ボタン
+        ゲーム本来のコントローラー操作との競合を防ぐために使用します。
+
+- section: Appearance
+  configs:
+    - name: DisableStockings
+      type: bool
+      default: false
+      description: true にするとキャストのストッキングを非表示にします。
+      ui:
+        kind: toggle
+        label: パンストを無効化
+
+- section: Conversation
+  configs:
+    - name: ContinueVoiceOnTap
+      type: bool
+      default: false
+      description: |
+        true にすると会話送り（タップ／オート／スキップ）時にボイスが途中停止せず、
+        次の台詞のボイス再生で自然に上書きされるか、ボイスが最後まで再生されるようになります。
+      ui:
+        kind: toggle
+        label: タップでボイスを継続
+
+- section: Cheki
+  configs:
+    - name: ChekiHighResEnabled
+      key: HighResEnabled
+      type: bool
+      default: false
+      description: |
+        true にするとチェキ（撮影写真）の保存解像度を Size で指定した値に変更します。
+        false の場合は本体既定（320x320）のままです。
+        互換性: 本体セーブには常に 320x320 版も保存されるため、MOD を外しても主セーブは破損しません。
+        高解像度版は MOD 独自のサイドカーファイル（主セーブ + .exmod）に格納されます。
+        スロット対応: セーブスロット単位で高解像度データを分離管理します。
+          別スロットに切り替えた際も各スロットの高解像度チェキが正しく表示されます。
+        副作用: 高解像度化でメモリ／セーブサイズが増加します（1024 時: 約 48MB/12 枚）。
+      ui:
+        kind: toggle
+        label: 高解像度チェキを有効化
+
+    - name: ChekiSize
+      key: Size
+      type: int
+      default: 1024
+      range: [64, 2048]
+      description: |
+        チェキ画像の正方形サイズ（ピクセル）。64〜2048 にクランプされます。既定 1024。
+        HighResEnabled が false の場合は無視されます（本体既定の 320 が使用されます）。
+        PNG で実測 1〜5MB/枚 程度に収まります。
+      ui:
+        kind: slider
+        label: チェキ解像度
+        step: 64
+        format: '{0} px'
+
+    - name: ChekiFormat
+      key: ImageFormat
+      type: enum
+      enumType: BunnyGarden2FixMod.ChekiImageFormat
+      default: PNG
+      description: |
+        ExSave に格納する画像フォーマット。PNG / JPG。既定 PNG。
+          PNG : 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚。既定
+          JPG : 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚
+        エンコードはシャッター時に 1 度のみ走ります。
+        読み込みは magic byte による自動判別です。
+
+    - name: ChekiJpgQuality
+      key: JpgQuality
+      type: int
+      default: 90
+      range: [1, 100]
+      description: ImageFormat=JPG のときの品質（1〜100）。既定 90。値が小さいほどサイズは小さく画質は粗くなります。
+      ui:
+        kind: slider
+        label: JPG 品質
+        step: 1
+        format: '{0}'
+
+- section: Ending
+  configs:
+    - name: EndingChekiSlideshow
+      key: ChekiSlideshow
+      type: bool
+      default: true
+      description: true にするとエンディング中に撮影済みのチェキをスライドショーで表示します。
+      ui:
+        kind: toggle
+        label: エンディングでチェキスライドショー
+
+- section: Cheat
+  configs:
+    - name: CastOrder
+      type: bool
+      default: false
+      description: |
+        true にするとバーに入る前にキャストの出勤順序を変更できます。
+        F1 キーで編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。
+      ui:
+        kind: toggle
+        label: キャスト出勤順序変更
+
+    - name: UltimateSurvivorEnabled
+      key: UltimateSurvivor
+      type: bool
+      default: false
+      description: true にすると鉄骨渡りミニゲームで落下しなくなります。
+      ui:
+        kind: toggle
+        label: 鉄骨渡り無敗（チート）
+
+    - name: GambleAlwaysWinEnabled
+      key: GambleAlwaysWin
+      type: bool
+      default: false
+      description: true にするとギャンブルで負けなくなります。
+      ui:
+        kind: toggle
+        label: ギャンブル無敗（チート）
+
+    - name: CheatLikability
+      key: Likability
+      type: bool
+      default: false
+      description: |
+        true にすると会話選択肢・ドリンク・フードの正解をゲーム内に表示します。
+        【会話選択肢】選択肢テキストの先頭に記号が追加されます。
+          ★ : 好感度UP（正解）
+          ▼ : 好感度DOWN（酔い選択肢だが現在の状況では効果なし）
+        【ドリンク・フード】アイテムの背景色が変化します。
+          緑 : キャストのお気に入り（AddFavoriteLikability > 0）
+          黄 : 今日の旬アイテム（ボーナスあり）
+          赤 : キャストが嫌いなもの（AddFavoriteLikability < 0）
+      ui:
+        kind: toggle
+        label: 好感度ヒント表示
+
+- section: CostumeChanger
+  configs:
+    - name: CostumeChangerEnabled
+      key: Enabled
+      type: bool
+      default: true
+      description: |
+        true にすると衣装変更 UI とパッチを有効化します。
+        変更は再起動後に反映されます（OFF→ON でパッチ適用が必要なため）。
+      ui:
+        kind: toggle
+        label: 衣装変更を有効化（要再起動）
+
+    - name: RespectGameCostumeOverride
+      type: bool
+      default: true
+      description: trueにすると、試着室などゲームが特定の衣装を強制するシーンではMOD側の衣装変更を一時的に停止します。これを有効にすることで、ゲーム内のイベントと衣装の競合を防げます
+      ui:
+        kind: toggle
+        label: ゲーム指定衣装を優先
+
+    - name: SwimWearStocking
+      type: bool
+      default: true
+      description: |
+        true にすると水着コスチューム着用中にストッキングを適用できるようになります。
+        水着モデルには本来ストッキング用ブレンドシェイプがないため、同キャラの Uniform コスチュームからデータを移植します。
+
+    - name: StockingOffset
+      type: float
+      default: 0
+      range: [0, 0.01]
+      description: |
+        水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。
+        押し出すと水着の食い込み（タイトな演出）が再現できるが、stocking が水着を貫通する。
+        0 で無効化。デフォルト 0 (無効)。
+      ui:
+        kind: slider
+        label: ストッキング 押出し量 (m)
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: StockingSkinShrink
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に
+        保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を
+        stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込む。
+        押し込むと、肌の貫通はなくなるが、水着の食い込み（タイトな演出）が再現できない。
+        0 で無効化。デフォルト 0.001 (1mm)。
+      ui:
+        kind: slider
+        label: 肌 押込み量 (m)
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: StockingSkinFalloffRadius
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
+        距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぐ。0 で無効化（一様押し込み）。
+        デフォルト 0.001 (1mm)。
+      ui:
+        kind: slider
+        label: 肌押込み フェード半径 (m)
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: StockingShapeFalloffRadius
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、
+        隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
+        距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消する。
+        0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。
+      ui:
+        kind: slider
+        label: BlendShape フェード半径 (m)
+        step: 0.0001
+        format: '{0:F4}'
+
+- section: General
+  configs:
+    - name: SteamLaunchCheck
+      type: bool
+      default: true
+      description: |
+        true にすると Steam 外から直接起動された場合に Steam 経由で自動的に再起動します。
+        デバッグ目的でゲームフォルダに steam_appid.txt（内容: 3443820）を置くと、この機能をバイパスできます。
+
+- section: HideUI
+  configs:
+    - name: HideUIEnabled
+      key: Enabled
+      type: bool
+      default: true
+      description: true にすると一部UIを非表示にできる設定パネルを有効化します。F9キーで開きます。
+
+    - name: HideMoneyInSpecialScenes
+      key: HideInSpecialScenes
+      type: bool
+      default: true
+      description: |
+        true にすると旅行シーンおよび特別なシーンで雰囲気をぶち壊す
+        所持金UIを非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。
+      ui:
+        kind: toggle
+        label: 旅行・特別シーンで所持金を非表示
+
+    - name: HideButtonGuide
+      type: bool
+      default: false
+      description: true にすると画面下のボタンガイド（操作ヒント）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。
+      ui:
+        kind: toggle
+        label: ボタンガイドを常時非表示
+
+    - name: HideLikabilityGauge
+      type: bool
+      default: false
+      description: true にするとラブカウンター（好感度ゲージ）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。
+      ui:
+        kind: toggle
+        label: 好感度ゲージを非表示
+
+- section: Time
+  configs:
+    - name: FastForwardSpeed
+      type: float
+      default: 10
+      range: [1, 240]
+      description: 時間を早送りするホットキーを押している間の時間の進む速さの倍率。
+      ui:
+        kind: slider
+        label: 早送り倍率
+        step: 1
+        format: '{0:F0}x'

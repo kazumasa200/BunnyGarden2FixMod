@@ -1,0 +1,22 @@
+- name: Foo
+  section: Bar
+  type: bool
+  default: false
+  description: dup test
+
+- name: Foo
+  section: Bar
+  type: int
+  default: 1000
+  range: [0, 100]
+  description: should fail (dup name + default out of range)
+  ui:
+    kind: slider
+    label: bad
+
+- name: Bad
+  section: Hotkey
+  type: enum
+  enumType: Some.Type
+  default: 123abc
+  description: invalid enum default (not an identifier)

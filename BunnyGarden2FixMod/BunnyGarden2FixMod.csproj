@@ -125,4 +125,26 @@
   </ItemGroup>
 
   <Import Project="BunnyGarden2FixMod.user.targets" Condition="Exists('BunnyGarden2FixMod.user.targets')" />
+
+  <ItemGroup>
+    <ConfigGenInputs Include="..\tools\ConfigGen\*.cs" />
+    <ConfigGenInputs Include="..\tools\ConfigGen\ConfigGen.csproj" />
+    <ConfigGenInputs Include="Configs.yaml" />
+  </ItemGroup>
+
+  <!--
+    BeforeTargets に CoreCompile も併記して Roslyn の Compile ItemGroup 評価より
+    確実に前段で走るように保険をかける。さらに Target 末尾で生成物の存在を検証して
+    silent failure（古い .g.cs のままビルド成功）を起こさないようにする。
+  -->
+  <Target Name="GenerateConfigs"
+          BeforeTargets="BeforeBuild;CoreCompile"
+          Inputs="@(ConfigGenInputs)"
+          Outputs="Generated\Configs.g.cs">
+    <Message Text="[GenerateConfigs] Running ConfigGen..." Importance="high" />
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)\..\tools\ConfigGen\ConfigGen.csproj&quot; -- --yaml &quot;$(MSBuildProjectDirectory)\Configs.yaml&quot; --out &quot;$(MSBuildProjectDirectory)\Generated\Configs.g.cs&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Error Condition="!Exists('Generated\Configs.g.cs')"
+           Text="[GenerateConfigs] FAILED: Generated\Configs.g.cs was not produced. Check ConfigGen output above." />
+  </Target>
 </Project>

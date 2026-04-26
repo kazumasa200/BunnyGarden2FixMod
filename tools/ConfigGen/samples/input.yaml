@@ -1,0 +1,52 @@
+- name: Width
+  section: Resolution
+  type: int
+  default: 1920
+  description: 解像度の幅（横）を指定します
+
+- name: ExtraWidth
+  section: Resolution
+  type: int
+  default: 2560
+  description: |
+    ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。
+    既定 2560（WQHD）。16:9 を推奨。
+
+- name: FrameRate
+  section: Display
+  type: int
+  default: 60
+  range: [30, 240]
+  description: フレームレート上限
+
+- name: TimeStopToggleKey
+  section: Hotkey
+  type: enum
+  enumType: UnityEngine.InputSystem.Key
+  default: F8
+  description: 時間停止のトグルキー
+
+- name: SampleToggle
+  section: Sample
+  type: bool
+  default: false
+  description: テスト用 Toggle
+  ui:
+    kind: toggle
+    label: テスト Toggle
+    category: Sample
+    order: 10
+
+- name: SampleSlider
+  section: Sample
+  type: float
+  default: 0.5
+  range: [0.0, 1.0]
+  description: テスト用 Slider
+  ui:
+    kind: slider
+    label: テスト Slider
+    category: Sample
+    order: 20
+    step: 0.1
+    format: '{0:F2}'
