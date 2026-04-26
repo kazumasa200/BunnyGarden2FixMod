@@ -113,6 +113,7 @@
 | `ToggleOverlayButton` | `Start` | フリーカメラ操作ガイドオーバーレイの表示/非表示に使うコントローラーボタン（ControllerModifier と同時押し） |
 | `CaptureScreenshotKey` | `P` | フリーカメラ中にゲーム UI を写さずスクリーンショットを保存するキーボードキー |
 | `CaptureScreenshotButton` | `A` | 同上コントローラーボタン（ControllerModifier と同時押し） |
+| `ScreenshotScale` | `1` | スクリーンショットの解像度倍率 |
 | `SteamLaunchCheck` | `true` | `true` にすると Steam 外から直接起動された場合に Steam 経由で自動的に再起動します。デバッグ目的でゲームフォルダに `steam_appid.txt`（内容: `3443820`）を置くとこの機能をバイパスできます |
 
 フリーカメラは **F5** キーで ON/OFF、**F6** キーでカメラ固定のトグルができます。  
