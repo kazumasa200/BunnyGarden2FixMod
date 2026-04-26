@@ -105,6 +105,8 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<int> ConfigExtraWidth;
     public static ConfigEntry<int> ConfigExtraHeight;
     public static ConfigEntry<int> ConfigFrameRate;
+    public static ConfigEntry<bool> ConfigForceVSync;
+    public static ConfigEntry<bool> ConfigForceExclusiveFullScreen;
     public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
     public static ConfigEntry<bool> ConfigDisableChromaticAberration;
 
@@ -189,6 +191,24 @@ public class Plugin : BaseUnityPlugin
             "FrameRate",
             60,
             "フレームレート上限を指定します。-1にすると上限を撤廃します。");
+
+        ConfigForceVSync = Config.Bind(
+            "Graphics",
+            "ForceVSync",
+            false,
+            "true にすると VSync を強制 ON にします（QualitySettings.vSyncCount = 1）。\n" +
+            "フレームレートがモニターのリフレッシュレートに同期され、ティアリングが防止されます。\n" +
+            "有効時は FrameRate 設定より VSync が優先されます。");
+
+        ConfigForceExclusiveFullScreen = Config.Bind(
+            "Graphics",
+            "ForceExclusiveFullScreen",
+            false,
+            "true にするとフルスクリーン時に排他的フルスクリーン（Exclusive Full Screen）を強制します。\n" +
+            "Windows DWM（デスクトップウィンドウマネージャー）をバイパスし、GPU がゲーム描画に\n" +
+            "専念するため、複数モニター接続時の FPS 低下が改善される場合があります。\n" +
+            "ウィンドウモード（1080p / 720p）では無効です。\n" +
+            "Alt+Tab でのウィンドウ切り替え時に画面が一瞬暗転する場合があります。");
 
         ConfigAntiAliasing = Config.Bind(
             "Graphics",
