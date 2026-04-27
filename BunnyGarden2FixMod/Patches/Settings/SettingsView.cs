@@ -245,15 +245,32 @@ public class SettingsView : MonoBehaviour
         for (int i = 0; i < m_categories.Count; i++)
         {
             int idx = i;
-            // 1-9 のキージャンプに対応してサイドバーにキー番号を表示
-            var displayText = (i < 9) ? $"{i + 1}  {m_categories[i]}" : m_categories[i];
-            var btn = new Label(displayText);
-            btn.style.color = new Color(0.84f, 0.87f, 0.91f, 1f);
-            btn.style.fontSize = 11;
+
+            var btn = new VisualElement();
+            btn.style.flexDirection = FlexDirection.Row;
+            btn.style.alignItems = Align.Center;
             btn.style.paddingLeft = 12;
+            btn.style.paddingRight = 8;
             btn.style.paddingTop = 6;
             btn.style.paddingBottom = 6;
-            if (m_font != null) btn.style.unityFont = m_font;
+
+            var nameLabel = new Label(m_categories[i]);
+            nameLabel.style.color = new Color(0.84f, 0.87f, 0.91f, 1f);
+            nameLabel.style.fontSize = 11;
+            nameLabel.style.flexGrow = 1;
+            nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            nameLabel.style.overflow = Overflow.Hidden;
+            if (m_font != null) nameLabel.style.unityFont = m_font;
+            btn.Add(nameLabel);
+
+            // 1-9 のキージャンプに対応する番号を KeyCap で右端に表示
+            if (i < 9)
+            {
+                var cap = UITKit.UITFactory.CreateKeyCap($"{i + 1}", string.Empty, m_font);
+                cap.style.marginRight = 0;
+                btn.Add(cap);
+            }
+
             btn.RegisterCallback<ClickEvent>(_ => SelectCategory(idx));
             m_sidebar.Add(btn);
         }
