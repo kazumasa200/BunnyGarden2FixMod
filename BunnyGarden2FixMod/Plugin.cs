@@ -110,6 +110,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigForceExclusiveFullScreen;
     public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
     public static ConfigEntry<bool> ConfigDisableChromaticAberration;
+    public static ConfigEntry<bool> ConfigDisableDepthOfField;
 
     // HideUI
     public static ConfigEntry<bool> ConfigHideUIEnabled;
@@ -229,6 +230,12 @@ public class Plugin : BaseUnityPlugin
             "DisableChromaticAberration",
             false,
             "true にすると色収差エフェクト(画面の端のほうがにじんで見える効果)を無効化します。");
+
+        ConfigDisableDepthOfField = Config.Bind(
+            "Graphics",
+            "DisableDepthOfField",
+            false,
+            "true にすると被写界深度エフェクト(画面の一部がぼやける効果)を無効化します。");
 
         ConfigSensitivity = Config.Bind(
             "Camera",
