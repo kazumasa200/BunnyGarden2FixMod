@@ -92,9 +92,6 @@
       ui:
         kind: toggle
 
-- section: Resolution
-  name: ウルトラワイド
-  configs:
     - name: FullscreenUltrawideEnabled
       label: フルスクリーンでウルトラワイド比率を使う
       type: bool
@@ -227,7 +224,6 @@
       default: false
       ui:
         kind: toggle
-        category: Game
 
     - name: FixAnimationClipping
       label: 一部モーションでスカートが体にめり込む現象を補正
@@ -235,53 +231,6 @@
       default: true
       ui:
         kind: toggle
-
-- section: Input
-  name: コントローラー入力
-  configs:
-    - name: ControllerTriggerDeadzone
-      label: コントローラ ZL/ZR デッドゾーン
-      type: float
-      default: 0.35
-      range: [0.05, 0.95]
-      description: ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合に上げてください。
-      ui:
-        kind: slider
-        step: 0.05
-        format: '{0:F2}'
-
-    - name: ControllerModifier
-      label: コントローラ修飾ボタン
-      type: enum
-      enumType: BunnyGarden2FixMod.Utils.ControllerButton
-      default: Select
-      description: |
-        ホットキーの同時押し用。ゲーム本来のコントローラー操作との競合回避に使用します。
-
-- section: Appearance
-  name: 外見
-  configs:
-    - name: DisableStockings
-      label: キャストのストッキング(パンスト)を非表示
-      type: bool
-      default: false
-      ui:
-        kind: toggle
-        category: CostumeChanger
-
-- section: Conversation
-  name: 会話
-  configs:
-    - name: ContinueVoiceOnTap
-      label: タップでボイスを継続
-      type: bool
-      default: false
-      description: |
-        会話送り（タップ／オート／スキップ）でボイスを途中停止しません。
-        次の台詞のボイスで自然に上書きされるか、最後まで再生されます。
-      ui:
-        kind: toggle
-        category: Game
 
 - section: Cheki
   name: チェキ高解像度保存
@@ -339,9 +288,6 @@
         step: 1
         format: '{0}'
 
-- section: Ending
-  name: エンディング
-  configs:
     - name: EndingChekiSlideshow
       label: エンディング中に撮影済みのチェキをスライドショー表示
       key: ChekiSlideshow
@@ -349,7 +295,6 @@
       default: true
       ui:
         kind: toggle
-        category: Cheki
 
 - section: Cheat
   name: チート
@@ -526,27 +471,30 @@
         format: '{0:F4}'
 
     - name: PantiesAltSlotMatch
-      label: 水着/バニーガールで Panties 切替を反映
+      label: 水着・バニーガール衣装でも下着を表示
       type: bool
       default: true
       description: |
-        水着 / バニーガール衣装でも Panties 切替を反映するようにします。
-        ゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、
-        MOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。
-        差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は OFF で無効化できます。
+        ゲーム本体は通常衣装専用の panties slot にしか反応しないため、Mod 側で水着/バニー用スロットもフォールバック検出します。
+        差し替え後の Material は通常衣装用テクスチャなので、UV 不一致で見た目が崩れる場合は OFF にしてください。
       ui:
         kind: toggle
 
     - name: PantiesAltSlotOverrideOnly
-      label: Panties フォールバックを override 指定キャラのみに限定
+      label: Mod で下着を指定したキャストのみ適用 (OFF で全員)
       type: bool
       default: true
       description: |
-        PantiesAltSlotMatch の適用範囲を制限します。
-        ON  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。
-              他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。
-        OFF : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。
+        ON  : Mod で下着を明示選択したキャストのみフォールバックを適用。他キャストはバニラ挙動（水着/バニーで肌色）。
+        OFF : 常時全キャストに適用。ゲーム本体由来の ReloadPanties でも水着/バニーに通常下着が出ます。
         PantiesAltSlotMatch=OFF のときはこの設定は無視されます。
+      ui:
+        kind: toggle
+
+    - name: DisableStockings
+      label: キャストのストッキング(パンスト)を非表示
+      type: bool
+      default: false
       ui:
         kind: toggle
 
@@ -573,12 +521,63 @@
       default: 1.5
       range: [1.0, 2.0]
       description: |
-        MOD 提供の UI（F7 衣装変更 / F9 設定パネル / F1 出勤順）の表示倍率。
-        ゲーム本体 UI には影響しません。変更はパネルを閉じて開き直すと反映されます。
+        Mod 提供の UI（衣装変更 / 設定パネル / 出勤順 など）の表示倍率。ゲーム本体 UI には影響しません。
+        変更はパネルを閉じて開き直すと反映されます。
       ui:
         kind: slider
         step: 0.1
         format: '{0:F1}x'
+
+    - name: ContinueVoiceOnTap
+      label: タップでボイスを継続
+      type: bool
+      default: false
+      description: |
+        会話送り（タップ／オート／スキップ）でボイスを途中停止しません。
+        次の台詞のボイスで自然に上書きされるか、最後まで再生されます。
+      ui:
+        kind: toggle
+
+    - name: ControllerTriggerDeadzone
+      label: コントローラ ZL/ZR デッドゾーン
+      type: float
+      default: 0.35
+      range: [0.05, 0.95]
+      description: ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合に上げてください。
+      ui:
+        kind: slider
+        step: 0.05
+        format: '{0:F2}'
+
+    - name: ControllerModifier
+      label: コントローラ修飾ボタン
+      type: enum
+      enumType: BunnyGarden2FixMod.Utils.ControllerButton
+      default: Select
+      description: |
+        ホットキーの同時押し用。ゲーム本来のコントローラー操作との競合回避に使用します。
+
+    - name: ScreenshotScale
+      label: スクリーンショット解像度倍率
+      type: int
+      default: 1
+      range: [1, 8]
+      description: 1 で通常のスクリーンショットと同じ解像度、2 で倍の解像度になります。
+      ui:
+        kind: slider
+        step: 1
+        format: '{0}x'
+
+    - name: FastForwardSpeed
+      label: 早送り倍率
+      type: float
+      default: 10
+      range: [1, 240]
+      description: FastForward ホットキー押下中の Time.timeScale 倍率。
+      ui:
+        kind: slider
+        step: 1
+        format: '{0:F0}x'
 
     - name: OverlayToggle
       label: オーバーレイ表示切替
@@ -596,81 +595,6 @@
       defaultButton: A
       description: フリーカメラ中にゲーム UI・MOD オーバーレイを写さず BepInEx/screenshots フォルダへ PNG 出力します。
       controllerDescription: ControllerModifier と同時押しが必要です。
-
-    - name: ScreenshotScale
-      label: スクリーンショット解像度倍率
-      type: int
-      default: 1
-      range: [1, 8]
-      description: 1 で通常のスクリーンショットと同じ解像度、2 で倍の解像度になります。
-      ui:
-        kind: slider
-        step: 1
-        format: '{0}x'
-
-- section: HideUI
-  name: UI 非表示設定
-  header: |
-    **F9** キーで設定パネルを開き、以下を ON/OFF できます。カーソルがパネル上にある間はマウスクリックや移動・視点操作などのゲーム入力はブロックされます。
-  footer: |
-    #### 操作方法（F9 パネル）
-
-    | キー | 動作 |
-    |------|------|
-    | **F9** | パネルを開く / 閉じる |
-    | **行をクリック / Space / Enter** | その行の設定をトグル |
-    | **↑ / ↓** | 行を選択 |
-    | **← / →** | スライダー値の増減 |
-    | **Tab / 1〜9** | カテゴリ切替 |
-    | **Esc** | パネルを閉じる |
-
-    **所持金非表示が適用されるシーン:**
-    - 旅行シーン
-    - 恋愛に関する特別なシーン
-  configs:
-    - name: HideUIEnabled
-      label: F9 設定パネルを有効化
-      key: Enabled
-      type: bool
-      default: true
-      description: F9 キーで一部 UI を非表示にできる設定パネルが開きます。
-
-    - name: HideMoneyInSpecialScenes
-      label: 旅行・特別シーンで所持金 UI を非表示
-      key: HideInSpecialScenes
-      type: bool
-      default: true
-      ui:
-        kind: toggle
-
-    - name: HideButtonGuide
-      label: 画面下のボタンガイド(操作ヒント)を常時非表示
-      type: bool
-      default: false
-      ui:
-        kind: toggle
-
-    - name: HideLikabilityGauge
-      label: ラブカウンター(好感度ゲージ)を常時非表示
-      type: bool
-      default: false
-      ui:
-        kind: toggle
-
-- section: Time
-  name: 時間操作
-  configs:
-    - name: FastForwardSpeed
-      label: 早送り倍率
-      type: float
-      default: 10
-      range: [1, 240]
-      description: FastForward ホットキー押下中の Time.timeScale 倍率。
-      ui:
-        kind: slider
-        step: 1
-        format: '{0:F0}x'
-        category: Game
 
     - name: TimeStopToggle
       label: 時間停止 ON/OFF
@@ -692,3 +616,52 @@
       type: hotkey
       defaultKey: G
       description: 押している間のみ有効。倍率は FastForwardSpeed で設定。
+
+- section: HideUI
+  name: UI 非表示設定
+  header: |
+    **F9** キーで設定パネルを開き、以下を ON/OFF できます。カーソルがパネル上にある間はマウスクリックや移動・視点操作などのゲーム入力はブロックされます。
+  footer: |
+    #### 操作方法（F9 パネル）
+
+    | キー | 動作 |
+    |------|------|
+    | **F9** | パネルを開く / 閉じる |
+    | **行をクリック / Space / Enter** | その行の設定をトグル |
+    | **↑ / ↓** | 行を選択 |
+    | **← / →** | スライダー値の増減 |
+    | **Tab / 1〜9** | カテゴリ切替 |
+    | **Esc** | パネルを閉じる |
+  configs:
+    - name: HideUIEnabled
+      label: F9 設定パネルを有効化
+      key: Enabled
+      type: bool
+      default: true
+      description: F9 キーで一部 UI を非表示にできる設定パネルが開きます。
+
+    - name: HideMoneyInSpecialScenes
+      label: 旅行・特別シーンで所持金 UI を非表示
+      key: HideInSpecialScenes
+      type: bool
+      default: true
+      description: |
+        対象シーン:
+          - 旅行シーン
+          - 恋愛に関する特別なシーン
+      ui:
+        kind: toggle
+
+    - name: HideButtonGuide
+      label: 画面下のボタンガイド(操作ヒント)を常時非表示
+      type: bool
+      default: false
+      ui:
+        kind: toggle
+
+    - name: HideLikabilityGauge
+      label: ラブカウンター(好感度ゲージ)を常時非表示
+      type: bool
+      default: false
+      ui:
+        kind: toggle

@@ -34,6 +34,21 @@ public static class ConfigMigration
         new(new("Resolution", "FrameRate"), new("Graphics", "FrameRate")),
         new(new("Resolution", "ExtraWidth"), new("Graphics", "ExtraWidth")),
         new(new("Resolution", "ExtraHeight"), new("Graphics", "ExtraHeight")),
+        // 第二: develop の Config.Bind("Resolution", "FullscreenUltrawideEnabled") を Graphics に統合
+        new(new("Resolution", "FullscreenUltrawideEnabled"), new("Graphics", "FullscreenUltrawideEnabled")),
+        // 第三: ui.category 廃止に伴うセクション再編 (Appearance / Conversation / Ending / Input / Time を解体)
+        new(new("Appearance", "DisableStockings"), new("CostumeChanger", "DisableStockings")),
+        new(new("Conversation", "ContinueVoiceOnTap"), new("General", "ContinueVoiceOnTap")),
+        new(new("Ending", "ChekiSlideshow"), new("Cheki", "ChekiSlideshow")),
+        new(new("Input", "ControllerTriggerDeadzone"), new("General", "ControllerTriggerDeadzone")),
+        new(new("Input", "ControllerModifier"), new("General", "ControllerModifier")),
+        new(new("Time", "FastForwardSpeed"), new("General", "FastForwardSpeed")),
+        new(new("Time", HotkeyConfig.KeyboardKey("ToggleTimeStop")), new("General", HotkeyConfig.KeyboardKey("ToggleTimeStop"))),
+        new(new("Time", HotkeyConfig.GamepadKey("ToggleTimeStop")), new("General", HotkeyConfig.GamepadKey("ToggleTimeStop"))),
+        new(new("Time", HotkeyConfig.KeyboardKey("FrameAdvance")), new("General", HotkeyConfig.KeyboardKey("FrameAdvance"))),
+        new(new("Time", HotkeyConfig.GamepadKey("FrameAdvance")), new("General", HotkeyConfig.GamepadKey("FrameAdvance"))),
+        new(new("Time", HotkeyConfig.KeyboardKey("FastForward")), new("General", HotkeyConfig.KeyboardKey("FastForward"))),
+        new(new("Time", HotkeyConfig.GamepadKey("FastForward")), new("General", HotkeyConfig.GamepadKey("FastForward"))),
     ];
 
     public static void Migrate(ConfigFile config)
