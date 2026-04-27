@@ -105,6 +105,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<int> ConfigExtraWidth;
     public static ConfigEntry<int> ConfigExtraHeight;
     public static ConfigEntry<int> ConfigFrameRate;
+    public static ConfigEntry<bool> ConfigFullscreenUltrawideEnabled;
     public static ConfigEntry<bool> ConfigForceVSync;
     public static ConfigEntry<bool> ConfigForceExclusiveFullScreen;
     public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
@@ -185,6 +186,13 @@ public class Plugin : BaseUnityPlugin
             "【内部状態】ユーザーが OptionMenu で拡張解像度 (ExtraWidth×ExtraHeight) を\n" +
             "選択中かどうかを記録します。ゲーム内オプション操作時に自動更新されます。\n" +
             "手動変更しないでください。");
+
+        ConfigFullscreenUltrawideEnabled = Config.Bind(
+            "Resolution",
+            "FullscreenUltrawideEnabled",
+            false,
+            "true にすると、フルスクリーンかつゲームプレイ中のみモニターのネイティブ横長比率を使います。\n" +
+            "タイトル画面やメニュー画面は従来どおり 16:9 のままです。既定 true。");
 
         ConfigFrameRate = Config.Bind(
             "Graphics",

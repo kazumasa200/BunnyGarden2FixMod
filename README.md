@@ -63,6 +63,7 @@
 | `Height` | `1080` | 内部解像度の高さ（縦）。同上 |
 | `ExtraWidth` | `2560` | ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。16:9 以外の値を入れると自動的に最大 16:9 に変換されます |
 | `ExtraHeight` | `1440` | 同上 高さ。既定 `2560×1440`（WQHD） |
+| `FullscreenUltrawideEnabled` | `false` | `true` にすると、フルスクリーンかつゲームプレイ中のみモニターのネイティブ横長比率を使います。タイトル画面やメニュー画面は従来どおり 16:9 のままです |
 | `FrameRate` | `60` | フレームレート上限。`-1` にすると上限を撤廃します |
 | `AntiAliasingType` | `MSAA8x` | アンチエイリアスの種類。`Off` / `FXAA` / `TAA` / `MSAA2x` / `MSAA4x` / `MSAA8x` から選択。右に行くほど高品質ですが重くなります |
 | `DisableChromaticAberration` | `false` | `true` にすると色収差エフェクト（画面の端がにじんで見える効果）を無効化します |
