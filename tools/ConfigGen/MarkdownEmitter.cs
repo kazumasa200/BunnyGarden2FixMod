@@ -60,7 +60,7 @@ public static class MarkdownEmitter
         if (e.Type == "hotkey")
         {
             // hotkey は .cfg 上で {key}Key / {key}Button の 2 entry に展開されるため、表でも 2 行に分ける。
-            var keyDesc = (e.Description ?? string.Empty).TrimEnd('\n');
+            var keyDesc = WithLabel(e.Label, (e.Description ?? string.Empty).TrimEnd('\n'));
             sb.Append("| `").Append(e.EffectiveKey).Append("Key` | `").Append(e.DefaultKey).Append("` | ")
               .Append(Cell(keyDesc)).AppendLine(" |");
 
@@ -77,10 +77,21 @@ public static class MarkdownEmitter
         else
         {
             var def = e.Default?.ToString() ?? string.Empty;
-            var desc = (e.Description ?? string.Empty).TrimEnd('\n');
+            var desc = WithLabel(e.Label, (e.Description ?? string.Empty).TrimEnd('\n'));
             sb.Append("| `").Append(e.EffectiveKey).Append("` | `").Append(def).Append("` | ")
               .Append(Cell(desc)).AppendLine(" |");
         }
+    }
+
+    /// <summary>
+    /// 説明列に label を見出しとして前置する。両方ある場合は「{label}\n{description}」（Cell で &lt;br&gt; 化）、
+    /// 片方のみなら片方を返す。
+    /// </summary>
+    private static string WithLabel(string? label, string description)
+    {
+        if (string.IsNullOrEmpty(label)) return description;
+        if (string.IsNullOrEmpty(description)) return label!;
+        return label + "\n" + description;
     }
 
     /// <summary>
