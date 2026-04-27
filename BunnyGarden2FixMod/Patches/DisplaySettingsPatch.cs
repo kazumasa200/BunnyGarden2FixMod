@@ -35,12 +35,35 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(GBSystem), "Setup")]
 public class VSyncPatch
 {
+    private static bool s_subscribed;
+
     private static void Postfix()
     {
-        if (!Plugin.ConfigForceVSync.Value) return;
+        Apply();
 
-        QualitySettings.vSyncCount = 1;
-        PatchLogger.LogInfo("[DisplaySettings] VSync 強制 ON を適用しました (vSyncCount=1)");
+        if (!s_subscribed)
+        {
+            // BepInEx の ConfigEntry.SettingChanged は同インスタンス上で複数回購読すると
+            // ハンドラが重複登録されるため、s_subscribed フラグで一度だけ繋ぐ。
+            Plugin.ConfigForceVSync.SettingChanged += (_, _) => Apply();
+            s_subscribed = true;
+        }
+    }
+
+    private static void Apply()
+    {
+        if (Plugin.ConfigForceVSync.Value)
+        {
+            QualitySettings.vSyncCount = 1;
+            PatchLogger.LogInfo("[DisplaySettings] VSync 強制 ON を適用しました (vSyncCount=1)");
+        }
+        else
+        {
+            // ON → OFF 切替時に vSyncCount を Unity 既定の 0 へ戻し、
+            // Application.targetFrameRate に主導権を返す。
+            QualitySettings.vSyncCount = 0;
+            PatchLogger.LogInfo("[DisplaySettings] VSync 強制を解除しました (vSyncCount=0)");
+        }
     }
 }
 

@@ -6,16 +6,34 @@ using UnityEngine;
 namespace BunnyGarden2FixMod.Patches;
 
 /// <summary>
-/// フレームレートを設定するパッチ
+/// フレームレートを Config に追従させるパッチ。
+/// GBSystem.Setup の Postfix で初回適用 + SettingChanged を購読し、
+/// F9 / F4 reload / .cfg 直接編集のいずれの経路でも即時反映する。
 /// </summary>
 [HarmonyPatch(typeof(GBSystem), "Setup")]
 public class SetRefreshRatePatch
 {
+    private static bool s_subscribed;
+
     private static void Postfix()
     {
-        if (Plugin.ConfigFrameRate.Value < 0)
+        Apply();
+
+        if (!s_subscribed)
         {
-            // -1なら上限撤廃
+            // 値変更イベントを購読し、以降は Setup を経由しなくても適用される。
+            // BepInEx の ConfigEntry.SettingChanged は同インスタンス上で複数回購読すると
+            // ハンドラが重複登録されるため、s_subscribed フラグで一度だけ繋ぐ。
+            Plugin.ConfigFrameRate.SettingChanged += (_, _) => Apply();
+            s_subscribed = true;
+        }
+    }
+
+    private static void Apply()
+    {
+        if (Plugin.ConfigFrameRate.Value <= 0)
+        {
+            // 0 以下なら上限撤廃
             Application.targetFrameRate = -1;
             PatchLogger.LogInfo("フレームレートの上限を撤廃しました");
             return;
