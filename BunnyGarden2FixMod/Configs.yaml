@@ -13,33 +13,27 @@
       label: 解像度幅
       type: int
       default: 1920
-      description: |
-        横方向のピクセル数。
-        16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
+      description: 16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
 
     - name: Height
       label: 解像度高さ
       type: int
       default: 1080
-      description: |
-        縦方向のピクセル数。
-        16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
+      description: 16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。
 
     - name: ExtraWidth
       label: 拡張解像度幅
       type: int
       default: 2560
       description: |
-        ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）の幅。
-        既定 2560（WQHD）。16:9 以外の値は自動的に最大 16:9 に変換されます。
+        ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。
+        16:9 以外の値は自動的に最大 16:9 に変換されます。
 
     - name: ExtraHeight
       label: 拡張解像度高さ
       type: int
       default: 1440
-      description: |
-        ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）の高さ。
-        既定 1440（WQHD）。16:9 以外の値は自動的に最大 16:9 に変換されます。
+      description: 16:9 以外の値は自動的に最大 16:9 に変換されます。
 
     - name: FrameRate
       label: FPS 上限
@@ -85,18 +79,16 @@
         右にいくほど画質が向上しますが動作が重くなります。
 
     - name: DisableChromaticAberration
-      label: 色収差を無効化
+      label: 色収差(画面端のにじみ)を無効化
       type: bool
       default: false
-      description: 画面端のにじみエフェクトを無効化します。
       ui:
         kind: toggle
 
     - name: DisableDepthOfField
-      label: 被写界深度を無効化
+      label: 被写界深度(画面の一部がぼやける効果)を無効化
       type: bool
       default: false
-      description: 画面の一部がぼやけるエフェクトを無効化します。
       ui:
         kind: toggle
 
@@ -156,62 +148,56 @@
     > **注意**: フリーカメラ中は誤操作を避けるため、既定ではゲーム本体の UI を自動で隠します。終了確認や確認ダイアログが表示された場合は、自動的に UI が復帰し、終了確認ではフリーカメラも自動解除されます。固定モード中は時間停止を有効化できません。スクリーンショットは `BepInEx/screenshots/net.noeleve.BunnyGarden2FixMod/` に PNG で保存されます。
   configs:
     - name: Sensitivity
-      label: 感度
+      label: フリーカメラのマウス感度
       type: float
       default: 10
       range: [0.05, 30.0]
-      description: フリーカメラのマウス感度。
       ui:
         kind: slider
         step: 0.05
         format: '{0:F2}'
 
     - name: Speed
-      label: 移動速度
+      label: フリーカメラの基本移動速度
       type: float
       default: 2.5
       range: [0.5, 10.0]
-      description: フリーカメラの基本移動速度。
       ui:
         kind: slider
         step: 0.1
         format: '{0:F2}'
 
     - name: FastSpeed
-      label: 高速移動速度 (Shift)
+      label: フリーカメラの高速移動速度 (Shift 押下中)
       type: float
       default: 20
       range: [2.0, 60.0]
-      description: Shift 押下中のフリーカメラ移動速度。
       ui:
         kind: slider
         step: 0.5
         format: '{0:F1}'
 
     - name: SlowSpeed
-      label: 低速移動速度 (Ctrl)
+      label: フリーカメラの低速移動速度 (Ctrl 押下中)
       type: float
       default: 0.5
       range: [0.05, 2.0]
-      description: Ctrl 押下中のフリーカメラ移動速度。
       ui:
         kind: slider
         step: 0.05
         format: '{0:F2}'
 
     - name: HideGameUiInFreeCam
-      label: FreeCam 中に UI を非表示
+      label: フリーカメラ起動中にゲーム本体の Canvas を非表示
       type: bool
       default: true
-      description: フリーカメラ起動中はゲーム本体の Canvas を非表示にします。
       ui:
         kind: toggle
 
     - name: ControllerEnabled
-      label: コントローラ操作を有効化
+      label: フリーカメラ操作にゲームパッド入力を使用
       type: bool
       default: true
-      description: フリーカメラの操作にゲームパッド入力を使用できます。
       ui:
         kind: toggle
 
@@ -221,7 +207,6 @@
       type: hotkey
       defaultKey: F5
       defaultButton: Y
-      description: フリーカメラの ON/OFF を切り替えます。
       controllerDescription: ControllerModifier と同時押しが必要です。
 
     - name: FixedFreeCamToggle
@@ -230,28 +215,24 @@
       type: hotkey
       defaultKey: F6
       defaultButton: X
-      description: |
-        フリーカメラ起動中にカメラ位置を固定するモードを切り替えます。
-        フリーカメラ起動中のみ有効。
+      description: フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。
       controllerDescription: ControllerModifier と同時押しが必要です。
 
 - section: Animation
   name: アニメーション
   configs:
     - name: MoreTalkReactions
-      label: 会話リアクションを多様化
+      label: バーの背景キャスト 2 人の会話リアクションモーションを多様化
       type: bool
       default: false
-      description: バーの背景キャスト 2 人の会話リアクションモーションを追加します。
       ui:
         kind: toggle
         category: Game
 
     - name: FixAnimationClipping
-      label: スカートのクリッピングを修正
+      label: 一部モーションでスカートが体にめり込む現象を補正
       type: bool
       default: true
-      description: 一部のモーションで発生する、キャストのスカートが体にめり込む現象を補正します。
       ui:
         kind: toggle
 
@@ -281,10 +262,9 @@
   name: 外見
   configs:
     - name: DisableStockings
-      label: パンストを無効化
+      label: キャストのストッキング(パンスト)を非表示
       type: bool
       default: false
-      description: キャストのストッキングを非表示にします。
       ui:
         kind: toggle
         category: CostumeChanger
@@ -343,9 +323,8 @@
       enumType: BunnyGarden2FixMod.ChekiImageFormat
       default: PNG
       description: |
-        ExSave に格納する画像フォーマット。
-          PNG : 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚。既定。
-          JPG : 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚。
+        PNG : 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚。既定。
+        JPG : 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚。
         エンコードはシャッター時に 1 度のみ走ります。読み込みは magic byte による自動判別です。
 
     - name: ChekiJpgQuality
@@ -364,11 +343,10 @@
   name: エンディング
   configs:
     - name: EndingChekiSlideshow
-      label: エンディングでチェキスライドショー
+      label: エンディング中に撮影済みのチェキをスライドショー表示
       key: ChekiSlideshow
       type: bool
       default: true
-      description: エンディング中に撮影済みのチェキをスライドショー表示します。
       ui:
         kind: toggle
         category: Cheki
@@ -395,30 +373,26 @@
     - 日付が変わった場合も自動的に編集モードが終了します
   configs:
     - name: CastOrder
-      label: キャスト出勤順序変更
+      label: キャスト出勤順序変更（バー入店前に F1 で編集）
       type: bool
       default: false
-      description: |
-        バーに入る前にキャストの出勤順序を変更できます。
-        F1 キーで編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。
+      description: F1 で編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。
       ui:
         kind: toggle
 
     - name: UltimateSurvivorEnabled
-      label: 鉄骨渡り無敗（チート）
+      label: 鉄骨渡りミニゲームで落下しなくなる（チート）
       key: UltimateSurvivor
       type: bool
       default: false
-      description: 鉄骨渡りミニゲームで落下しなくなります。
       ui:
         kind: toggle
 
     - name: GambleAlwaysWinEnabled
-      label: ギャンブル無敗（チート）
+      label: ギャンブルで負けなくなる（チート）
       key: GambleAlwaysWin
       type: bool
       default: false
-      description: ギャンブルで負けなくなります。
       ui:
         kind: toggle
 
@@ -581,7 +555,6 @@
       key: Show
       type: hotkey
       defaultKey: F7
-      description: 衣装変更 UI のトグル。
 
 - section: General
   name: 全般
@@ -613,7 +586,7 @@
       type: hotkey
       defaultKey: F12
       defaultButton: Start
-      description: フリーカメラの操作ガイドオーバーレイの表示/非表示を切り替えます。
+      description: フリーカメラの操作ガイドが対象です。
       controllerDescription: ControllerModifier と同時押しが必要です。
 
     - name: CaptureScreenshot
@@ -621,7 +594,7 @@
       type: hotkey
       defaultKey: P
       defaultButton: A
-      description: フリーカメラ中にゲーム UI・MOD オーバーレイを写さず BepInEx/screenshots フォルダへ PNG 保存します。
+      description: フリーカメラ中にゲーム UI・MOD オーバーレイを写さず BepInEx/screenshots フォルダへ PNG 出力します。
       controllerDescription: ControllerModifier と同時押しが必要です。
 
     - name: ScreenshotScale
@@ -663,33 +636,24 @@
       description: F9 キーで一部 UI を非表示にできる設定パネルが開きます。
 
     - name: HideMoneyInSpecialScenes
-      label: 旅行・特別シーンで所持金を非表示
+      label: 旅行・特別シーンで所持金 UI を非表示
       key: HideInSpecialScenes
       type: bool
       default: true
-      description: |
-        旅行シーンおよび特別なシーンで雰囲気を損なう所持金 UI を非表示にします。
-        F9 パネルまたはこのコンフィグで ON/OFF できます。
       ui:
         kind: toggle
 
     - name: HideButtonGuide
-      label: ボタンガイドを常時非表示
+      label: 画面下のボタンガイド(操作ヒント)を常時非表示
       type: bool
       default: false
-      description: |
-        画面下のボタンガイド（操作ヒント）を常時非表示にします。
-        F9 パネルまたはこのコンフィグで ON/OFF できます。
       ui:
         kind: toggle
 
     - name: HideLikabilityGauge
-      label: 好感度ゲージを非表示
+      label: ラブカウンター(好感度ゲージ)を常時非表示
       type: bool
       default: false
-      description: |
-        ラブカウンター（好感度ゲージ）を常時非表示にします。
-        F9 パネルまたはこのコンフィグで ON/OFF できます。
       ui:
         kind: toggle
 
@@ -727,4 +691,4 @@
       label: 早送りホールド
       type: hotkey
       defaultKey: G
-      description: 押している間のみ時間を早送りします。倍率は FastForwardSpeed で設定できます。
+      description: 押している間のみ有効。倍率は FastForwardSpeed で設定。
