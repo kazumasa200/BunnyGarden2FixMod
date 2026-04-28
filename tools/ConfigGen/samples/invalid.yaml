@@ -1,0 +1,45 @@
+# 各エントリは Validator が catch すべきエラーケース。
+# 手動検証用: dotnet run --project tools/ConfigGen/ConfigGen.csproj -- --yaml samples/invalid.yaml --out /tmp/x.cs
+# 期待: ConfigGen が exit 2 で複数エラーを表示する。
+
+- section: Bar
+  configs:
+    - name: Foo
+      label: dup test (1)
+      type: bool
+      default: false
+      description: dup test
+
+    - name: Foo
+      label: dup test (2)
+      type: int
+      default: 1000
+      range: [0, 100]
+      description: should fail (dup name + default out of range)
+      ui:
+        kind: slider
+        step: 1
+        format: '{0}'
+
+- section: Hotkey
+  configs:
+    - name: BadEnum
+      label: invalid enum default
+      type: enum
+      enumType: Some.Type
+      default: 123abc
+      description: invalid enum default (not an identifier)
+
+    - name: MissingLabel
+      type: bool
+      default: false
+      description: should fail (label required)
+
+    - name: LegacyLabel
+      label: top-level label
+      type: bool
+      default: false
+      description: should fail (ui.label is no longer supported)
+      ui:
+        kind: toggle
+        label: legacy label here

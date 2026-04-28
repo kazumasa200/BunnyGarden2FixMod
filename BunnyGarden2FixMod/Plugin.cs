@@ -17,124 +17,98 @@ using UnityEngine.SceneManagement;
 
 namespace BunnyGarden2FixMod;
 
-public enum AntiAliasingType
-{
-    Off,
-    FXAA,
-    TAA,
-    MSAA2x,
-    MSAA4x,
-    MSAA8x,
-}
-
-/// <summary>チェキ高解像度版を ExSave に保存する際の画像フォーマット。</summary>
-public enum ChekiImageFormat
-{
-    /// <summary>PNG 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚</summary>
-    PNG,
-
-    /// <summary>JPG 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚</summary>
-    JPG,
-}
-
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class Plugin : BaseUnityPlugin
 {
     private static Plugin Instance;
 
+    // ── Config: Configs.yaml → Generated/Configs.g.cs に転送 ──
+
     // Animation
-    public static ConfigEntry<bool> ConfigMoreTalkReactions;
-    public static ConfigEntry<bool> ConfigFixAnimationClipping;
+    public static ConfigEntry<bool> ConfigMoreTalkReactions   => Configs.MoreTalkReactions;
+    public static ConfigEntry<bool> ConfigFixAnimationClipping => Configs.FixAnimationClipping;
 
     // Appearance
-    public static ConfigEntry<bool> ConfigDisableStockings;
+    public static ConfigEntry<bool> ConfigDisableStockings => Configs.DisableStockings;
 
     // Camera
-    public static ConfigEntry<float> ConfigSensitivity;
-
-    public static ConfigEntry<float> ConfigSpeed;
-    public static ConfigEntry<float> ConfigFastSpeed;
-    public static ConfigEntry<float> ConfigSlowSpeed;
-    public static ConfigEntry<bool> ConfigHideGameUiInFreeCam;
-    public static ConfigEntry<bool> ConfigControllerEnabled;
-    public static HotkeyConfig ConfigFixedFreeCamToggle;
-    public static HotkeyConfig ConfigFreeCamToggle;
+    public static ConfigEntry<float> ConfigSensitivity => Configs.Sensitivity;
+    public static ConfigEntry<float> ConfigSpeed      => Configs.Speed;
+    public static ConfigEntry<float> ConfigFastSpeed  => Configs.FastSpeed;
+    public static ConfigEntry<float> ConfigSlowSpeed  => Configs.SlowSpeed;
+    public static ConfigEntry<bool>  ConfigHideGameUiInFreeCam => Configs.HideGameUiInFreeCam;
+    public static ConfigEntry<bool>  ConfigControllerEnabled   => Configs.ControllerEnabled;
+    public static HotkeyConfig       ConfigFreeCamToggle       => Configs.FreeCamToggle;
+    public static HotkeyConfig       ConfigFixedFreeCamToggle  => Configs.FixedFreeCamToggle;
 
     // Cheat
-    public static ConfigEntry<bool> ConfigCastOrder;
-
-    public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled;
-    public static ConfigEntry<bool> ConfigCheatLikability;
-    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled;
+    public static ConfigEntry<bool> ConfigCastOrder              => Configs.CastOrder;
+    public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled => Configs.GambleAlwaysWinEnabled;
+    public static ConfigEntry<bool> ConfigCheatLikability        => Configs.CheatLikability;
+    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled => Configs.UltimateSurvivorEnabled;
 
     // Cheki
-    public static ConfigEntry<bool> ConfigChekiHighResEnabled;
-
-    public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat;
-    public static ConfigEntry<int> ConfigChekiJpgQuality;
-    public static ConfigEntry<int> ConfigChekiSize;
+    public static ConfigEntry<bool>             ConfigChekiHighResEnabled => Configs.ChekiHighResEnabled;
+    public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat         => Configs.ChekiFormat;
+    public static ConfigEntry<int>              ConfigChekiJpgQuality     => Configs.ChekiJpgQuality;
+    public static ConfigEntry<int>              ConfigChekiSize           => Configs.ChekiSize;
 
     // Conversation
-    public static ConfigEntry<bool> ConfigContinueVoiceOnTap;
+    public static ConfigEntry<bool> ConfigContinueVoiceOnTap => Configs.ContinueVoiceOnTap;
 
     // CostumeChanger
-    public static ConfigEntry<bool> ConfigCostumeChangerEnabled;
-
-    public static HotkeyConfig ConfigCostumeChangerShow;
-    public static ConfigEntry<bool> ConfigRespectGameCostumeOverride;
-    public static ConfigEntry<bool> ConfigSwimWearStocking;
-    public static ConfigEntry<float> ConfigStockingOffset;
-    public static ConfigEntry<float> ConfigStockingSkinShrink;
-    public static ConfigEntry<float> ConfigStockingSkinFalloffRadius;
-    public static ConfigEntry<float> ConfigStockingShapeFalloffRadius;
-    public static ConfigEntry<bool> ConfigPantiesAltSlotMatch;
-    public static ConfigEntry<bool> ConfigPantiesAltSlotOverrideOnly;
+    public static ConfigEntry<bool>  ConfigCostumeChangerEnabled      => Configs.CostumeChangerEnabled;
+    public static HotkeyConfig       ConfigCostumeChangerShow         => Configs.CostumeChangerShow;
+    public static ConfigEntry<bool>  ConfigRespectGameCostumeOverride => Configs.RespectGameCostumeOverride;
+    public static ConfigEntry<bool>  ConfigSwimWearStocking           => Configs.SwimWearStocking;
+    public static ConfigEntry<float> ConfigStockingOffset             => Configs.StockingOffset;
+    public static ConfigEntry<float> ConfigStockingSkinShrink         => Configs.StockingSkinShrink;
+    public static ConfigEntry<float> ConfigStockingSkinFalloffRadius  => Configs.StockingSkinFalloffRadius;
+    public static ConfigEntry<float> ConfigStockingShapeFalloffRadius => Configs.StockingShapeFalloffRadius;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotMatch        => Configs.PantiesAltSlotMatch;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotOverrideOnly => Configs.PantiesAltSlotOverrideOnly;
 
     // Ending
-    public static ConfigEntry<bool> ConfigEndingChekiSlideshow;
+    public static ConfigEntry<bool> ConfigEndingChekiSlideshow => Configs.EndingChekiSlideshow;
 
     // General
-    public static HotkeyConfig ConfigCaptureScreenshot;
-    public static ConfigEntry<int> ConfigScreenshotScale;
-
-    public static ConfigEntry<bool> ConfigSteamLaunchCheck;
-    public static HotkeyConfig ConfigOverlayToggle;
+    public static HotkeyConfig      ConfigOverlayToggle     => Configs.OverlayToggle;
+    public static HotkeyConfig      ConfigCaptureScreenshot => Configs.CaptureScreenshot;
+    public static ConfigEntry<int>  ConfigScreenshotScale   => Configs.ScreenshotScale;
+    public static ConfigEntry<bool> ConfigSteamLaunchCheck  => Configs.SteamLaunchCheck;
 
     // Graphics
-    public static ConfigEntry<int> ConfigWidth;
+    public static ConfigEntry<int>              ConfigWidth                      => Configs.Width;
+    public static ConfigEntry<int>              ConfigHeight                     => Configs.Height;
+    public static ConfigEntry<int>              ConfigExtraWidth                 => Configs.ExtraWidth;
+    public static ConfigEntry<int>              ConfigExtraHeight                => Configs.ExtraHeight;
+    public static ConfigEntry<int>              ConfigFrameRate                  => Configs.FrameRate;
+    public static ConfigEntry<bool>             ConfigForceVSync                 => Configs.ForceVSync;
+    public static ConfigEntry<bool>             ConfigForceExclusiveFullScreen   => Configs.ForceExclusiveFullScreen;
+    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing               => Configs.AntiAliasing;
+    public static ConfigEntry<bool>             ConfigDisableChromaticAberration => Configs.DisableChromaticAberration;
+    public static ConfigEntry<bool>             ConfigDisableDepthOfField        => Configs.DisableDepthOfField;
 
-    public static ConfigEntry<int> ConfigHeight;
-    public static ConfigEntry<int> ConfigExtraWidth;
-    public static ConfigEntry<int> ConfigExtraHeight;
-    public static ConfigEntry<int> ConfigFrameRate;
-    public static ConfigEntry<bool> ConfigFullscreenUltrawideEnabled;
-    public static ConfigEntry<bool> ConfigForceVSync;
-    public static ConfigEntry<bool> ConfigForceExclusiveFullScreen;
-    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing;
-    public static ConfigEntry<bool> ConfigDisableChromaticAberration;
-    public static ConfigEntry<bool> ConfigDisableDepthOfField;
+    // Resolution
+    public static ConfigEntry<bool> ConfigFullscreenUltrawideEnabled => Configs.FullscreenUltrawideEnabled;
 
     // HideUI
-    public static ConfigEntry<bool> ConfigHideUIEnabled;
-
-    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes;
-    public static ConfigEntry<bool> ConfigHideButtonGuide;
-    public static ConfigEntry<bool> ConfigHideLikabilityGauge;
+    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes => Configs.HideMoneyInSpecialScenes;
+    public static ConfigEntry<bool> ConfigHideButtonGuide          => Configs.HideButtonGuide;
+    public static ConfigEntry<bool> ConfigHideLikabilityGauge      => Configs.HideLikabilityGauge;
 
     // Input
-    public static ConfigEntry<float> ConfigControllerTriggerDeadzone;
-
-    public static ConfigEntry<ControllerButton> ConfigControllerModifier;
+    public static ConfigEntry<float>            ConfigControllerTriggerDeadzone => Configs.ControllerTriggerDeadzone;
+    public static ConfigEntry<ControllerButton> ConfigControllerModifier        => Configs.ControllerModifier;
 
     // Internal
-    public static ConfigEntry<bool> ConfigExtraActive;
+    public static ConfigEntry<bool> ConfigExtraActive => Configs.ExtraActive;
 
     // Time
-    public static HotkeyConfig ConfigTimeStopToggle;
-
-    public static HotkeyConfig ConfigFrameAdvance;
-    public static HotkeyConfig ConfigFastForward;
-    public static ConfigEntry<float> ConfigFastForwardSpeed;
+    public static HotkeyConfig       ConfigTimeStopToggle   => Configs.TimeStopToggle;
+    public static HotkeyConfig       ConfigFrameAdvance     => Configs.FrameAdvance;
+    public static HotkeyConfig       ConfigFastForward      => Configs.FastForward;
+    public static ConfigEntry<float> ConfigFastForwardSpeed => Configs.FastForwardSpeed;
 
     internal static event Action GUICallback;
 
@@ -156,424 +130,11 @@ public class Plugin : BaseUnityPlugin
         PatchLogger.Initialize(Logger);
         ConfigMigration.Migrate(Config);
 
-        ConfigWidth = Config.Bind(
-            "Graphics",
-            "Width",
-            1920,
-            "解像度の幅（横）を指定します");
+        // YAML 駆動 Config エントリ（source of truth: Configs.yaml → Generated/Configs.g.cs）。
+        // Plugin.ConfigX は Configs.X への expression-bodied プロパティで転送される。
+        // HotkeyConfig (KB+Pad 統合型) も BindAll 内で初期化される。
+        Configs.BindAll(Config);
 
-        ConfigHeight = Config.Bind(
-            "Graphics",
-            "Height",
-            1080,
-            "解像度の高さ（縦）を指定します");
-
-        ConfigExtraWidth = Config.Bind(
-            "Graphics",
-            "ExtraWidth",
-            2560,
-            "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。\n" +
-            "既定 2560（WQHD）。16:9 を推奨。");
-
-        ConfigExtraHeight = Config.Bind(
-            "Graphics",
-            "ExtraHeight",
-            1440,
-            "ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の高さ。\n" +
-            "既定 1440（WQHD）。16:9 を推奨。");
-
-        ConfigExtraActive = Config.Bind(
-            "Internal",
-            "ExtraActive",
-            false,
-            "【内部状態】ユーザーが OptionMenu で拡張解像度 (ExtraWidth×ExtraHeight) を\n" +
-            "選択中かどうかを記録します。ゲーム内オプション操作時に自動更新されます。\n" +
-            "手動変更しないでください。");
-
-        ConfigFullscreenUltrawideEnabled = Config.Bind(
-            "Resolution",
-            "FullscreenUltrawideEnabled",
-            false,
-            "true にすると、フルスクリーンかつゲームプレイ中のみモニターのネイティブ横長比率を使います。\n" +
-            "タイトル画面やメニュー画面は従来どおり 16:9 のままです。既定 true。");
-
-        ConfigFrameRate = Config.Bind(
-            "Graphics",
-            "FrameRate",
-            60,
-            "フレームレート上限を指定します。-1にすると上限を撤廃します。");
-
-        ConfigForceVSync = Config.Bind(
-            "Graphics",
-            "ForceVSync",
-            false,
-            "true にすると VSync を強制 ON にします（QualitySettings.vSyncCount = 1）。\n" +
-            "フレームレートがモニターのリフレッシュレートに同期され、ティアリングが防止されます。\n" +
-            "有効時は FrameRate 設定より VSync が優先されます。");
-
-        ConfigForceExclusiveFullScreen = Config.Bind(
-            "Graphics",
-            "ForceExclusiveFullScreen",
-            false,
-            "true にするとフルスクリーン時に排他的フルスクリーン（Exclusive Full Screen）を強制します。\n" +
-            "Windows DWM（デスクトップウィンドウマネージャー）をバイパスし、GPU がゲーム描画に\n" +
-            "専念するため、複数モニター接続時の FPS 低下が改善される場合があります。\n" +
-            "ウィンドウモード（1080p / 720p）では無効です。\n" +
-            "Alt+Tab でのウィンドウ切り替え時に画面が一瞬暗転する場合があります。");
-
-        ConfigAntiAliasing = Config.Bind(
-            "Graphics",
-            "AntiAliasingType",
-            AntiAliasingType.MSAA8x,
-            "アンチエイリアシングの種類を指定します。右の方ほど画質が良くなりますが、動作が重くなります。Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x");
-
-        ConfigDisableChromaticAberration = Config.Bind(
-            "Graphics",
-            "DisableChromaticAberration",
-            false,
-            "true にすると色収差エフェクト(画面の端のほうがにじんで見える効果)を無効化します。");
-
-        ConfigDisableDepthOfField = Config.Bind(
-            "Graphics",
-            "DisableDepthOfField",
-            false,
-            "true にすると被写界深度エフェクト(画面の一部がぼやける効果)を無効化します。");
-
-        ConfigSensitivity = Config.Bind(
-            "Camera",
-            "Sensitivity",
-            10f,
-            "フリーカメラのマウス感度");
-
-        ConfigSpeed = Config.Bind(
-            "Camera",
-            "Speed",
-            2.5f,
-            "フリーカメラの移動速度");
-
-        ConfigFastSpeed = Config.Bind(
-            "Camera",
-            "FastSpeed",
-            20f,
-            "フリーカメラの高速移動速度（Shift）");
-
-        ConfigSlowSpeed = Config.Bind(
-            "Camera",
-            "SlowSpeed",
-            0.5f,
-            "フリーカメラの低速移動速度（Ctrl）");
-
-        ConfigMoreTalkReactions = Config.Bind(
-            "Animation",
-            "MoreTalkReactions",
-            false,
-            "true にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります。");
-
-        ConfigFixAnimationClipping = Config.Bind(
-            "Animation",
-            "FixAnimationClipping",
-            true,
-            "true にすると、一部のモーションでキャストのスカートが体にめり込むクリッピングを修正します。");
-
-        ConfigControllerTriggerDeadzone = Config.Bind(
-            "Input",
-            "ControllerTriggerDeadzone",
-            0.35f,
-            "フリーカメラで ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合は上げてください。");
-
-        ConfigHideGameUiInFreeCam = Config.Bind(
-            "Camera",
-            "HideGameUiInFreeCam",
-            true,
-            "true にするとフリーカメラ中にゲーム本体の UI(Canvas) を非表示にします。");
-
-        ConfigControllerEnabled = Config.Bind(
-            "Camera",
-            "ControllerEnabled",
-            true,
-            "true にするとフリーカメラの操作にゲームパッド入力を使用できます。");
-
-        ConfigControllerModifier = Config.Bind(
-            "Input",
-            "ControllerModifier",
-            ControllerButton.Select,
-            "フリーカメラ・時間停止など各コントローラーホットキーを使う際に同時押しする修飾ボタン\n" +
-            "ゲーム本来のコントローラー操作との競合を防ぐために使用します。");
-
-        ConfigOverlayToggle = new HotkeyConfig(Config,
-            "General",
-            "ToggleOverlay",
-            Key.F12,
-            ControllerButton.Start,
-            "フリーカメラの操作ガイドオーバーレイの表示/非表示を切り替えるホットキー\n" +
-            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
-
-        ConfigFreeCamToggle = new HotkeyConfig(Config,
-            "Camera",
-            "ToggleFreeCam",
-            Key.F5,
-            ControllerButton.Y,
-            "フリーカメラの ON/OFF を切り替えるホットキー\n" +
-            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
-
-        ConfigFixedFreeCamToggle = new HotkeyConfig(Config,
-            "Camera",
-            "ToggleFixedFreeCam",
-            Key.F6,
-            ControllerButton.X,
-            "フリーカメラ起動中に、カメラ位置を固定する固定モードの ON/OFF を切り替えるホットキー\n" +
-            "フリーカメラ起動中のみ有効です。コントローラーの場合は ControllerModifier と同時押しが必要です。");
-
-        ConfigTimeStopToggle = new HotkeyConfig(Config,
-            "Time",
-            "ToggleTimeStop",
-            Key.T,
-            ControllerButton.B,
-            "時間停止の ON/OFF を切り替えるホットキー。フリーカメラ中の撮影構図決めなどに使用します。\n" +
-            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
-
-        ConfigFrameAdvance = new HotkeyConfig(Config,
-            "Time",
-            "FrameAdvance",
-            Key.F,
-            ControllerButton.None,
-            "時間停止中に 1 フレームだけ進めるホットキー。時間停止中のみ有効です。");
-
-        ConfigFastForward = new HotkeyConfig(Config,
-            "Time",
-            "FastForward",
-            Key.G,
-            ControllerButton.None,
-            "押している間のみ時間を早送りするホットキー（ホールド）。\n" +
-            "早送り倍率は FastForwardSpeed で設定できます。");
-
-        ConfigFastForwardSpeed = Config.Bind(
-            "Time",
-            "FastForwardSpeed",
-            10f,
-            "時間を早送りするホットキーを押している間の時間の進む速さの倍率。");
-
-        ConfigCaptureScreenshot = new HotkeyConfig(Config,
-            "General",
-            "CaptureScreenshot",
-            Key.P,
-            ControllerButton.A,
-            "フリーカメラ中にゲーム UI・MOD オーバーレイを写さずスクリーンショットを保存するホットキー。\n" +
-            "BepInEx/screenshots フォルダに PNG で保存されます。\n" +
-            "コントローラーの場合は ControllerModifier と同時押しが必要です。");
-
-        ConfigScreenshotScale = Config.Bind(
-            "General",
-            "ScreenshotScale",
-            1,
-            "スクリーンショットの解像度倍率。1 で通常のスクリーンショットと同じ解像度、2 で倍の解像度になります。");
-
-        ConfigDisableStockings = Config.Bind(
-            "Appearance",
-            "DisableStockings",
-            false,
-            "true にするとキャストのストッキングを非表示にします。");
-
-        ConfigContinueVoiceOnTap = Config.Bind(
-            "Conversation",
-            "ContinueVoiceOnTap",
-            false,
-            "true にすると会話送り（タップ／オート／スキップ）時にボイスが途中停止せず、\n" +
-            "次の台詞のボイス再生で自然に上書きされるか、ボイスが最後まで再生されるようになります。");
-
-        ConfigChekiHighResEnabled = Config.Bind(
-            "Cheki",
-            "HighResEnabled",
-            false,
-            "true にするとチェキ（撮影写真）の保存解像度を Size で指定した値に変更します。\n" +
-            "false の場合は本体既定（320x320）のままです。\n" +
-            "互換性: 本体セーブには常に 320x320 版も保存されるため、MOD を外しても主セーブは破損しません。\n" +
-            "高解像度版は MOD 独自のサイドカーファイル（主セーブ + .exmod）に格納されます。\n" +
-            "スロット対応: セーブスロット単位で高解像度データを分離管理します。\n" +
-            "  別スロットに切り替えた際も各スロットの高解像度チェキが正しく表示されます。\n" +
-            "副作用: 高解像度化でメモリ／セーブサイズが増加します（1024 時: 約 48MB/12 枚）。");
-
-        ConfigChekiSize = Config.Bind(
-            "Cheki",
-            "Size",
-            1024,
-            "チェキ画像の正方形サイズ（ピクセル）。64〜2048 にクランプされます。既定 1024。\n" +
-            "HighResEnabled が false の場合は無視されます（本体既定の 320 が使用されます）。\n" +
-            "PNG で実測 1〜5MB/枚 程度に収まります。");
-
-        ConfigChekiFormat = Config.Bind(
-            "Cheki",
-            "ImageFormat",
-            ChekiImageFormat.PNG,
-            "ExSave に格納する画像フォーマット。PNG / JPG。既定 PNG。\n" +
-            "  PNG : 無劣化圧縮。サイズ 1/5〜1/20・エンコード 50〜200ms/枚。既定\n" +
-            "  JPG : 劣化圧縮。サイズ 1/20〜1/50・エンコード 30〜100ms/枚\n" +
-            "エンコードはシャッター時に 1 度のみ走ります。\n" +
-            "読み込みは magic byte による自動判別です。");
-
-        ConfigChekiJpgQuality = Config.Bind(
-            "Cheki",
-            "JpgQuality",
-            90,
-            "ImageFormat=JPG のときの品質（1〜100）。既定 90。値が小さいほどサイズは小さく画質は粗くなります。");
-
-        ConfigEndingChekiSlideshow = Config.Bind(
-            "Ending",
-            "ChekiSlideshow",
-            true,
-            "true にするとエンディング中に撮影済みのチェキをスライドショーで表示します。");
-
-        ConfigCastOrder = Config.Bind(
-            "Cheat",
-            "CastOrder",
-            false,
-            "true にするとバーに入る前にキャストの出勤順序を変更できます。\n" +
-            "F1 キーで編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。");
-
-        ConfigUltimateSurvivorEnabled = Config.Bind(
-            "Cheat",
-            "UltimateSurvivor",
-            false,
-            "true にすると鉄骨渡りミニゲームで落下しなくなります。");
-
-        ConfigGambleAlwaysWinEnabled = Config.Bind(
-            "Cheat",
-            "GambleAlwaysWin",
-            false,
-            "true にするとギャンブルで負けなくなります。");
-
-        ConfigCheatLikability = Config.Bind(
-            "Cheat",
-            "Likability",
-            false,
-            "true にすると会話選択肢・ドリンク・フードの正解をゲーム内に表示します。\n" +
-            "【会話選択肢】選択肢テキストの先頭に記号が追加されます。\n" +
-            "  ★ : 好感度UP（正解）\n" +
-            "  ▼ : 好感度DOWN（酔い選択肢だが現在の状況では効果なし）\n" +
-            "【ドリンク・フード】アイテムの背景色が変化します。\n" +
-            "  緑 : キャストのお気に入り（AddFavoriteLikability > 0）\n" +
-            "  黄 : 今日の旬アイテム（ボーナスあり）\n" +
-            "  赤 : キャストが嫌いなもの（AddFavoriteLikability < 0）");
-
-        ConfigCostumeChangerEnabled = Config.Bind(
-            "CostumeChanger",
-            "Enabled",
-            true,
-            "true にすると衣装変更 UI とパッチを有効化します。");
-
-        ConfigCostumeChangerShow = new HotkeyConfig(Config,
-            "CostumeChanger",
-            "Show",
-            Key.F7,
-            ControllerButton.None,
-            "衣装変更 UI の表示トグルキー。");
-
-        ConfigRespectGameCostumeOverride = Config.Bind(
-            "CostumeChanger",
-            "RespectGameCostumeOverride",
-            true,
-            "trueにすると、試着室などゲームが特定の衣装を強制するシーンではMOD側の衣装変更を一時的に停止します。これを有効にすることで、ゲーム内のイベントと衣装の競合を防げます");
-
-        ConfigSteamLaunchCheck = Config.Bind(
-            "General",
-            "SteamLaunchCheck",
-            true,
-            "true にすると Steam 外から直接起動された場合に Steam 経由で自動的に再起動します。\n" +
-            "デバッグ目的でゲームフォルダに steam_appid.txt（内容: 3443820）を置くと、この機能をバイパスできます。");
-
-        ConfigHideUIEnabled = Config.Bind(
-            "HideUI",
-            "Enabled",
-            true,
-            "true にすると一部UIを非表示にできる設定パネルを有効化します。F9キーで開きます。");
-
-        ConfigHideMoneyInSpecialScenes = Config.Bind(
-            "HideUI",
-            "HideInSpecialScenes",
-            true,
-            "true にすると旅行シーンおよび特別なシーンで雰囲気をぶち壊す\n" +
-            "所持金UIを非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
-
-        ConfigHideButtonGuide = Config.Bind(
-            "HideUI",
-            "HideButtonGuide",
-            false,
-            "true にすると画面下のボタンガイド（操作ヒント）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
-
-        ConfigHideLikabilityGauge = Config.Bind(
-            "HideUI",
-            "HideLikabilityGauge",
-            false,
-            "true にするとラブカウンター（好感度ゲージ）を常時非表示にします。F9パネルまたはこのコンフィグでON/OFFできます。");
-
-        ConfigSwimWearStocking = Config.Bind(
-            "CostumeChanger",
-            "SwimWearStocking",
-            true,
-            "true にすると水着コスチューム着用中にストッキングを適用できるようになります。\n" +
-            "水着モデルには本来ストッキング用ブレンドシェイプがないため、同キャラの Uniform コスチュームからデータを移植します。");
-
-        ConfigStockingOffset = Config.Bind(
-            "CostumeChanger",
-            "StockingOffset",
-            0f,
-            new BepInEx.Configuration.ConfigDescription(
-                "水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。\n" +
-                "押し出すと水着の食い込み（タイトな演出）が再現できるが、stocking が水着を貫通する。\n" +
-                "0 で無効化。デフォルト 0 (無効)。",
-                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
-
-        ConfigStockingSkinShrink = Config.Bind(
-            "CostumeChanger",
-            "StockingSkinShrink",
-            0.001f,
-            new BepInEx.Configuration.ConfigDescription(
-                "水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に\n" +
-                "保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を\n" +
-                "stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込む。\n" +
-                "押し込むと、肌の貫通はなくなるが、水着の食い込み（タイトな演出）が再現できない。\n" +
-                "0 で無効化。デフォルト 0.001 (1mm)。",
-                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
-
-        ConfigStockingSkinFalloffRadius = Config.Bind(
-            "CostumeChanger",
-            "StockingSkinFalloffRadius",
-            0.001f,
-            new BepInEx.Configuration.ConfigDescription(
-                "肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n" +
-                "距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぐ。0 で無効化（一様押し込み）。\n" +
-                "デフォルト 0.001 (1mm)。",
-                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
-
-        ConfigStockingShapeFalloffRadius = Config.Bind(
-            "CostumeChanger",
-            "StockingShapeFalloffRadius",
-            0.001f,
-            new BepInEx.Configuration.ConfigDescription(
-                "skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、\n" +
-                "隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n" +
-                "距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消する。\n" +
-                "0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。",
-                new BepInEx.Configuration.AcceptableValueRange<float>(0f, 0.01f)));
-
-        ConfigPantiesAltSlotMatch = Config.Bind(
-            "CostumeChanger",
-            "PantiesAltSlotMatch",
-            true,
-            "true にすると水着 / バニーガール衣装でも Panties 切替が反映されるようになります。\n" +
-            "ゲーム本体は通常コス専用の m_panties_[a-g]_[0-9]+_ 命名にしか反応しないため、\n" +
-            "MOD 側で m_panties_skin_* (水着/バニー用スロット) もフォールバック検出します。\n" +
-            "差し替え後の Material は通常コス用テクスチャなので、UV 不一致で見た目が崩れた場合は false で無効化できます。");
-
-        ConfigPantiesAltSlotOverrideOnly = Config.Bind(
-            "CostumeChanger",
-            "PantiesAltSlotOverrideOnly",
-            true,
-            "PantiesAltSlotMatch の適用範囲を制限します。\n" +
-            "true  : MOD UI で Panties を明示的に選択（override 設定）したキャラのみフォールバックを適用。\n" +
-            "        他キャラ・他シーンの ReloadPanties はバニラ挙動のまま（水着/バニーで肌色 panty が表示）。\n" +
-            "false : 常に適用。ゲーム本体由来の ReloadPanties 呼び出しでも水着/バニーに通常 panty が出る。\n" +
-            "PantiesAltSlotMatch=false のときはこの設定は無視されます。");
 
         // Steam 外起動を検出した場合は Steam 経由で再起動して即終了
         if (ConfigSteamLaunchCheck.Value && SteamLaunchChecker.CheckAndRelaunchIfNeeded())
@@ -589,7 +150,8 @@ public class Plugin : BaseUnityPlugin
         Patches.CameraZoomPatch.Initialize(gameObject);
         Patches.CastOrderUI.CastOrderController.Initialize(gameObject);
         Patches.CostumeChanger.CostumeChangerPatch.Initialize(gameObject);
-        Patches.HideMoneyUI.HideMoneyUIController.Initialize(gameObject);
+        Patches.Settings.SettingsController.Initialize(gameObject);
+        Patches.HideUI.HideUIRuntime.Initialize(gameObject);
         Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
         freeCamera = Patches.FreeCamera.FreeCameraManager.Initialize(gameObject);
         Patches.TimeController.Initialize(gameObject);
@@ -813,7 +375,7 @@ public class SuppressClickOverWardrobePatch
     private static bool Prefix(ref bool __result)
     {
         if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
-            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
+            !Patches.Settings.SettingsController.ShouldSuppressMouseInput()) return true;
         __result = false;
         return false;
     }
@@ -835,7 +397,7 @@ public class SuppressScrollOverWardrobePatch
     private static bool Prefix(ref float __result)
     {
         if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
-            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
+            !Patches.Settings.SettingsController.ShouldSuppressMouseInput()) return true;
         __result = 0f;
         return false;
     }
@@ -868,7 +430,7 @@ public class SuppressKeyRepeatOverWardrobePatch
     private static bool Prefix(ref bool __result)
     {
         if (!Patches.CostumeChanger.UI.CostumePickerController.ShouldSuppressGameInput() &&
-            !Patches.HideMoneyUI.HideMoneyUIController.ShouldSuppressMouseInput()) return true;
+            !Patches.Settings.SettingsController.ShouldSuppressMouseInput()) return true;
         __result = false;
         return false;
     }

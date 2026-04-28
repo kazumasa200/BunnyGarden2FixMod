@@ -36,11 +36,22 @@ namespace BunnyGarden2FixMod.Patches;
 public class VSyncPatch
 {
     private static void Postfix()
-    {
-        if (!Plugin.ConfigForceVSync.Value) return;
+        => LiveConfigBinding.BindAndApply(Plugin.ConfigForceVSync, Apply);
 
-        QualitySettings.vSyncCount = 1;
-        PatchLogger.LogInfo("[DisplaySettings] VSync 強制 ON を適用しました (vSyncCount=1)");
+    private static void Apply()
+    {
+        if (Plugin.ConfigForceVSync.Value)
+        {
+            QualitySettings.vSyncCount = 1;
+            PatchLogger.LogInfo("[DisplaySettings] VSync 強制 ON を適用しました (vSyncCount=1)");
+        }
+        else
+        {
+            // ON → OFF 切替時に vSyncCount を Unity 既定の 0 へ戻し、
+            // Application.targetFrameRate に主導権を返す。
+            QualitySettings.vSyncCount = 0;
+            PatchLogger.LogInfo("[DisplaySettings] VSync 強制を解除しました (vSyncCount=0)");
+        }
     }
 }
 

@@ -20,6 +20,8 @@ public static class UITRuntime
         settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
         settings.referenceResolution = new Vector2Int(1920, 1080);
         settings.match = 0.5f;
+        // ScaleWithScreenSize の上に乗る追加倍率。Configs.UIScale はユーザー設定（既定 1.0）。
+        settings.scale = global::BunnyGarden2FixMod.Configs.UIScale.Value;
         settings.sortingOrder = sortingOrder;
 
         var existing = Resources.FindObjectsOfTypeAll<PanelSettings>()

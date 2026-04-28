@@ -1,0 +1,66 @@
+- section: Resolution
+  configs:
+    - name: Width
+      label: 解像度幅
+      type: int
+      default: 1920
+      description: 横方向のピクセル数。
+
+    - name: ExtraWidth
+      label: 拡張解像度幅
+      type: int
+      default: 2560
+      description: |
+        OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）の幅。
+        既定 2560（WQHD）。16:9 を推奨。
+
+- section: Display
+  configs:
+    - name: FrameRate
+      label: FPS 上限
+      type: int
+      default: 60
+      range: [30, 240]
+      description: -1 で上限を撤廃します。
+
+- section: Hotkey
+  configs:
+    - name: TimeStopToggleKey
+      label: 時間停止トグルキー
+      type: enum
+      enumType: UnityEngine.InputSystem.Key
+      default: F8
+      description: フリーカメラ中の構図決めなどに使用。
+
+    - name: SampleHotkey
+      label: サンプルホットキー
+      key: Sample
+      type: hotkey
+      defaultKey: F12
+      defaultButton: Start
+      controllerDescription: ControllerModifier と同時押しが必要です。
+
+- section: Sample
+  configs:
+    - name: SampleToggle
+      label: テスト Toggle
+      type: bool
+      default: false
+      description: ConfigGen の toggle UI 出力を確認するためのサンプル。
+      ui:
+        kind: toggle
+        category: Sample
+        order: 10
+
+    - name: SampleSlider
+      label: テスト Slider
+      type: float
+      default: 0.5
+      range: [0.0, 1.0]
+      description: ConfigGen の slider UI 出力を確認するためのサンプル。
+      ui:
+        kind: slider
+        category: Sample
+        order: 20
+        step: 0.1
+        format: '{0:F2}'

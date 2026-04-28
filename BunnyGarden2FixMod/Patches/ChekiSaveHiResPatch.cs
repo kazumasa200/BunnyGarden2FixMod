@@ -141,10 +141,9 @@ public static class ChekiSaveHiResPatch
             switch (format)
             {
                 case ChekiImageFormat.JPG:
-                    {
-                        int quality = Mathf.Clamp(Plugin.ConfigChekiJpgQuality.Value, 1, 100);
-                        return ImageConversion.EncodeToJPG(tex, quality);
-                    }
+                    // ConfigChekiJpgQuality は YAML range [1,100] により BepInEx が起動時に
+                    // AcceptableValueRange でクランプ済みのため、ここで Mathf.Clamp は不要。
+                    return ImageConversion.EncodeToJPG(tex, Plugin.ConfigChekiJpgQuality.Value);
 
                 case ChekiImageFormat.PNG:
                 default:

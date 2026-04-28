@@ -61,6 +61,8 @@ public class CastOrderView : MonoBehaviour
     public void Show(RenderData data)
     {
         EnsureBuilt();
+        // PanelSettings.scale は EnsureBuilt() 時の値を保持するため、開く度に Configs.UIScale を反映する。
+        if (m_settings != null) m_settings.scale = Configs.UIScale.Value;
         m_panel.style.display = DisplayStyle.Flex;
         Render(data);
     }

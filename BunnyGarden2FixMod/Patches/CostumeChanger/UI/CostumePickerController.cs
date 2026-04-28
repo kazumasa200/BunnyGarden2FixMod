@@ -106,11 +106,13 @@ public class CostumePickerController : MonoBehaviour
         m_view.OnBackClicked += HandleBackClicked;
         m_view.OnResetAllClicked += HandleResetAllClicked;
         m_view.OnUnlockAllClicked += HandleUnlockAllClicked;
-        m_view.OnStockingOffsetChanged += HandleStockingOffsetChanged;
-        m_view.OnStockingSkinShrinkChanged += HandleStockingSkinShrinkChanged;
-        m_view.OnStockingFalloffChanged += HandleStockingFalloffChanged;
-        m_view.OnStockingShapeFalloffChanged += HandleStockingShapeFalloffChanged;
-        m_view.OnTuneResetClicked += HandleTuneResetClicked;
+
+        // F9 設定パネル等から Stocking 系 Config が変更された場合、picker open 中なら即時メッシュ反映する。
+        // ShapeFalloff は blendShape 全 frame の再構築を伴って重いので Update() でデバウンスする。
+        if (Plugin.ConfigStockingOffset != null) Plugin.ConfigStockingOffset.SettingChanged += OnStockingTuneChanged;
+        if (Plugin.ConfigStockingSkinShrink != null) Plugin.ConfigStockingSkinShrink.SettingChanged += OnStockingTuneChanged;
+        if (Plugin.ConfigStockingSkinFalloffRadius != null) Plugin.ConfigStockingSkinFalloffRadius.SettingChanged += OnStockingTuneChanged;
+        if (Plugin.ConfigStockingShapeFalloffRadius != null) Plugin.ConfigStockingShapeFalloffRadius.SettingChanged += OnStockingShapeFalloffChanged;
     }
 
     private void OnDestroy()
@@ -125,14 +127,32 @@ public class CostumePickerController : MonoBehaviour
             m_view.OnBackClicked -= HandleBackClicked;
             m_view.OnResetAllClicked -= HandleResetAllClicked;
             m_view.OnUnlockAllClicked -= HandleUnlockAllClicked;
-            m_view.OnStockingOffsetChanged -= HandleStockingOffsetChanged;
-            m_view.OnStockingSkinShrinkChanged -= HandleStockingSkinShrinkChanged;
-            m_view.OnStockingFalloffChanged -= HandleStockingFalloffChanged;
-            m_view.OnStockingShapeFalloffChanged -= HandleStockingShapeFalloffChanged;
-            m_view.OnTuneResetClicked -= HandleTuneResetClicked;
         }
+        if (Plugin.ConfigStockingOffset != null) Plugin.ConfigStockingOffset.SettingChanged -= OnStockingTuneChanged;
+        if (Plugin.ConfigStockingSkinShrink != null) Plugin.ConfigStockingSkinShrink.SettingChanged -= OnStockingTuneChanged;
+        if (Plugin.ConfigStockingSkinFalloffRadius != null) Plugin.ConfigStockingSkinFalloffRadius.SettingChanged -= OnStockingTuneChanged;
+        if (Plugin.ConfigStockingShapeFalloffRadius != null) Plugin.ConfigStockingShapeFalloffRadius.SettingChanged -= OnStockingShapeFalloffChanged;
         if (Instance == this) Instance = null;
     }
+
+    /// <summary>Offset/SkinShrink/SkinFalloffRadius は SettingChanged を即時反映する。</summary>
+    private void OnStockingTuneChanged(object _, System.EventArgs __)
+    {
+        // picker 非表示中は ReapplyStockingForTune が no-op になる。
+        // 次回 picker open 時の RebuildItemsFor / ApplyStockings 経由で値が反映されるため、ここで何もしない。
+        if (m_view == null || !m_view.IsShown) return;
+        ReapplyStockingForTune();
+    }
+
+    /// <summary>ShapeFalloff の reapply は blendShape 全 frame 再構築を伴って重いため、デバウンスする。</summary>
+    private void OnStockingShapeFalloffChanged(object _, System.EventArgs __)
+    {
+        if (m_view == null || !m_view.IsShown) return;
+        m_shapeFalloffDirtyAtUnscaledTime = Time.unscaledTime + ShapeFalloffDebounceSec;
+    }
+
+    private const float ShapeFalloffDebounceSec = 0.2f;
+    private float m_shapeFalloffDirtyAtUnscaledTime = -1f;
 
     private void HandleTabClicked(int index)
     {
@@ -172,6 +192,12 @@ public class CostumePickerController : MonoBehaviour
 
     private void Update()
     {
+        if (m_shapeFalloffDirtyAtUnscaledTime > 0f && Time.unscaledTime >= m_shapeFalloffDirtyAtUnscaledTime)
+        {
+            m_shapeFalloffDirtyAtUnscaledTime = -1f;
+            ReapplyStockingForTune();
+        }
+
         if (Plugin.ConfigCostumeChangerEnabled == null) return;
         if (!Plugin.ConfigCostumeChangerEnabled.Value) return;
         // Awake で AddComponent<CostumePickerView>() が何らかの理由（例外）で失敗したケース防御。
@@ -1123,70 +1149,7 @@ public class CostumePickerController : MonoBehaviour
             UnlockAllEnabled = IsEndingClearedFor(m_activeChar),
             VisibleCasts = m_visibleCasts.AsReadOnly(),
             VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
-            StockingOffset = Plugin.ConfigStockingOffset?.Value ?? 0f,
-            StockingSkinShrink = Plugin.ConfigStockingSkinShrink?.Value ?? 0f,
-            StockingFalloffRadius = Plugin.ConfigStockingSkinFalloffRadius?.Value ?? 0f,
-            StockingShapeFalloffRadius = Plugin.ConfigStockingShapeFalloffRadius?.Value ?? 0f,
-            StockingOffsetMax = 0.01f,
-            StockingSkinShrinkMax = 0.01f,
-            StockingFalloffRadiusMax = 0.01f,
-            StockingShapeFalloffRadiusMax = 0.01f,
         };
-    }
-
-    private void HandleStockingOffsetChanged(float meters)
-    {
-        if (Plugin.ConfigStockingOffset == null) return;
-        Plugin.ConfigStockingOffset.Value = Mathf.Clamp(meters, 0f, 0.01f);
-        ReapplyStockingForTune();
-    }
-
-    private void HandleStockingSkinShrinkChanged(float meters)
-    {
-        if (Plugin.ConfigStockingSkinShrink == null) return;
-        Plugin.ConfigStockingSkinShrink.Value = Mathf.Clamp(meters, 0f, 0.01f);
-        ReapplyStockingForTune();
-    }
-
-    private void HandleStockingFalloffChanged(float meters)
-    {
-        if (Plugin.ConfigStockingSkinFalloffRadius == null) return;
-        Plugin.ConfigStockingSkinFalloffRadius.Value = Mathf.Clamp(meters, 0f, 0.01f);
-        ReapplyStockingForTune();
-    }
-
-    private void HandleStockingShapeFalloffChanged(float meters)
-    {
-        if (Plugin.ConfigStockingShapeFalloffRadius == null) return;
-        Plugin.ConfigStockingShapeFalloffRadius.Value = Mathf.Clamp(meters, 0f, 0.01f);
-        ReapplyStockingForTune();
-    }
-
-    /// <summary>
-    /// パンスト微調整 4 項目（Offset / SkinShrink / FalloffRadius / ShapeFalloff）を
-    /// ConfigEntry の DefaultValue にまとめて戻し、UI と適用結果を更新する。
-    /// </summary>
-    private void HandleTuneResetClicked()
-    {
-        ResetConfigToDefault(Plugin.ConfigStockingOffset);
-        ResetConfigToDefault(Plugin.ConfigStockingSkinShrink);
-        ResetConfigToDefault(Plugin.ConfigStockingSkinFalloffRadius);
-        ResetConfigToDefault(Plugin.ConfigStockingShapeFalloffRadius);
-        ReapplyStockingForTune();
-
-        // スライダーの表示も更新する（プログラム側で値を変えただけだとスライダーは追従しない）。
-        // 設定画面の slider 群は RenderSettings 経由で更新する（Render は picker タブ用）。
-        if (m_view != null) m_view.RenderSettings(BuildSettingsData());
-    }
-
-    private static void ResetConfigToDefault(BepInEx.Configuration.ConfigEntry<float> entry)
-    {
-        if (entry == null) return;
-        if (entry.DefaultValue is float def) { entry.Value = def; return; }
-        // DefaultValue が float でないと無音でリセット失敗 → ユーザーから不可視の崩れになるので Warning。
-        PatchLogger.LogWarning(
-            $"[CostumePickerController] Config '{entry.Definition?.Key}' の DefaultValue が float ではありません: " +
-            $"{entry.DefaultValue?.GetType().FullName ?? "null"}。リセットをスキップしました。");
     }
 
     /// <summary>

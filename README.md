@@ -53,211 +53,93 @@
 ## Config 設定一覧
 
 ゲームを一度起動すると `BepInEx/config/net.noeleve.BunnyGarden2FixMod.cfg` が生成されます。  
-メモ帳などで開いて以下の項目を変更してください。
-
-### [Graphics] 解像度・フレームレート・グラフィック
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `Width` | `1920` | 内部解像度の幅（横）。16:9 以外の値を入れると自動的に最大 16:9 に変換されます |
-| `Height` | `1080` | 内部解像度の高さ（縦）。同上 |
-| `ExtraWidth` | `2560` | ゲーム内 OptionMenu の DISPLAY 項目に追加される拡張解像度（ウィンドウモード）の幅。16:9 以外の値を入れると自動的に最大 16:9 に変換されます |
-| `ExtraHeight` | `1440` | 同上 高さ。既定 `2560×1440`（WQHD） |
-| `FullscreenUltrawideEnabled` | `false` | `true` にすると、フルスクリーンかつゲームプレイ中のみモニターのネイティブ横長比率を使います。タイトル画面やメニュー画面は従来どおり 16:9 のままです |
-| `FrameRate` | `60` | フレームレート上限。`-1` にすると上限を撤廃します |
-| `AntiAliasingType` | `MSAA8x` | アンチエイリアスの種類。`Off` / `FXAA` / `TAA` / `MSAA2x` / `MSAA4x` / `MSAA8x` から選択。右に行くほど高品質ですが重くなります |
-| `DisableChromaticAberration` | `false` | `true` にすると色収差エフェクト（画面の端がにじんで見える効果）を無効化します |
-| `DisableDepthOfField` | `false` | `true` にすると被写界深度エフェクト（画面の一部がぼやける効果）を無効化します |
-
-### [Animation] アニメーション
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `MoreTalkReactions` | `false` | `true` にすると、バーの背景キャスト2人の会話リアクションモーションがより多様になります |
-
-### [Camera] フリーカメラ
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `Sensitivity` | `10` | フリーカメラのマウス感度 |
-| `Speed` | `2.5` | フリーカメラの移動速度 |
-| `FastSpeed` | `20` | 高速移動速度（Shift 押しながら移動） |
-| `SlowSpeed` | `0.5` | 低速移動速度（Ctrl 押しながら移動） |
-| `HideGameUiInFreeCam` | `true` | `true` にするとフリーカメラ中はゲーム本体の UI を自動で隠します |
-| `ControllerEnabled` | `true` | `true` にするとフリーカメラの切り替えと操作にゲームパッド入力を使用します |
-| `ToggleFreeCamKey` | `F5` | フリーカメラの ON/OFF に使うキーボードキー |
-| `ToggleFreeCamButton` | `Y` | フリーカメラの ON/OFF に使うコントローラーボタン（ControllerModifier と同時押し） |
-| `ToggleFixedFreeCamKey` | `F6` | フリーカメラ固定モードの ON/OFF に使うキーボードキー |
-| `ToggleFixedFreeCamButton` | `X` | フリーカメラ固定モードの ON/OFF に使うコントローラーボタン（ControllerModifier と同時押し） |
-
-### [Input] コントローラー入力
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `ControllerModifier` | `Select` | フリーカメラ・時間停止など各コントローラーホットキーを使う際に同時押しする修飾ボタン |
-| `ControllerTriggerDeadzone` | `0.35` | ZL(LT,L2) / ZR(RT,R2) を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合は値を上げてください |
-
-### [Time] 時間操作
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `ToggleTimeStopKey` | `T` | 時間停止の ON/OFF に使うキーボードキー |
-| `ToggleTimeStopButton` | `B` | 時間停止の ON/OFF に使うコントローラーボタン（ControllerModifier と同時押し） |
-| `FrameAdvanceKey` | `F` | 時間停止中に 1 フレームだけ進めるキー（時間停止中のみ有効） |
-| `FastForwardKey` | `G` | 押している間のみ時間を早送りするキー（ホールド） |
-| `FastForwardSpeed` | `10` | 早送り時の時間の進む速さの倍率 |
-
-### [General] 全般
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `ToggleOverlayKey` | `F12` | フリーカメラ操作ガイドオーバーレイの表示/非表示に使うキーボードキー |
-| `ToggleOverlayButton` | `Start` | フリーカメラ操作ガイドオーバーレイの表示/非表示に使うコントローラーボタン（ControllerModifier と同時押し） |
-| `CaptureScreenshotKey` | `P` | フリーカメラ中にゲーム UI を写さずスクリーンショットを保存するキーボードキー |
-| `CaptureScreenshotButton` | `A` | 同上コントローラーボタン（ControllerModifier と同時押し） |
-| `ScreenshotScale` | `1` | スクリーンショットの解像度倍率 |
-| `SteamLaunchCheck` | `true` | `true` にすると Steam 外から直接起動された場合に Steam 経由で自動的に再起動します。デバッグ目的でゲームフォルダに `steam_appid.txt`（内容: `3443820`）を置くとこの機能をバイパスできます |
-
-フリーカメラは **F5** キーで ON/OFF、**F6** キーでカメラ固定のトグルができます。  
-コントローラーの既定操作は **Select + Y** で ON/OFF、フリーカメラ中は **Select + X** で固定切り替え、**Select + B** で時間停止、**Select + A** でスクリーンショット保存です。  
-オーバーレイ表示は **F12** または **Select + Start** で表示／非表示を切り替えられます。
-
-#### フリーカメラ操作
-
-| 入力 | 動作 |
-|------|------|
-| **WASD / 矢印キー** | 前後左右に移動 |
-| **Q / E** | 上下に移動 |
-| **Shift / Ctrl** | 高速移動 / 低速移動 |
-| **マウス** | 視点移動 |
-| **T** | 時間停止 ON / OFF |
-| **F** | 時間停止中に 1 フレーム進める |
-| **G** | 押している間だけ早送り（ホールド） |
-| **P** | スクリーンショットを PNG 保存（ゲーム UI・オーバーレイなし） |
-| **F12** | オーバーレイ表示 ON / OFF |
-| **左スティック** | 前後左右に移動 |
-| **右スティック** | 視点移動 |
-| **ZL / ZR** | 下 / 上に移動 |
-| **L / R** | 低速移動 / 高速移動 |
-| **Select + X** | 固定モード ON / OFF |
-| **Select + B** | 時間停止 ON / OFF |
-| **Select + A** | スクリーンショットを PNG 保存 |
-| **Select + Start** | オーバーレイ表示 ON / OFF |
-
-> **注意**: フリーカメラ中は誤操作を避けるため、既定ではゲーム本体の UI を自動で隠します。終了確認や確認ダイアログが表示された場合は、自動的に UI が復帰し、終了確認ではフリーカメラも自動解除されます。固定モード中は時間停止を有効化できません。スクリーンショットは `BepInEx/screenshots/net.noeleve.BunnyGarden2FixMod/` に PNG で保存されます。
-
-### [Appearance] 外見
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `DisableStockings` | `false` | `true` にするとキャストのストッキングを非表示にします |
-
-### [Conversation] 会話
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `ContinueVoiceOnTap` | `false` | `true` にすると会話送り時にボイスが途中で途切れなくなります。次の台詞のボイス再生で自然に上書きされるか、ボイスが最後まで再生されます |
-
-### [Cheki] チェキ高解像度保存
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `HighResEnabled` | `false` | `true` にするとチェキを高解像度で保存します。`false` の場合は本体既定（320×320）のままです |
-| `Size` | `1024` | 保存解像度（ピクセル）。64〜2048 の正方形サイズ。`HighResEnabled` が `false` の場合は無視されます |
-| `ImageFormat` | `PNG` | 保存フォーマット。`PNG`（無劣化）/ `JPG`（圧縮・小サイズ）|
-| `JpgQuality` | `90` | `ImageFormat=JPG` のときの品質（1〜100）。値が小さいほど小サイズ・低画質になります |
-
-> **注意**: 高解像度データは `BepInEx/data/net.noeleve.BunnyGarden2FixMod/` フォルダに保存されます（Steam Cloud Save の対象外）。PCを移行する場合はこのフォルダを手動でコピーしてください。MODを外しても本体セーブ（320×320版）は破損しません。
-
-### [Ending] エンディング
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `ChekiSlideshow` | `true` | `true` にするとエンディング中に撮影済みのチェキをスライドショーで表示します |
-
-### [CostumeChanger] 衣装変更
-
-F7キー（既定）でWardrobeパネルを開き、表示中のキャストの衣装・パンツ・ストッキングを自由に切り替えることができます。DLC衣装にも対応しています。
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `Enabled` | `true` | `true` にすると衣装変更UIとパッチを有効化します |
-| `ShowKey` | `F7` | 衣装変更UIの表示トグルキー。`UnityEngine.InputSystem.Key` enum名で指定（例: `F8`, `BackQuote`） |
-| `RespectGameCostumeOverride` | `true` | `true` にすると、試着室などゲームが特定の衣装を強制するシーンではMOD側の衣装変更を一時的に停止します。これを有効にすることで、ゲーム内のイベントと衣装の競合を防げます |
-
-#### 操作方法
-
-Wardrobeパネル表示中、以下のキーで操作できます。
-
-| キー | 動作 |
-|------|------|
-| **A / ←** | 左のタブに切替 |
-| **D / →** | 右のタブに切替 |
-| **W / ↑** | 選択を上に移動 |
-| **S / ↓** | 選択を下に移動 |
-| **Enter** | 選択したアイテムを適用（既に適用中なら解除） |
-| **R** | 全タブのoverrideをリセット |
-| **Esc** | パネルを閉じる |
-| **マウスクリック** | 行をクリックで即適用・解除。キャスト名をクリックで対象切替 |
-
-- パネル上のカーソル外にある操作はゲームに素通しされます
-- フィッティングルーム動作中はパネルを開けません
-- 複数のキャストが画面に表示されている場合は、パネル上のキャスト名をクリックして対象を切り替えられます
-
-### [Cheat] チート
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `CastOrder` | `false` | `true` にするとバーに入る前にキャストの出勤順序を変更できます |
-| `UltimateSurvivor` | `false` | `true` にすると鉄骨渡りミニゲームで落下しなくなります |
-| `GambleAlwaysWin` | `false` | `true` にするとギャンブルで負けなくなります（損失が発生しません） |
-| `Likability` | `false` | `true` にすると会話選択肢・ドリンク・フードの正解をゲーム内に表示します。会話選択肢は先頭に ★（好感度UP）/ ▼（好感度DOWN）が付きます。ドリンク・フードは背景色が緑（お気に入り）/ 黄（旬）/ 赤（嫌い）に変わります |
-
-#### キャスト出勤順変更の操作方法
-
-config で `CastOrder = true` にした上で、ホール画面（バーに入る前）で操作します。
-
-| キー | 動作 |
-|------|------|
-| **F1** | 編集モード 開始 / 終了 |
-| **W / ↑** | 選択を上に移動 |
-| **S / ↓** | 選択を下に移動 |
-| **1〜6** キー（1回目） | そのキャストを選択（黄色表示） |
-| **1〜6** キー（2回目） | 選択中のキャストと入れ替え |
-| **Esc** | 編集モードを終了 |
-
-- 画面右上にキャストの現在の並び順が表示されます
-- パネル下部の「**順番を固定する**」チェックボックスをクリックすると、`UpdateTodaysCastOrder` による自動並び替えを無効化できます（固定中は数字キーでの入れ替えも無効）
-- バーに入店した後は変更できません（自動的に編集モードが終了します）
-- 日付が変わった場合も自動的に編集モードが終了します
-
-### [HideUI] UI非表示設定
-
-**F9** キーで設定パネルを開き、以下をON/OFFできます。カーソルがパネル上にある間はマウスクリックや移動・視点操作などのゲーム入力はブロックされます。
-
-| キー | デフォルト | 説明 |
-|------|-----------|------|
-| `Enabled` | `true` | `true` にすると F9 キーで UI 非表示設定パネルを開けるようにします |
-| `HideInSpecialScenes` | `true` | `true` にすると旅行シーン・特別なシーンで所持金 UI を非表示にします |
-| `HideButtonGuide` | `false` | `true` にすると画面下のボタンガイド（操作ヒント）を常時非表示にします |
-| `HideLikabilityGauge` | `false` | `true` にするとラブカウンター（好感度ゲージ）を常時非表示にします |
-
-#### 操作方法（F9パネル）
-
-| キー | 動作 |
-|------|------|
-| **F9** | パネルを開く / 閉じる |
-| **行をクリック** | その設定をON/OFF |
-| **Space / Enter** | 所持金非表示設定をトグル（カーソルがパネル上にあるとき） |
-| **Esc** | パネルを閉じる |
-
-**所持金非表示が適用されるシーン:**
-- 旅行シーン
-- 恋愛に関する特別なシーン
+**全項目の一覧と詳細は [docs/configs.md](docs/configs.md) を参照してください**（[`Configs.yaml`](BunnyGarden2FixMod/Configs.yaml) から自動生成）。  
+ゲーム起動中は **F9** キーで設定パネルを開いて多くの項目を直接編集することもできます（`F4` キーでリロード）。
 
 ## Tips
 
 - **F4キー** でゲーム起動中に設定ファイルをリロードできます。設定ファイルを変更した後、ゲームを再起動する必要はありません（F4キーを押すのみ）。
+
+## 開発者向け: Config / ホットキーの追加方法
+
+新しい設定項目は [`BunnyGarden2FixMod/Configs.yaml`](BunnyGarden2FixMod/Configs.yaml) に 1 ブロック書くだけで追加できます。`tools/ConfigGen` がビルド時に YAML を読んで [`Generated/Configs.g.cs`](BunnyGarden2FixMod/Generated/Configs.g.cs) を再生成し、`Plugin.Awake` から `Configs.BindAll(Config)` で BepInEx に Bind されます（F9 パネルへの行追加もメタデータ経由で自動）。
+
+### Config エントリの追加
+
+`Configs.yaml` の該当 `section:` 配下に追記します。
+
+**bool / int / float**:
+
+```yaml
+- name: NewToggle              # 静的フィールド名 → Configs.NewToggle
+  label: 新トグルラベル         # F9 パネル表示名 + .cfg description 1 行目
+  type: bool                   # bool / int / float / enum / hotkey
+  default: false
+  description: 何をするトグルかの補足説明。
+  ui:                          # F9 パネルに行を出すなら指定（任意）
+    kind: toggle               # または slider
+```
+
+**スライダー（数値 + range）**:
+
+```yaml
+- name: NewSlider
+  label: 新スライダー
+  type: float
+  default: 0.5
+  range: [0.0, 1.0]
+  description: 説明。
+  ui:
+    kind: slider
+    step: 0.1
+    format: '{0:F2}'           # C# 書式指定
+```
+
+**enum**:
+
+```yaml
+- name: NewMode
+  label: モード選択
+  type: enum
+  enumType: BunnyGarden2FixMod.MyMode  # 完全修飾の enum 型名
+  default: ModeA
+  description: 説明。
+```
+
+### ホットキーの追加
+
+`type: hotkey` を使うと `.cfg` に **Keyboard + Gamepad の 2 entry が自動で展開** され、`HotkeyConfig` でラップされたフィールドになります。
+
+```yaml
+- name: MyToggle
+  label: 何かのトグル
+  key: ToggleSomething              # .cfg では XxxKey / XxxButton の suffix で展開
+  type: hotkey
+  defaultKey: F8                    # UnityEngine.InputSystem.Key の名前
+  defaultButton: Y                  # ControllerButton の名前（省略で keyboard のみ）
+  description: 共通説明（KB/Pad 両方に出る）。
+  controllerDescription: ControllerModifier と同時押しが必要です。  # Pad 専用注記（任意）
+```
+
+### パッチコードからの参照
+
+```csharp
+using BunnyGarden2FixMod;
+
+if (!Configs.NewToggle.Value) return;            // bool / int / float / enum
+var v = Configs.NewSlider.Value;
+if (Configs.MyToggle.IsTriggered()) { ... }      // hotkey: KB or Pad の押下
+if (Configs.MyToggle.IsHeld()) { ... }
+```
+
+### ビルド・反映
+
+```bash
+dotnet build BunnyGarden2FixMod/BunnyGarden2FixMod.csproj         # BepInEx 5
+dotnet build BunnyGarden2FixMod/BunnyGarden2FixMod.csproj -p:BepInExVersion=6  # BepInEx 6
+```
+
+MSBuild Target が YAML / ConfigGen 自身の変更を検出して `Generated/Configs.g.cs` を自動再生成します。`net.noeleve.BunnyGarden2FixMod.dll` を `BepInEx/plugins/` にコピーするとゲーム起動時に `.cfg` に新エントリが書き出され、F9 パネルにも自動で行が追加されます。
 
 ## 既知の問題点
 [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)をご確認ください。バグや改善点、ほしい機能ありましたら[Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)もしくは[X](https://x.com/kazumasa200)までお願いします。  

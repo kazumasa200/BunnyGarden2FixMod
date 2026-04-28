@@ -16,30 +16,21 @@ public class HotkeyConfig
         string key,
         Key defaultKey,
         ControllerButton defaultButton,
-        string description)
+        string label,
+        string description,
+        string controllerDescription = "")
     {
-        KeyConfig = config.Bind(section, KeyboardKey(key), defaultKey, $"{description} (Keyboard)");
-        ButtonConfig = config.Bind(section, GamepadKey(key), defaultButton, $"{description} (Gamepad)");
+        KeyConfig = config.Bind(section, KeyboardKey(key), defaultKey, BuildDescription(label, description, "Keyboard", null));
+        ButtonConfig = config.Bind(section, GamepadKey(key), defaultButton, BuildDescription(label, description, "Gamepad", controllerDescription));
     }
 
-    public HotkeyConfig(
-        ConfigFile config,
-        string section,
-        string key,
-        Key defaultKey,
-        string description)
+    private static string BuildDescription(string label, string description, string suffix, string? extra)
     {
-        KeyConfig = config.Bind(section, KeyboardKey(key), defaultKey, $"{description} (Keyboard)");
-    }
-
-    public HotkeyConfig(
-        ConfigFile config,
-        string section,
-        string key,
-        ControllerButton defaultButton,
-        string description)
-    {
-        ButtonConfig = config.Bind(section, GamepadKey(key), defaultButton, $"{description} (Gamepad)");
+        var sb = new System.Text.StringBuilder();
+        sb.Append(label).Append(" (").Append(suffix).Append(')');
+        if (!string.IsNullOrEmpty(description)) sb.Append('\n').Append(description);
+        if (!string.IsNullOrEmpty(extra)) sb.Append('\n').Append(extra);
+        return sb.ToString();
     }
 
     public static string GamepadKey(string key) => $"{key}Button";
