@@ -73,6 +73,8 @@ public static class Configs
     public static ConfigEntry<bool> GambleAlwaysWinEnabled;
     /// <summary>好感度ヒント表示</summary>
     public static ConfigEntry<bool> CheatLikability;
+    /// <summary>バニー系ドリンクを常時メニューに追加</summary>
+    public static ConfigEntry<bool> BunnyDrinksEnabled;
     /// <summary>衣装変更を有効化（要再起動）</summary>
     public static ConfigEntry<bool> CostumeChangerEnabled;
     /// <summary>ゲーム指定衣装を優先</summary>
@@ -314,6 +316,11 @@ F1 で編集モードを開始し、数字キー（1〜5）でキャストを選
   緑 : キャストのお気に入り（AddFavoriteLikability > 0）
   黄 : 今日の旬アイテム（ボーナスあり）
   赤 : キャストが嫌いなもの（AddFavoriteLikability < 0）");
+
+        BunnyDrinksEnabled = cfg.Bind("Cheat", "BunnyDrinksEnabled",
+            false,
+            @"バニー系ドリンクを常時メニューに追加
+BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。");
 
         CostumeChangerEnabled = cfg.Bind("CostumeChanger", "Enabled",
             true,
@@ -728,8 +735,17 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
-            Category = "CostumeChanger",
+            Category = "Cheat",
             Order    = 220,
+            Label    = "バニー系ドリンクを常時メニューに追加",
+            Desc     = "BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => BunnyDrinksEnabled),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Order    = 230,
             Label    = "衣装変更を有効化（要再起動）",
             Desc     = "衣装変更 UI とパッチを有効化します。\nOFF→ON でパッチ適用が必要なため、変更は再起動後に反映されます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -738,7 +754,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 230,
+            Order    = 240,
             Label    = "ゲーム指定衣装を優先",
             Desc     = "試着室などゲームが特定の衣装を強制するシーンでは MOD 側の衣装変更を一時停止します。\nゲーム内のイベントと衣装の競合を防げます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -747,7 +763,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 240,
+            Order    = 250,
             Label    = "ストッキング 押出し量 (m)",
             Desc     = "水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。\n押し出すと水着の食い込み（タイトな演出）が再現できますが、stocking が水着を貫通します。\n0 で無効化。デフォルト 0 (無効)。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -760,7 +776,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 250,
+            Order    = 260,
             Label    = "肌 押込み量 (m)",
             Desc     = "水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に\n保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を\nstocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。\n押し込むと肌の貫通はなくなりますが、水着の食い込み（タイトな演出）が再現できません。\n0 で無効化。デフォルト 0.001 (1mm)。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -773,7 +789,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 260,
+            Order    = 270,
             Label    = "肌押込み フェード半径 (m)",
             Desc     = "肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぎます。0 で無効化（一様押し込み）。\nデフォルト 0.001 (1mm)。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -786,7 +802,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 270,
+            Order    = 280,
             Label    = "BlendShape フェード半径 (m)",
             Desc     = "skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、\n隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。\n距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消します。\n0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -799,7 +815,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 280,
+            Order    = 290,
             Label    = "水着・バニーガール衣装でも下着を表示",
             Desc     = "ゲーム本体は通常衣装専用の panties slot にしか反応しないため、Mod 側で水着/バニー用スロットもフォールバック検出します。\n差し替え後の Material は通常衣装用テクスチャなので、UV 不一致で見た目が崩れる場合は OFF にしてください。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -808,7 +824,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 290,
+            Order    = 300,
             Label    = "Mod で下着を指定したキャストのみ適用 (OFF で全員)",
             Desc     = "ON  : Mod で下着を明示選択したキャストのみフォールバックを適用。他キャストはバニラ挙動（水着/バニーで肌色）。\nOFF : 常時全キャストに適用。ゲーム本体由来の ReloadPanties でも水着/バニーに通常下着が出ます。\nPantiesAltSlotMatch=OFF のときはこの設定は無視されます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -817,7 +833,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "CostumeChanger",
-            Order    = 300,
+            Order    = 310,
             Label    = "キャストのストッキング(パンスト)を非表示",
             Desc     = "",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -826,7 +842,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "General",
-            Order    = 310,
+            Order    = 320,
             Label    = "MOD UI スケール",
             Desc     = "Mod 提供の UI（衣装変更 / 設定パネル / 出勤順 など）の表示倍率。ゲーム本体 UI には影響しません。\n変更はパネルを閉じて開き直すと反映されます。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -839,7 +855,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "General",
-            Order    = 320,
+            Order    = 330,
             Label    = "タップでボイスを継続",
             Desc     = "会話送り（タップ／オート／スキップ）でボイスを途中停止しません。\n次の台詞のボイスで自然に上書きされるか、最後まで再生されます。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -848,7 +864,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "General",
-            Order    = 330,
+            Order    = 340,
             Label    = "コントローラ ZL/ZR デッドゾーン",
             Desc     = "ZL/ZR を押下扱いにするしきい値。トリガーの遊びやドリフトがある場合に上げてください。",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -861,7 +877,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "General",
-            Order    = 340,
+            Order    = 350,
             Label    = "スクリーンショット解像度倍率",
             Desc     = "1 で通常のスクリーンショットと同じ解像度、2 で倍の解像度になります。",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -874,7 +890,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "General",
-            Order    = 350,
+            Order    = 360,
             Label    = "早送り倍率",
             Desc     = "FastForward ホットキー押下中の Time.timeScale 倍率。",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
@@ -887,7 +903,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 360,
+            Order    = 370,
             Label    = "旅行・特別シーンで所持金 UI を非表示",
             Desc     = "対象シーン:\n  - 旅行シーン\n  - 恋愛に関する特別なシーン\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -896,7 +912,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 370,
+            Order    = 380,
             Label    = "画面下のボタンガイド(操作ヒント)を常時非表示",
             Desc     = "",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -905,7 +921,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "HideUI",
-            Order    = 380,
+            Order    = 390,
             Label    = "ラブカウンター(好感度ゲージ)を常時非表示",
             Desc     = "",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,

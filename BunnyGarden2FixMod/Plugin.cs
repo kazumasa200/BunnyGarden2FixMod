@@ -46,6 +46,7 @@ public class Plugin : BaseUnityPlugin
     public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled => Configs.GambleAlwaysWinEnabled;
     public static ConfigEntry<bool> ConfigCheatLikability        => Configs.CheatLikability;
     public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled => Configs.UltimateSurvivorEnabled;
+    public static ConfigEntry<bool> ConfigBunnyDrinksEnabled      => Configs.BunnyDrinksEnabled;
 
     // Cheki
     public static ConfigEntry<bool>             ConfigChekiHighResEnabled => Configs.ChekiHighResEnabled;

@@ -358,6 +358,15 @@
       ui:
         kind: toggle
 
+    - name: BunnyDrinksEnabled
+      label: バニー系ドリンクを常時メニューに追加
+      type: bool
+      default: false
+      description: BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。
+      ui:
+        kind: toggle
+
+
 - section: CostumeChanger
   name: 衣装変更
   header: |

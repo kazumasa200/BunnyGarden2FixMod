@@ -89,6 +89,7 @@
 | `UltimateSurvivor` | `false` | 鉄骨渡りミニゲームで落下しなくなる（チート） |
 | `GambleAlwaysWin` | `false` | ギャンブルで負けなくなる（チート） |
 | `Likability` | `false` | 好感度ヒント表示<br>会話選択肢・ドリンク・フードの正解をゲーム内に表示します。<br>【会話選択肢】選択肢テキストの先頭に記号が追加されます。<br>  ★ : 好感度UP（正解）<br>  ▼ : 好感度DOWN（酔い選択肢だが現在の状況では効果なし）<br>【ドリンク・フード】アイテムの背景色が変化します。<br>  緑 : キャストのお気に入り（AddFavoriteLikability > 0）<br>  黄 : 今日の旬アイテム（ボーナスあり）<br>  赤 : キャストが嫌いなもの（AddFavoriteLikability < 0） |
+| `BunnyDrinksEnabled` | `false` | バニー系ドリンクを常時メニューに追加<br>BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。 |
 
 #### キャスト出勤順変更の操作方法
 
