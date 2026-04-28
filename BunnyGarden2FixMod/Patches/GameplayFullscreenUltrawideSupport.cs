@@ -320,6 +320,7 @@ internal static class GameplayFullscreenUltrawideSupport
             if (IsInitialized(__instance) && Screen.fullScreen)
             {
                 LogStateIfChanged(__instance, "Update");
+                ApplyUiAspect();
             }
         }
     }
