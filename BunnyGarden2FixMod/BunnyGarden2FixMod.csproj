@@ -16,7 +16,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>net.noeleve.BunnyGarden2FixMod</AssemblyName>
     <Product>BunnyGarden2FixMod</Product>
-    <Version>1.0.8</Version>
+    <Version>1.0.8.1</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <RestoreAdditionalProjectSources>

@@ -9,7 +9,7 @@
 今までのBepInEx5版もひきつづき開発します！！  
 また、下で紹介している導入方法はBepInEx5のものになります！ご了承ください～  
 
-## 対応バージョン(MODバージョンv1.0.7現在)
+## 対応バージョン(MODバージョンv1.0.8.1現在)
 - ゲームバージョン1.0.2のみ対応  
 
 ## 機能
@@ -53,7 +53,9 @@
 ## Config 設定一覧
 
 ゲームを一度起動すると `BepInEx/config/net.noeleve.BunnyGarden2FixMod.cfg` が生成されます。  
-**全項目の一覧と詳細は [docs/configs.md](docs/configs.md) を参照してください**（[`Configs.yaml`](BunnyGarden2FixMod/Configs.yaml) から自動生成）。  
+
+**全項目の一覧と詳細は [こちら](docs/configs.md) を参照してください**（[`Configs.yaml`](BunnyGarden2FixMod/Configs.yaml) から自動生成）。  
+
 ゲーム起動中は **F9** キーで設定パネルを開いて多くの項目を直接編集することもできます（`F4` キーでリロード）。
 
 ## Tips
@@ -61,7 +63,8 @@
 - **F4キー** でゲーム起動中に設定ファイルをリロードできます。設定ファイルを変更した後、ゲームを再起動する必要はありません（F4キーを押すのみ）。
 
 ## 開発者向け: Config / ホットキーの追加方法
-
+<details>
+<summary>開発者向け詳細</summary>
 新しい設定項目は [`BunnyGarden2FixMod/Configs.yaml`](BunnyGarden2FixMod/Configs.yaml) に 1 ブロック書くだけで追加できます。`tools/ConfigGen` がビルド時に YAML を読んで [`Generated/Configs.g.cs`](BunnyGarden2FixMod/Generated/Configs.g.cs) を再生成し、`Plugin.Awake` から `Configs.BindAll(Config)` で BepInEx に Bind されます（F9 パネルへの行追加もメタデータ経由で自動）。
 
 ### Config エントリの追加
@@ -140,6 +143,7 @@ dotnet build BunnyGarden2FixMod/BunnyGarden2FixMod.csproj -p:BepInExVersion=6  #
 ```
 
 MSBuild Target が YAML / ConfigGen 自身の変更を検出して `Generated/Configs.g.cs` を自動再生成します。`net.noeleve.BunnyGarden2FixMod.dll` を `BepInEx/plugins/` にコピーするとゲーム起動時に `.cfg` に新エントリが書き出され、F9 パネルにも自動で行が追加されます。
+</details>
 
 ## 既知の問題点
 [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)をご確認ください。バグや改善点、ほしい機能ありましたら[Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)もしくは[X](https://x.com/kazumasa200)までお願いします。  
