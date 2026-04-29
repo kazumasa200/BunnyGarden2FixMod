@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Linq;
 using BepInEx;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using BunnyGarden2FixMod.Utils;
 using GB;
@@ -25,7 +26,6 @@ public class Plugin : BaseUnityPlugin
 
     // Animation
     public static ConfigEntry<bool> ConfigMoreTalkReactions   => Configs.MoreTalkReactions;
-    public static ConfigEntry<float> ConfigTalkReactionDuration => Configs.TalkReactionDuration;
     public static ConfigEntry<bool> ConfigFixAnimationClipping => Configs.FixAnimationClipping;
 
     // Appearance

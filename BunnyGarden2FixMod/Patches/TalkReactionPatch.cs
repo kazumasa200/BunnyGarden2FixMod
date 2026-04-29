@@ -60,10 +60,6 @@ public static class TalkReactionPatch
         if (!Configs.MoreTalkReactions.Value)
             return true;
 
-        float TalkReactionDuration = Plugin.ConfigTalkReactionDuration.Value;
-        if (TalkReactionDuration <= 0.0)
-            return true;
-
         // まずは本来のメソッドの条件にマッチさせる
         if (!__instance.m_chara.activeSelf
             || GBSystem.Instance.IsConversateChar(__instance.m_id)
@@ -93,7 +89,7 @@ public static class TalkReactionPatch
                 MOTION.DRINK_COCKTAIL => 9f,
                 MOTION.DRINK_END => 5f,
                 MOTION.IDLE => Random.Range(1f, 3f),
-                _ => TalkReactionDuration
+                _ => Random.Range(8f,15f)
             };
         }
 

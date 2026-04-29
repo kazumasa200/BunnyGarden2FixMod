@@ -210,19 +210,6 @@
       ui:
         kind: toggle
 
-    - name: TalkReactionDuration
-      label: 会話リアクションモーションの継続時間 (秒)
-      type: float
-      default: 8
-      range: [1, 15]
-      description: |
-        バーの背景キャスト 2 人の会話リアクションモーションの継続時間を秒単位で指定します。
-        値を小さくするとモーションが切り替わる頻度が上がります。
-      ui:
-        kind: slider
-        step: 1.0
-        format: '{0:F0} s'
-
     - name: FixAnimationClipping
       label: 一部モーションでスカートが体にめり込む現象を補正
       type: bool
