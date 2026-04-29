@@ -28,7 +28,13 @@ public static class TalkReactionPatch
             MOTION.TALK_REACTION,
             MOTION.KNEEL_DOWN_START,
             MOTION.BOW,
+            MOTION.TAKE_CHEAP_BOTTLE,
+            MOTION.TAKE_EXPENSIVE_BOTTLE,
+            MOTION.TAKE_VERY_HIGH_BOTTLE,
+            MOTION.SHAKER,
+            MOTION.SHAKER_HARD,
         ];
+
 
         private MOTION lastMotion = MOTION._DUMMY;
 
@@ -37,6 +43,14 @@ public static class TalkReactionPatch
             lastMotion = lastMotion switch
             {
                 MOTION.KNEEL_DOWN_START => MOTION.KNEEL_DOWN_END,
+                MOTION.TAKE_CHEAP_BOTTLE => MOTION.DRINK,
+                MOTION.TAKE_EXPENSIVE_BOTTLE => MOTION.DRINK,
+                MOTION.TAKE_VERY_HIGH_BOTTLE => MOTION.DRINK,
+                MOTION.DRINK => MOTION.DRINK_END,
+                MOTION.SHAKER => MOTION.DRINK_COCKTAIL,
+                MOTION.SHAKER_HARD => MOTION.DRINK_COCKTAIL,
+                MOTION.DRINK_COCKTAIL => MOTION.IDLE,
+                MOTION.IDLE => MOTION.TALK_REACTION,
                 _ => TalkReactionMotions[Random.RandomRangeInt(0, TalkReactionMotions.Length)]
             };
             return lastMotion;
@@ -62,9 +76,27 @@ public static class TalkReactionPatch
         if (__instance.m_talkReactionMotionTimer >= __instance.m_talkReactionMotionResetTime)
         {
             var data = __instance.m_chara.GetOrAddComponent<Data>();
-            __instance.PlayMotion(data.GetNextMotion(), 0.4f);
+            MOTION nextMotion = data.GetNextMotion();
+            __instance.PlayFacial(FACIAL.SMILE, 0f); // 表情は常に笑顔にする
+            __instance.PlayMotion(nextMotion, 0.8f);
             __instance.m_talkReactionMotionTimer = 0f;
-            __instance.m_talkReactionMotionResetTime = Random.Range(7f, 15f);
+            __instance.m_talkReactionMotionResetTime = nextMotion switch
+            {
+                MOTION.DRINK => 5.5f,
+                MOTION.DRINK_END => 5f,
+                MOTION.TAKE_CHEAP_BOTTLE => 6.5f,
+                MOTION.TAKE_EXPENSIVE_BOTTLE => 6.5f,
+                MOTION.TAKE_VERY_HIGH_BOTTLE => 6.5f,
+                MOTION.SHAKER => 9f,
+                MOTION.SHAKER_HARD => 9f,
+                MOTION.DRINK_COCKTAIL => 9f,
+                MOTION.IDLE => 2f,
+                _ => Random.Range(5f, 7f)
+            };
+            PatchLogger.LogInfo(
+                $"[{nameof(TalkReactionPatch)}] " +
+                $"TalkReactionMotion: {nextMotion}, " +
+                $"ResetTime: {__instance.m_talkReactionMotionResetTime}");
         }
 
         return false;
