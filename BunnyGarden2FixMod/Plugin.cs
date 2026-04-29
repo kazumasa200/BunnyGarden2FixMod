@@ -21,6 +21,95 @@ public class Plugin : BaseUnityPlugin
 {
     private static Plugin Instance;
 
+    // ── Config: Configs.yaml → Generated/Configs.g.cs に転送 ──
+
+    // Animation
+    public static ConfigEntry<bool> ConfigMoreTalkReactions   => Configs.MoreTalkReactions;
+    public static ConfigEntry<float> ConfigTalkReactionDuration => Configs.TalkReactionDuration;
+    public static ConfigEntry<bool> ConfigFixAnimationClipping => Configs.FixAnimationClipping;
+
+    // Appearance
+    public static ConfigEntry<bool> ConfigDisableStockings => Configs.DisableStockings;
+
+    // Camera
+    public static ConfigEntry<float> ConfigSensitivity => Configs.Sensitivity;
+    public static ConfigEntry<float> ConfigSpeed      => Configs.Speed;
+    public static ConfigEntry<float> ConfigFastSpeed  => Configs.FastSpeed;
+    public static ConfigEntry<float> ConfigSlowSpeed  => Configs.SlowSpeed;
+    public static ConfigEntry<bool>  ConfigHideGameUiInFreeCam => Configs.HideGameUiInFreeCam;
+    public static ConfigEntry<bool>  ConfigControllerEnabled   => Configs.ControllerEnabled;
+    public static HotkeyConfig       ConfigFreeCamToggle       => Configs.FreeCamToggle;
+    public static HotkeyConfig       ConfigFixedFreeCamToggle  => Configs.FixedFreeCamToggle;
+
+    // Cheat
+    public static ConfigEntry<bool> ConfigCastOrder              => Configs.CastOrder;
+    public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled => Configs.GambleAlwaysWinEnabled;
+    public static ConfigEntry<bool> ConfigCheatLikability        => Configs.CheatLikability;
+    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled => Configs.UltimateSurvivorEnabled;
+
+    // Cheki
+    public static ConfigEntry<bool>             ConfigChekiHighResEnabled => Configs.ChekiHighResEnabled;
+    public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat         => Configs.ChekiFormat;
+    public static ConfigEntry<int>              ConfigChekiJpgQuality     => Configs.ChekiJpgQuality;
+    public static ConfigEntry<int>              ConfigChekiSize           => Configs.ChekiSize;
+
+    // Conversation
+    public static ConfigEntry<bool> ConfigContinueVoiceOnTap => Configs.ContinueVoiceOnTap;
+
+    // CostumeChanger
+    public static ConfigEntry<bool>  ConfigCostumeChangerEnabled      => Configs.CostumeChangerEnabled;
+    public static HotkeyConfig       ConfigCostumeChangerShow         => Configs.CostumeChangerShow;
+    public static ConfigEntry<bool>  ConfigRespectGameCostumeOverride => Configs.RespectGameCostumeOverride;
+    public static ConfigEntry<bool>  ConfigSwimWearStocking           => Configs.SwimWearStocking;
+    public static ConfigEntry<float> ConfigStockingOffset             => Configs.StockingOffset;
+    public static ConfigEntry<float> ConfigStockingSkinShrink         => Configs.StockingSkinShrink;
+    public static ConfigEntry<float> ConfigStockingSkinFalloffRadius  => Configs.StockingSkinFalloffRadius;
+    public static ConfigEntry<float> ConfigStockingShapeFalloffRadius => Configs.StockingShapeFalloffRadius;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotMatch        => Configs.PantiesAltSlotMatch;
+    public static ConfigEntry<bool>  ConfigPantiesAltSlotOverrideOnly => Configs.PantiesAltSlotOverrideOnly;
+
+    // Ending
+    public static ConfigEntry<bool> ConfigEndingChekiSlideshow => Configs.EndingChekiSlideshow;
+
+    // General
+    public static HotkeyConfig      ConfigOverlayToggle     => Configs.OverlayToggle;
+    public static HotkeyConfig      ConfigCaptureScreenshot => Configs.CaptureScreenshot;
+    public static ConfigEntry<int>  ConfigScreenshotScale   => Configs.ScreenshotScale;
+    public static ConfigEntry<bool> ConfigSteamLaunchCheck  => Configs.SteamLaunchCheck;
+
+    // Graphics
+    public static ConfigEntry<int>              ConfigWidth                      => Configs.Width;
+    public static ConfigEntry<int>              ConfigHeight                     => Configs.Height;
+    public static ConfigEntry<int>              ConfigExtraWidth                 => Configs.ExtraWidth;
+    public static ConfigEntry<int>              ConfigExtraHeight                => Configs.ExtraHeight;
+    public static ConfigEntry<int>              ConfigFrameRate                  => Configs.FrameRate;
+    public static ConfigEntry<bool>             ConfigForceVSync                 => Configs.ForceVSync;
+    public static ConfigEntry<bool>             ConfigForceExclusiveFullScreen   => Configs.ForceExclusiveFullScreen;
+    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing               => Configs.AntiAliasing;
+    public static ConfigEntry<bool>             ConfigDisableChromaticAberration => Configs.DisableChromaticAberration;
+    public static ConfigEntry<bool>             ConfigDisableDepthOfField        => Configs.DisableDepthOfField;
+
+    // Resolution
+    public static ConfigEntry<bool> ConfigFullscreenUltrawideEnabled => Configs.FullscreenUltrawideEnabled;
+
+    // HideUI
+    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes => Configs.HideMoneyInSpecialScenes;
+    public static ConfigEntry<bool> ConfigHideButtonGuide          => Configs.HideButtonGuide;
+    public static ConfigEntry<bool> ConfigHideLikabilityGauge      => Configs.HideLikabilityGauge;
+
+    // Input
+    public static ConfigEntry<float>            ConfigControllerTriggerDeadzone => Configs.ControllerTriggerDeadzone;
+    public static ConfigEntry<ControllerButton> ConfigControllerModifier        => Configs.ControllerModifier;
+
+    // Internal
+    public static ConfigEntry<bool> ConfigExtraActive => Configs.ExtraActive;
+
+    // Time
+    public static HotkeyConfig       ConfigTimeStopToggle   => Configs.TimeStopToggle;
+    public static HotkeyConfig       ConfigFrameAdvance     => Configs.FrameAdvance;
+    public static HotkeyConfig       ConfigFastForward      => Configs.FastForward;
+    public static ConfigEntry<float> ConfigFastForwardSpeed => Configs.FastForwardSpeed;
+
     internal static event Action GUICallback;
 
     private Patches.FreeCamera.FreeCameraManager freeCamera;
