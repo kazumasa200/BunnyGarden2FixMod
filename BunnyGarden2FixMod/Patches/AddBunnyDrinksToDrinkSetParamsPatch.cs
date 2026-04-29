@@ -1,9 +1,8 @@
 using BunnyGarden2FixMod.Utils;
 using GB;
-using HarmonyLib;
 using GB.Game.Params;
+using HarmonyLib;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 
 namespace BunnyGarden2FixMod.Patches;
 
@@ -20,7 +19,7 @@ namespace BunnyGarden2FixMod.Patches;
 /// </summary>
 
 [HarmonyPatch(typeof(DrinkSetParams), nameof(DrinkSetParams.ToDrinkParamList))]
-public class AddBunnyDrinksToDrinkSetParamsPatch
+internal static class AddBunnyDrinksToDrinkSetParamsPatch
 {
     // 追加したいバニードリンクの ID (DrinkMenus)
     private static readonly DrinkMenus[] targetMenus = {
@@ -36,7 +35,7 @@ public class AddBunnyDrinksToDrinkSetParamsPatch
 
         // 全ドリンクリストを取得
         List<DrinkParam> allDrinks = GBSystem.Instance.RefDrinkParams();
-        if(allDrinks == null) return;
+        if (allDrinks == null) return;
 
         // 新しいリスト
         List<DrinkParam> newDrinkList = new List<DrinkParam>();
@@ -64,7 +63,7 @@ public class AddBunnyDrinksToDrinkSetParamsPatch
             foreach (var menuId in targetMenus)
             {
                 int idx = (int)menuId;
-                if(idx >= 0 && idx < allDrinks.Count)
+                if (idx >= 0 && idx < allDrinks.Count)
                 {
                     // バニードリンクを追加
                     newDrinkList.Add(allDrinks[idx]);
@@ -77,7 +76,7 @@ public class AddBunnyDrinksToDrinkSetParamsPatch
         foreach (var drink in __result)
         {
             // シャンパンが見つかったらその直前にバニードリンクを追加する
-            if(drink == CHAMPAGNE)
+            if (drink == CHAMPAGNE)
             {
                 InjectBunnyDrinks();
             }
@@ -85,7 +84,7 @@ public class AddBunnyDrinksToDrinkSetParamsPatch
         }
 
         // バニードリンクが追加されなければ，最後尾にバニードリンクを追加する
-        if(!injected)
+        if (!injected)
         {
             InjectBunnyDrinks();
         }
