@@ -75,7 +75,7 @@ public static class TalkReactionPatch
         {
             var data = __instance.m_chara.GetOrAddComponent<Data>();
             MOTION nextMotion = data.GetNextMotion();
-            __instance.PlayFacial(FACIAL.SMILE, 0f); // 表情は常に笑顔にする
+            __instance.PlayFacial(FACIAL.SMILE, 0.3f); // 表情を笑顔にする（0.3f でなめらかにブレンド）
             __instance.PlayMotion(nextMotion, 0.8f);
             __instance.m_talkReactionMotionTimer = 0f;
             __instance.m_talkReactionMotionResetTime = nextMotion switch
@@ -88,8 +88,8 @@ public static class TalkReactionPatch
                 MOTION.SHAKER_HARD => 9f,
                 MOTION.DRINK_COCKTAIL => 9f,
                 MOTION.DRINK_END => 5f,
-                MOTION.IDLE => Random.Range(1f, 3f),
-                _ => Random.Range(8f,15f)
+                MOTION.IDLE => Random.Range(3f, 5f), // 飲み終わり後の一息
+                _ => Random.Range(8f, 15f)
             };
         }
 
