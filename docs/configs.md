@@ -31,6 +31,7 @@
 | `SlowSpeed` | `0.5` | フリーカメラの低速移動速度 (Ctrl 押下中) |
 | `HideGameUiInFreeCam` | `true` | フリーカメラ起動中にゲーム本体の Canvas を非表示 |
 | `ControllerEnabled` | `true` | フリーカメラ操作にゲームパッド入力を使用 |
+| `UseMultipleDisplays` | `false` | フリーカメラで複数モニターを活用<br>フリーカメラの映像をサブモニターに出力します。Display 1 がゲーム本体、Display 2 以降がフリーカメラになります。<br>ウィンドウモードかサブモニターがない場合はこの設定は無視されます。 |
 
 フリーカメラは **F5** キーで ON/OFF、**F6** キーでカメラ固定のトグルができます。
 コントローラーの既定操作は **Select + Y** で ON/OFF、フリーカメラ中は **Select + X** で固定切り替え、**Select + B** で時間停止、**Select + A** でスクリーンショット保存です。

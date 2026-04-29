@@ -73,52 +73,79 @@ public class FreeCameraManager : MonoBehaviour
         freeCamObject = new GameObject("BG2FreeCam");
         var freeCam = freeCamObject.AddComponent<Camera>();
         freeCam.CopyFrom(originalCam);
+        
         freeCamObject.transform.SetPositionAndRotation(
             originalCam.transform.position,
             originalCam.transform.rotation);
 
-        // URP ポストプロセス設定をコピー（CinemachineBrain には触らない）
+        bool isMultiDisplay = Display.displays.Length > 1 && Configs.UseMultipleDisplays.Value && Screen.fullScreen;
+        if(isMultiDisplay)
+        {
+            Display.displays[1].Activate();
+            freeCam.targetDisplay = 1;
+            originalCam.enabled = true; // 元のカメラは引き続きメインディスプレイに出力
+        }
+        else
+        {
+            freeCam.targetDisplay = 0;
+            originalCam.enabled = false;
+        }
+
         CopyUrpCameraData(originalCam, freeCam);
-
         controller = freeCamObject.AddComponent<FreeCameraController>();
-        freeCamObject.gameObject.AddComponent<AudioListener>();
 
-        originalCam.enabled = false;
-        if (originalCam.TryGetComponent<AudioListener>(out var listener))
-            listener.enabled = false;
-
-        Plugin.Logger.LogInfo("フリーカメラを作成しました");
+        if(!originalCam.enabled)
+        {
+            freeCamObject.AddComponent<AudioListener>();
+        }
 
         IsActive = true;
+        IsFixed = false;
+
+        Plugin.Logger.LogInfo("フリーカメラを作成しました");
         RefreshGameUiSuppression(force: true);
     }
 
     public void Deactivate()
     {
-        if (freeCamObject != null)
+        if(freeCamObject != null)
         {
-            Destroy(freeCamObject);
+            StartCoroutine(BlackoutAndDestroyRoutine(freeCamObject));
             freeCamObject = null;
             controller = null;
         }
-
-        if (originalCam != null)
+        
+        if(originalCam != null)
         {
             originalCam.enabled = true;
-
-            if (originalCam.TryGetComponent<AudioListener>(out var listener))
+            originalCam.targetDisplay = 0;
+            if(originalCam.TryGetComponent<AudioListener>(out var listener))
                 listener.enabled = true;
         }
 
         IsActive = false;
         IsFixed = false;
         RefreshGameUiSuppression(force: true);
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
         Plugin.Logger.LogInfo($"フリーカメラを解除しました");
     }
+    private System.Collections.IEnumerator BlackoutAndDestroyRoutine(GameObject targetCamObject)
+    {
+        // カメラのクリアフラグを「Solid Color」、背景色を黒、カリングマスクを0に設定して、画面全体を黒で塗りつぶす
+        var cam = targetCamObject.GetComponent<Camera>();
+        if (cam != null)
+        {
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.cullingMask = 0;
 
+            yield return new WaitForEndOfFrame();
+        }
+        Destroy(targetCamObject);
+    }
     private static void CopyUrpCameraData(Camera src, Camera dst)
     {
         var srcData = src.GetUniversalAdditionalCameraData();
@@ -138,7 +165,8 @@ public class FreeCameraManager : MonoBehaviour
 
     public void RefreshGameUiSuppression(bool force = false)
     {
-        bool shouldSuppress = IsActive && !IsFixed && !ShouldExposeGameUiDuringFreeCam();
+        bool isMultiDisplay = Display.displays.Length > 1 && Configs.UseMultipleDisplays.Value && Screen.fullScreen;
+        bool shouldSuppress = !isMultiDisplay && IsActive && !IsFixed && !ShouldExposeGameUiDuringFreeCam();
         if (!force && shouldSuppress == isGameUiSuppressed)
             return;
 

@@ -200,6 +200,16 @@
       ui:
         kind: toggle
 
+    - name: UseMultipleDisplays
+      label: フリーカメラで複数モニターを活用
+      type: bool
+      default: false
+      description: |
+        フリーカメラの映像をサブモニターに出力します。Display 1 がゲーム本体、Display 2 以降がフリーカメラになります。
+        ウィンドウモードかサブモニターがない場合はこの設定は無視されます。
+      ui:
+        kind: toggle
+
 - section: Animation
   name: アニメーション
   configs:
