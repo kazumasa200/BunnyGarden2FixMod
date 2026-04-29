@@ -361,9 +361,9 @@ public class SettingsView : MonoBehaviour
         var category = m_categories[m_selectedCategoryIndex];
 
         // ── 行 ──────────────────────────────────────
+        // YAML 宣言順 (= UIEntries の配列順) がそのままカテゴリ内表示順になる。
         var entries = Configs.UIEntries
             .Where(e => e.Category == category)
-            .OrderBy(e => e.Order)
             .ToList();
 
         for (int i = 0; i < entries.Count; i++)

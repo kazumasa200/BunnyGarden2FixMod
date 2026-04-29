@@ -44,7 +44,6 @@ public class ConfigEntryDef
 public class UiDef
 {
     public string Kind { get; set; } = "";
-    public int? Order { get; set; }
     public double? Step { get; set; }
     public string? Format { get; set; }
 }

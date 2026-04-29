@@ -23,7 +23,6 @@ public enum UIKind
 public class UIEntryMeta
 {
     public string Category;
-    public int Order;
     public string Label;
     public string Desc;          // 任意。v2 以降で使用予定。Phase 2 では null 可。
     public UIKind Kind;

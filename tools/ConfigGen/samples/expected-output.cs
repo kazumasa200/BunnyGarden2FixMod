@@ -80,7 +80,6 @@ ConfigGen の slider UI 出力を確認するためのサンプル。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Sample",
-            Order    = 10,
             Label    = "テスト Toggle",
             Desc     = "ConfigGen の toggle UI 出力を確認するためのサンプル。",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
@@ -89,7 +88,6 @@ ConfigGen の slider UI 出力を確認するためのサンプル。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Sample",
-            Order    = 20,
             Label    = "テスト Slider",
             Desc     = "ConfigGen の slider UI 出力を確認するためのサンプル。",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,

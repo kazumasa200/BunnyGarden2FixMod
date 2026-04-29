@@ -117,35 +117,29 @@ public static class CodeEmitter
         sb.AppendLine("    public static System.Collections.Generic.IReadOnlyList<global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta> UIEntries { get; } = new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta[]");
         sb.AppendLine("    {");
 
-        int uiIndex = 0;
         foreach (var e in entries)
         {
             if (e.Ui == null) continue;
-            EmitOneUIEntry(sb, e, uiIndex);
-            uiIndex++;
+            EmitOneUIEntry(sb, e);
         }
 
         sb.AppendLine("    };");
         sb.AppendLine();
     }
 
-    private static void EmitOneUIEntry(StringBuilder sb, ConfigEntryDef e, int uiIndex)
+    private static void EmitOneUIEntry(StringBuilder sb, ConfigEntryDef e)
     {
         var labelLit = ToCSharpStringLiteral(e.Label);
         var categoryLit = ToCSharpStringLiteral(e.Section);
-        // ui.order 未指定時は YAML 宣言順 (UI エントリ間の) に基づく値をフォールバック。
-        // 同一 section 内の相対順序は宣言順で保たれる。
-        var order = e.Ui!.Order ?? (uiIndex * 10);
 
         sb.AppendLine("        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta");
         sb.AppendLine("        {");
         var descLit = ToCSharpStringLiteral(e.Description ?? string.Empty);
         sb.AppendLine($"            Category = {categoryLit},");
-        sb.AppendLine($"            Order    = {order},");
         sb.AppendLine($"            Label    = {labelLit},");
         sb.AppendLine($"            Desc     = {descLit},");
 
-        if (e.Ui.Kind == "toggle")
+        if (e.Ui!.Kind == "toggle")
         {
             sb.AppendLine("            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,");
             sb.AppendLine($"            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => {e.Name}),");
