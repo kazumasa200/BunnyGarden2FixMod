@@ -81,7 +81,7 @@ public static class PantiesAltSlotMatchPatch
 
     static void Postfix(CharacterHandle __instance, Material[] mat, ref int __result)
     {
-        if (!Plugin.ConfigPantiesAltSlotMatch.Value) return;
+        if (!Configs.PantiesAltSlotMatch.Value) return;
 
         bool hasId = TryGetCharID(__instance, out var charId);
         bool hasCostume = TryGetCostume(__instance, out var costume);
@@ -111,7 +111,7 @@ public static class PantiesAltSlotMatchPatch
         // Postfix の例外漏れは ReloadPanties を巻き込んで装備不適用 (可視的失敗) になるため握りつぶす。
         try
         {
-            if (Plugin.ConfigPantiesAltSlotOverrideOnly.Value)
+            if (Configs.PantiesAltSlotOverrideOnly.Value)
             {
                 if (!hasId) return;
                 if (!PantiesOverrideStore.TryGet(charId, out _, out _)) return;

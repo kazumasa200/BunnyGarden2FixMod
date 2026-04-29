@@ -18,7 +18,7 @@ public static class ChromaticAberrationPatch
 
     private static bool Prefix(ChromaticAberration __instance, ref bool __result)
     {
-        if (!Plugin.ConfigDisableChromaticAberration.Value)
+        if (!Configs.DisableChromaticAberration.Value)
             return true;
         __result = false;
         return false;

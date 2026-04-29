@@ -27,12 +27,12 @@ public class TimeController : MonoBehaviour
 
     private void Update()
     {
-        fastForward = Plugin.ConfigFastForward.IsHeld();
+        fastForward = Configs.FastForward.IsHeld();
 
-        if (Plugin.ConfigTimeStopToggle.IsTriggered())
+        if (Configs.TimeStopToggle.IsTriggered())
             stop = !stop;
 
-        if (Plugin.ConfigFrameAdvance.IsTriggered())
+        if (Configs.FrameAdvance.IsTriggered())
         {
             stop = true;
             frames = 1;
@@ -48,7 +48,7 @@ public class TimeController : MonoBehaviour
         else if (stop)
             Time.timeScale = 0f;
         else if (fastForward)
-            Time.timeScale = Plugin.ConfigFastForwardSpeed.Value;
+            Time.timeScale = Configs.FastForwardSpeed.Value;
         else if (wasControlling)
             // MOD の制御から抜けた直後の 1 フレームだけ 1f に戻す。
             // 毎フレーム 1f を書くとゲーム側の ScopedFastForward（ギャンブル演出の
@@ -65,9 +65,9 @@ public class TimeController : MonoBehaviour
             return;
 
         GUI.color = Color.cyan;
-        GUILayout.Label($"Time Stop: ON ({Plugin.ConfigTimeStopToggle}=OFF)");
-        GUILayout.Label($"Frame Advance: ({Plugin.ConfigFrameAdvance})");
-        GUILayout.Label($"Fast Forward: ({Plugin.ConfigFastForward})");
+        GUILayout.Label($"Time Stop: ON ({Configs.TimeStopToggle}=OFF)");
+        GUILayout.Label($"Frame Advance: ({Configs.FrameAdvance})");
+        GUILayout.Label($"Fast Forward: ({Configs.FastForward})");
         GUI.color = Color.white;
     }
 }

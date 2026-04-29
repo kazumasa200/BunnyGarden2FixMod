@@ -72,7 +72,7 @@ public class CostumePickerController : MonoBehaviour
     /// <summary>ゲーム側入力（GBInput）をパッチで抑制すべき状態かを返す。</summary>
     public static bool ShouldSuppressGameInput()
     {
-        if (Plugin.ConfigCostumeChangerEnabled?.Value != true) return false;
+        if (Configs.CostumeChangerEnabled?.Value != true) return false;
         // ConfirmDialog 表示中は抑制解除（ダイアログが GBInput を読むため）
         if (ConfirmDialogHelper.IsActive()) return false;
         var ctrl = Instance;
@@ -109,10 +109,10 @@ public class CostumePickerController : MonoBehaviour
 
         // F9 設定パネル等から Stocking 系 Config が変更された場合、picker open 中なら即時メッシュ反映する。
         // ShapeFalloff は blendShape 全 frame の再構築を伴って重いので Update() でデバウンスする。
-        if (Plugin.ConfigStockingOffset != null) Plugin.ConfigStockingOffset.SettingChanged += OnStockingTuneChanged;
-        if (Plugin.ConfigStockingSkinShrink != null) Plugin.ConfigStockingSkinShrink.SettingChanged += OnStockingTuneChanged;
-        if (Plugin.ConfigStockingSkinFalloffRadius != null) Plugin.ConfigStockingSkinFalloffRadius.SettingChanged += OnStockingTuneChanged;
-        if (Plugin.ConfigStockingShapeFalloffRadius != null) Plugin.ConfigStockingShapeFalloffRadius.SettingChanged += OnStockingShapeFalloffChanged;
+        if (Configs.StockingOffset != null) Configs.StockingOffset.SettingChanged += OnStockingTuneChanged;
+        if (Configs.StockingSkinShrink != null) Configs.StockingSkinShrink.SettingChanged += OnStockingTuneChanged;
+        if (Configs.StockingSkinFalloffRadius != null) Configs.StockingSkinFalloffRadius.SettingChanged += OnStockingTuneChanged;
+        if (Configs.StockingShapeFalloffRadius != null) Configs.StockingShapeFalloffRadius.SettingChanged += OnStockingShapeFalloffChanged;
     }
 
     private void OnDestroy()
@@ -128,10 +128,10 @@ public class CostumePickerController : MonoBehaviour
             m_view.OnResetAllClicked -= HandleResetAllClicked;
             m_view.OnUnlockAllClicked -= HandleUnlockAllClicked;
         }
-        if (Plugin.ConfigStockingOffset != null) Plugin.ConfigStockingOffset.SettingChanged -= OnStockingTuneChanged;
-        if (Plugin.ConfigStockingSkinShrink != null) Plugin.ConfigStockingSkinShrink.SettingChanged -= OnStockingTuneChanged;
-        if (Plugin.ConfigStockingSkinFalloffRadius != null) Plugin.ConfigStockingSkinFalloffRadius.SettingChanged -= OnStockingTuneChanged;
-        if (Plugin.ConfigStockingShapeFalloffRadius != null) Plugin.ConfigStockingShapeFalloffRadius.SettingChanged -= OnStockingShapeFalloffChanged;
+        if (Configs.StockingOffset != null) Configs.StockingOffset.SettingChanged -= OnStockingTuneChanged;
+        if (Configs.StockingSkinShrink != null) Configs.StockingSkinShrink.SettingChanged -= OnStockingTuneChanged;
+        if (Configs.StockingSkinFalloffRadius != null) Configs.StockingSkinFalloffRadius.SettingChanged -= OnStockingTuneChanged;
+        if (Configs.StockingShapeFalloffRadius != null) Configs.StockingShapeFalloffRadius.SettingChanged -= OnStockingShapeFalloffChanged;
         if (Instance == this) Instance = null;
     }
 
@@ -198,8 +198,8 @@ public class CostumePickerController : MonoBehaviour
             ReapplyStockingForTune();
         }
 
-        if (Plugin.ConfigCostumeChangerEnabled == null) return;
-        if (!Plugin.ConfigCostumeChangerEnabled.Value) return;
+        if (Configs.CostumeChangerEnabled == null) return;
+        if (!Configs.CostumeChangerEnabled.Value) return;
         // Awake で AddComponent<CostumePickerView>() が何らかの理由（例外）で失敗したケース防御。
         // m_view.IsShown などを触る前段で早期 return する。
         if (m_view == null) return;
@@ -212,7 +212,7 @@ public class CostumePickerController : MonoBehaviour
         if (kb == null) return;
 
         // トグル
-        if (Plugin.ConfigCostumeChangerShow.IsTriggered())
+        if (Configs.CostumeChangerShow.IsTriggered())
         {
             if (m_view.IsShown)
             {

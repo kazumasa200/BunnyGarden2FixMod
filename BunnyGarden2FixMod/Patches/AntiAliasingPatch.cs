@@ -18,7 +18,7 @@ public static class AntiAliasingSetterPatch
 {
     private static void Prefix(ref AntialiasingMode value)
     {
-        value = Plugin.ConfigAntiAliasing.Value switch
+        value = Configs.AntiAliasing.Value switch
         {
             AntiAliasingType.Off => AntialiasingMode.None,
             AntiAliasingType.FXAA => AntialiasingMode.FastApproximateAntialiasing,
@@ -40,11 +40,11 @@ public static class AntiAliasingSetterPatch
 public static class MsaaSetupPatch
 {
     private static void Postfix()
-        => LiveConfigBinding.BindAndApply(Plugin.ConfigAntiAliasing, Apply);
+        => LiveConfigBinding.BindAndApply(Configs.AntiAliasing, Apply);
 
     private static void Apply()
     {
-        int msaaSamples = Plugin.ConfigAntiAliasing.Value switch
+        int msaaSamples = Configs.AntiAliasing.Value switch
         {
             AntiAliasingType.MSAA2x => 2,
             AntiAliasingType.MSAA4x => 4,

@@ -50,7 +50,7 @@ public static class ContinueVoiceOnTap_UpdateRoutinePatch
     private static void Prefix(out bool __state)
     {
         __state = false;
-        if (!Plugin.ConfigContinueVoiceOnTap.Value) return;
+        if (!Configs.ContinueVoiceOnTap.Value) return;
         ContinueVoiceState.SuppressDepth++;
         __state = true;
     }
@@ -75,7 +75,7 @@ public static class ContinueVoiceOnTap_ToNextTextPatch
     private static void Prefix(out bool __state)
     {
         __state = false;
-        if (!Plugin.ConfigContinueVoiceOnTap.Value) return;
+        if (!Configs.ContinueVoiceOnTap.Value) return;
         ContinueVoiceState.SuppressDepth++;
         __state = true;
     }
@@ -99,7 +99,7 @@ public static class ContinueVoiceOnTap_StopVoicePatch
 
     private static bool Prefix()
     {
-        if (!Plugin.ConfigContinueVoiceOnTap.Value) return true; // 設定オフ時は早期リターン
+        if (!Configs.ContinueVoiceOnTap.Value) return true; // 設定オフ時は早期リターン
         return ContinueVoiceState.SuppressDepth <= 0; // 抑制中なら StopVoice を実行しない
     }
 }
@@ -115,7 +115,7 @@ public static class ContinueVoiceOnTap_FinishLipSyncPatch
 
     private static bool Prefix()
     {
-        if (!Plugin.ConfigContinueVoiceOnTap.Value) return true; // 設定オフ時は早期リターン
+        if (!Configs.ContinueVoiceOnTap.Value) return true; // 設定オフ時は早期リターン
         return ContinueVoiceState.SuppressDepth <= 0; // 抑制中なら FinishLipSync を実行しない（LipSyncCalculator が音声終了時に自動停止）
     }
 }

@@ -24,7 +24,7 @@ public static class SteelFrameUltimateSurvivorPatch
 
     private static void Postfix(SteelFrame __instance)
     {
-        if (!Plugin.ConfigUltimateSurvivorEnabled.Value) return;
+        if (!Configs.UltimateSurvivorEnabled.Value) return;
         if (__instance.m_state != SteelFrame.State.InGame) return;
 
         // 落下タイマーを毎フレームリセット → DropOutTime を超えなくなる

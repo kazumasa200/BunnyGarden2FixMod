@@ -14,11 +14,11 @@ namespace BunnyGarden2FixMod.Patches;
 public class SetRefreshRatePatch
 {
     private static void Postfix()
-        => LiveConfigBinding.BindAndApply(Plugin.ConfigFrameRate, Apply);
+        => LiveConfigBinding.BindAndApply(Configs.FrameRate, Apply);
 
     private static void Apply()
     {
-        if (Plugin.ConfigFrameRate.Value <= 0)
+        if (Configs.FrameRate.Value <= 0)
         {
             // 0 以下なら上限撤廃
             Application.targetFrameRate = -1;
@@ -26,7 +26,7 @@ public class SetRefreshRatePatch
             return;
         }
         // 指定したフレームレートに設定
-        Application.targetFrameRate = Plugin.ConfigFrameRate.Value;
-        PatchLogger.LogInfo($"フレームレートを {Plugin.ConfigFrameRate.Value} FPS に設定しました");
+        Application.targetFrameRate = Configs.FrameRate.Value;
+        PatchLogger.LogInfo($"フレームレートを {Configs.FrameRate.Value} FPS に設定しました");
     }
 }

@@ -35,10 +35,10 @@ public class FreeCameraManager : MonoBehaviour
 
     private void Update()
     {
-        if (Plugin.ConfigFreeCamToggle.IsTriggered())
+        if (Configs.FreeCamToggle.IsTriggered())
             ToggleFreeCam();
 
-        if (Plugin.ConfigFixedFreeCamToggle.IsTriggered())
+        if (Configs.FixedFreeCamToggle.IsTriggered())
             ToggleFixedFreeCam();
     }
 
@@ -179,7 +179,7 @@ public class FreeCameraManager : MonoBehaviour
             eventSystem.SetSelectedGameObject(null);
         }
 
-        if (!Plugin.ConfigHideGameUiInFreeCam.Value)
+        if (!Configs.HideGameUiInFreeCam.Value)
             return;
 
         foreach (var canvas in canvases)
@@ -227,9 +227,9 @@ public class FreeCameraManager : MonoBehaviour
         GUILayout.Label(
             "Move: Arrow/WASD or Left Stick, Up/Down: E/Q or ZR/ZL, Look: Mouse or Right Stick, Speed: Shift/Ctrl or R/L");
         GUI.color = Color.green;
-        GUILayout.Label($"Free Camera: ON ({Plugin.ConfigFreeCamToggle}=OFF)");
+        GUILayout.Label($"Free Camera: ON ({Configs.FreeCamToggle}=OFF)");
         GUI.color = Color.yellow;
-        GUILayout.Label($"Fixed Mode: {(IsFixed ? "ON" : "OFF")} ({Plugin.ConfigFixedFreeCamToggle}=TOGGLE)");
+        GUILayout.Label($"Fixed Mode: {(IsFixed ? "ON" : "OFF")} ({Configs.FixedFreeCamToggle}=TOGGLE)");
         GUI.color = Color.white;
     }
 }

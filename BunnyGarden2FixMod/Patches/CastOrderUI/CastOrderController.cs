@@ -121,8 +121,8 @@ public class CastOrderController : MonoBehaviour
 
     private void Update()
     {
-        if (Plugin.ConfigCastOrder == null) return;
-        if (!Plugin.ConfigCastOrder.Value) return;
+        if (Configs.CastOrder == null) return;
+        if (!Configs.CastOrder.Value) return;
         if (m_view == null) return;
 
         var kb = Keyboard.current;

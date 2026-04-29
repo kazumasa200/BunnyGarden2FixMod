@@ -30,7 +30,7 @@ internal static class AddBunnyDrinksToDrinkSetParamsPatch
 
     private static void Postfix(ref List<DrinkParam> __result)
     {
-        if (!Plugin.ConfigBunnyDrinksEnabled.Value) return;
+        if (!Configs.BunnyDrinksEnabled.Value) return;
         if (__result == null) return;
 
         // 全ドリンクリストを取得

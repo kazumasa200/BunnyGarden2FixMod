@@ -6,7 +6,6 @@ using System;
 using System.IO;
 using System.Linq;
 using BepInEx;
-using BepInEx.Configuration;
 using BepInEx.Logging;
 using BunnyGarden2FixMod.Utils;
 using GB;
@@ -21,95 +20,6 @@ namespace BunnyGarden2FixMod;
 public class Plugin : BaseUnityPlugin
 {
     private static Plugin Instance;
-
-    // ── Config: Configs.yaml → Generated/Configs.g.cs に転送 ──
-
-    // Animation
-    public static ConfigEntry<bool> ConfigMoreTalkReactions   => Configs.MoreTalkReactions;
-    public static ConfigEntry<bool> ConfigFixAnimationClipping => Configs.FixAnimationClipping;
-
-    // Appearance
-    public static ConfigEntry<bool> ConfigDisableStockings => Configs.DisableStockings;
-
-    // Camera
-    public static ConfigEntry<float> ConfigSensitivity => Configs.Sensitivity;
-    public static ConfigEntry<float> ConfigSpeed      => Configs.Speed;
-    public static ConfigEntry<float> ConfigFastSpeed  => Configs.FastSpeed;
-    public static ConfigEntry<float> ConfigSlowSpeed  => Configs.SlowSpeed;
-    public static ConfigEntry<bool>  ConfigHideGameUiInFreeCam => Configs.HideGameUiInFreeCam;
-    public static ConfigEntry<bool>  ConfigControllerEnabled   => Configs.ControllerEnabled;
-    public static HotkeyConfig       ConfigFreeCamToggle       => Configs.FreeCamToggle;
-    public static HotkeyConfig       ConfigFixedFreeCamToggle  => Configs.FixedFreeCamToggle;
-
-    // Cheat
-    public static ConfigEntry<bool> ConfigCastOrder              => Configs.CastOrder;
-    public static ConfigEntry<bool> ConfigGambleAlwaysWinEnabled => Configs.GambleAlwaysWinEnabled;
-    public static ConfigEntry<bool> ConfigCheatLikability        => Configs.CheatLikability;
-    public static ConfigEntry<bool> ConfigUltimateSurvivorEnabled => Configs.UltimateSurvivorEnabled;
-    public static ConfigEntry<bool> ConfigBunnyDrinksEnabled      => Configs.BunnyDrinksEnabled;
-
-    // Cheki
-    public static ConfigEntry<bool>             ConfigChekiHighResEnabled => Configs.ChekiHighResEnabled;
-    public static ConfigEntry<ChekiImageFormat> ConfigChekiFormat         => Configs.ChekiFormat;
-    public static ConfigEntry<int>              ConfigChekiJpgQuality     => Configs.ChekiJpgQuality;
-    public static ConfigEntry<int>              ConfigChekiSize           => Configs.ChekiSize;
-
-    // Conversation
-    public static ConfigEntry<bool> ConfigContinueVoiceOnTap => Configs.ContinueVoiceOnTap;
-
-    // CostumeChanger
-    public static ConfigEntry<bool>  ConfigCostumeChangerEnabled      => Configs.CostumeChangerEnabled;
-    public static HotkeyConfig       ConfigCostumeChangerShow         => Configs.CostumeChangerShow;
-    public static ConfigEntry<bool>  ConfigRespectGameCostumeOverride => Configs.RespectGameCostumeOverride;
-    public static ConfigEntry<bool>  ConfigSwimWearStocking           => Configs.SwimWearStocking;
-    public static ConfigEntry<float> ConfigStockingOffset             => Configs.StockingOffset;
-    public static ConfigEntry<float> ConfigStockingSkinShrink         => Configs.StockingSkinShrink;
-    public static ConfigEntry<float> ConfigStockingSkinFalloffRadius  => Configs.StockingSkinFalloffRadius;
-    public static ConfigEntry<float> ConfigStockingShapeFalloffRadius => Configs.StockingShapeFalloffRadius;
-    public static ConfigEntry<bool>  ConfigPantiesAltSlotMatch        => Configs.PantiesAltSlotMatch;
-    public static ConfigEntry<bool>  ConfigPantiesAltSlotOverrideOnly => Configs.PantiesAltSlotOverrideOnly;
-
-    // Ending
-    public static ConfigEntry<bool> ConfigEndingChekiSlideshow => Configs.EndingChekiSlideshow;
-
-    // General
-    public static HotkeyConfig      ConfigOverlayToggle     => Configs.OverlayToggle;
-    public static HotkeyConfig      ConfigCaptureScreenshot => Configs.CaptureScreenshot;
-    public static ConfigEntry<int>  ConfigScreenshotScale   => Configs.ScreenshotScale;
-    public static ConfigEntry<bool> ConfigSteamLaunchCheck  => Configs.SteamLaunchCheck;
-
-    // Graphics
-    public static ConfigEntry<int>              ConfigWidth                      => Configs.Width;
-    public static ConfigEntry<int>              ConfigHeight                     => Configs.Height;
-    public static ConfigEntry<int>              ConfigExtraWidth                 => Configs.ExtraWidth;
-    public static ConfigEntry<int>              ConfigExtraHeight                => Configs.ExtraHeight;
-    public static ConfigEntry<int>              ConfigFrameRate                  => Configs.FrameRate;
-    public static ConfigEntry<bool>             ConfigForceVSync                 => Configs.ForceVSync;
-    public static ConfigEntry<bool>             ConfigForceExclusiveFullScreen   => Configs.ForceExclusiveFullScreen;
-    public static ConfigEntry<AntiAliasingType> ConfigAntiAliasing               => Configs.AntiAliasing;
-    public static ConfigEntry<bool>             ConfigDisableChromaticAberration => Configs.DisableChromaticAberration;
-    public static ConfigEntry<bool>             ConfigDisableDepthOfField        => Configs.DisableDepthOfField;
-
-    // Resolution
-    public static ConfigEntry<bool> ConfigFullscreenUltrawideEnabled => Configs.FullscreenUltrawideEnabled;
-
-    // HideUI
-    public static ConfigEntry<bool> ConfigHideMoneyInSpecialScenes => Configs.HideMoneyInSpecialScenes;
-    public static ConfigEntry<bool> ConfigHideButtonGuide          => Configs.HideButtonGuide;
-    public static ConfigEntry<bool> ConfigHideLikabilityGauge      => Configs.HideLikabilityGauge;
-
-    // Input
-    public static ConfigEntry<float>            ConfigControllerTriggerDeadzone => Configs.ControllerTriggerDeadzone;
-    public static ConfigEntry<ControllerButton> ConfigControllerModifier        => Configs.ControllerModifier;
-
-    // Internal
-    public static ConfigEntry<bool> ConfigExtraActive => Configs.ExtraActive;
-
-    // Time
-    public static HotkeyConfig       ConfigTimeStopToggle   => Configs.TimeStopToggle;
-    public static HotkeyConfig       ConfigFrameAdvance     => Configs.FrameAdvance;
-    public static HotkeyConfig       ConfigFastForward      => Configs.FastForward;
-    public static ConfigEntry<float> ConfigFastForwardSpeed => Configs.FastForwardSpeed;
 
     internal static event Action GUICallback;
 
@@ -132,13 +42,11 @@ public class Plugin : BaseUnityPlugin
         ConfigMigration.Migrate(Config);
 
         // YAML 駆動 Config エントリ（source of truth: Configs.yaml → Generated/Configs.g.cs）。
-        // Plugin.ConfigX は Configs.X への expression-bodied プロパティで転送される。
         // HotkeyConfig (KB+Pad 統合型) も BindAll 内で初期化される。
         Configs.BindAll(Config);
 
-
         // Steam 外起動を検出した場合は Steam 経由で再起動して即終了
-        if (ConfigSteamLaunchCheck.Value && SteamLaunchChecker.CheckAndRelaunchIfNeeded())
+        if (Configs.SteamLaunchCheck.Value && SteamLaunchChecker.CheckAndRelaunchIfNeeded())
         {
             Application.Quit();
             return;
@@ -158,8 +66,8 @@ public class Plugin : BaseUnityPlugin
         Patches.TimeController.Initialize(gameObject);
         SceneManager.sceneUnloaded += Patches.CostumeChanger.PantiesAltSlotMatchPatch.OnSceneUnloaded;
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
-        PatchLogger.LogInfo($"解像度パッチを適用しました: {Plugin.ConfigWidth.Value}x{Plugin.ConfigHeight.Value}");
-        PatchLogger.LogInfo($"アンチエイリアシング設定: {Plugin.ConfigAntiAliasing.Value}");
+        PatchLogger.LogInfo($"解像度パッチを適用しました: {Configs.Width.Value}x{Configs.Height.Value}");
+        PatchLogger.LogInfo($"アンチエイリアシング設定: {Configs.AntiAliasing.Value}");
     }
 
     private void OnDestroy()
@@ -173,10 +81,10 @@ public class Plugin : BaseUnityPlugin
         if (Keyboard.current?[Key.F4].wasPressedThisFrame == true)
             Config.Reload();
 
-        if (ConfigOverlayToggle.IsTriggered())
+        if (Configs.OverlayToggle.IsTriggered())
             ToggleOverlay();
 
-        if (ConfigCaptureScreenshot.IsTriggered())
+        if (Configs.CaptureScreenshot.IsTriggered())
             CaptureScreenshot();
     }
 
@@ -251,7 +159,7 @@ public class Plugin : BaseUnityPlugin
         {
             Directory.CreateDirectory(ScreenshotDirectory);
             string path = Path.Combine(ScreenshotDirectory, $"bg2_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
-            ScreenCapture.CaptureScreenshot(path, ConfigScreenshotScale.Value);
+            ScreenCapture.CaptureScreenshot(path, Configs.ScreenshotScale.Value);
             PatchLogger.LogInfo($"スクリーンショットを保存しました: {path}");
         }
         catch (Exception ex)

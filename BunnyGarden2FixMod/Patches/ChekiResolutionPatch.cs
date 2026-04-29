@@ -105,7 +105,7 @@ internal static class ChekiHiResSidecar
 /// </para>
 ///
 /// <para>
-/// <see cref="Plugin.ConfigChekiHighResEnabled"/> が false のときは元処理をそのまま走らせる
+/// <see cref="Configs.ChekiHighResEnabled"/> が false のときは元処理をそのまま走らせる
 /// （Prefix が true を返す → vanilla が実行される）。
 /// </para>
 /// </summary>
@@ -142,7 +142,7 @@ public static class ChekiResolutionPatch
 
     private static bool Prefix(Saves __instance, ref IEnumerator __result)
     {
-        if (!Plugin.ConfigChekiHighResEnabled.Value)
+        if (!Configs.ChekiHighResEnabled.Value)
         {
             // 既定 OFF: vanilla 挙動。ホルダーは空に戻しておく（古い hi-res が残っていると誤使用の元）。
             ChekiHiResSidecar.DestroyIfAny();
@@ -154,7 +154,7 @@ public static class ChekiResolutionPatch
 
     private static IEnumerator CaptureDualRes(Saves self)
     {
-        int hiSize = Mathf.Clamp(Plugin.ConfigChekiSize.Value, SizeLowerClamp, SizeUpperClamp);
+        int hiSize = Mathf.Clamp(Configs.ChekiSize.Value, SizeLowerClamp, SizeUpperClamp);
 
         if (!s_loggedApplied)
         {

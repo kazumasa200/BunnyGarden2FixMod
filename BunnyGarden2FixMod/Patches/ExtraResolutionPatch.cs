@@ -21,7 +21,7 @@ namespace BunnyGarden2FixMod.Patches;
 ///
 /// <list type="number">
 /// <item>バニラ <see cref="SaveData.m_displaySize"/> には常に <c>0/1/2</c> のどれかを書く（バニラ互換）</item>
-/// <item>「拡張が選ばれているか」の真偽は <c>Plugin.ConfigExtraActive</c>（BepInEx config）に書く</item>
+/// <item>「拡張が選ばれているか」の真偽は <c>Configs.ExtraActive</c>（BepInEx config）に書く</item>
 /// </list>
 ///
 /// 拡張選択時はバニラ側には <c>DisplaySize=0</c>（=1080P と同値）を書き、
@@ -70,7 +70,7 @@ public static class ExtraResolutionPatch
         if (list.Count != VanillaLabelCount) return;
 
         list.Insert(ExtraUiIndex, ExtraLabelPlaceholder);
-        sel = Plugin.ConfigExtraActive.Value
+        sel = Configs.ExtraActive.Value
             ? ExtraUiIndex
             : sel + 1;
     }
@@ -85,7 +85,7 @@ public static class ExtraResolutionPatch
         if (__instance.m_select != ExtraUiIndex) return;
         if (__instance.m_text == null) return;
 
-        var (w, h) = NormalizeAspect(Plugin.ConfigExtraWidth.Value, Plugin.ConfigExtraHeight.Value);
+        var (w, h) = NormalizeAspect(Configs.ExtraWidth.Value, Configs.ExtraHeight.Value);
         __instance.m_text.SetWithoutMSGID($"{w}×{h}");
     }
 
@@ -103,8 +103,8 @@ public static class ExtraResolutionPatch
 
         int uiSelect = __result;
         bool isExtra = uiSelect == ExtraUiIndex;
-        if (Plugin.ConfigExtraActive.Value != isExtra)
-            Plugin.ConfigExtraActive.Value = isExtra;
+        if (Configs.ExtraActive.Value != isExtra)
+            Configs.ExtraActive.Value = isExtra;
 
         __result = isExtra ? 0 : uiSelect - 1;
     }
@@ -115,21 +115,21 @@ public static class ExtraResolutionPatch
     {
         if ((int)size != 0)
         {
-            if (Plugin.ConfigExtraActive.Value)
-                Plugin.ConfigExtraActive.Value = false;
+            if (Configs.ExtraActive.Value)
+                Configs.ExtraActive.Value = false;
             return true;
         }
 
-        if (!Plugin.ConfigExtraActive.Value)
+        if (!Configs.ExtraActive.Value)
             return true;
 
-        int rawW = Plugin.ConfigExtraWidth.Value;
-        int rawH = Plugin.ConfigExtraHeight.Value;
+        int rawW = Configs.ExtraWidth.Value;
+        int rawH = Configs.ExtraHeight.Value;
         if (rawW <= 0 || rawH <= 0)
         {
             PatchLogger.LogWarning(
                 $"ExtraWidth/ExtraHeight が不正です ({rawW}x{rawH})。1080P にフォールバックします。");
-            Plugin.ConfigExtraActive.Value = false;
+            Configs.ExtraActive.Value = false;
             return true;
         }
 

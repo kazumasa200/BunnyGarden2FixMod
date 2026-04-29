@@ -25,7 +25,7 @@ internal static class GameplayFullscreenUltrawideSupport
 
     internal static bool ShouldUseNativeFullscreen()
     {
-        if (!Plugin.ConfigFullscreenUltrawideEnabled.Value || !Screen.fullScreen)
+        if (!Configs.FullscreenUltrawideEnabled.Value || !Screen.fullScreen)
         {
             return false;
         }
@@ -64,8 +64,8 @@ internal static class GameplayFullscreenUltrawideSupport
 
     internal static (int width, int height) GetTargetResolution()
     {
-        int configW = Plugin.ConfigWidth.Value;
-        int configH = Plugin.ConfigHeight.Value;
+        int configW = Configs.Width.Value;
+        int configH = Configs.Height.Value;
         if (IsWiderThan16x9(configW, configH))
         {
             return (configW, configH);
@@ -146,7 +146,7 @@ internal static class GameplayFullscreenUltrawideSupport
         (int targetW, int targetH) = GetTargetResolution();
         string state = $"{reason} scenes={GetSceneList()} ingame={system.IsIngame} inBar={IsGameDataInBar(system)} " +
             $"screen={Screen.width}x{Screen.height} fullscreen={Screen.fullScreen} current={Screen.currentResolution.width}x{Screen.currentResolution.height} " +
-            $"target={targetW}x{targetH} enabled={Plugin.ConfigFullscreenUltrawideEnabled.Value} use={ShouldUseNativeFullscreen()}";
+            $"target={targetW}x{targetH} enabled={Configs.FullscreenUltrawideEnabled.Value} use={ShouldUseNativeFullscreen()}";
 
         if (state == lastStateLog && Time.unscaledTime < nextStateLogTime)
         {
@@ -161,7 +161,7 @@ internal static class GameplayFullscreenUltrawideSupport
     internal static void ApplyUiAspect()
     {
         //ShouldUseNativeFullScreenの判定はコストが高いので、ConfigFullscreenUltrawideEnabledの判定を先に行う
-        if (!Plugin.ConfigFullscreenUltrawideEnabled.Value) return;
+        if (!Configs.FullscreenUltrawideEnabled.Value) return;
         if (!ShouldUseNativeFullscreen())
         {
             ResetUiAspect();

@@ -11,15 +11,15 @@ namespace BunnyGarden2FixMod.Patches;
 ///
 /// <para>
 /// <b>VSync</b><br/>
-/// <see cref="Plugin.ConfigForceVSync"/> が true のとき、
+/// <see cref="Configs.ForceVSync"/> が true のとき、
 /// <see cref="QualitySettings.vSyncCount"/> を 1 に固定します。
 /// VSync が有効な間はフレームレートがモニターのリフレッシュレートに同期され、
-/// <see cref="Plugin.ConfigFrameRate"/> の設定より優先されます。
+/// <see cref="Configs.FrameRate"/> の設定より優先されます。
 /// </para>
 ///
 /// <para>
 /// <b>排他的フルスクリーン</b><br/>
-/// <see cref="Plugin.ConfigForceExclusiveFullScreen"/> が true のとき、
+/// <see cref="Configs.ForceExclusiveFullScreen"/> が true のとき、
 /// ゲームがフルスクリーンモードに切り替える都度
 /// <see cref="Screen.fullScreenMode"/> を
 /// <see cref="FullScreenMode.ExclusiveFullScreen"/> に強制します。<br/>
@@ -36,11 +36,11 @@ namespace BunnyGarden2FixMod.Patches;
 public class VSyncPatch
 {
     private static void Postfix()
-        => LiveConfigBinding.BindAndApply(Plugin.ConfigForceVSync, Apply);
+        => LiveConfigBinding.BindAndApply(Configs.ForceVSync, Apply);
 
     private static void Apply()
     {
-        if (Plugin.ConfigForceVSync.Value)
+        if (Configs.ForceVSync.Value)
         {
             QualitySettings.vSyncCount = 1;
             PatchLogger.LogInfo("[DisplaySettings] VSync 強制 ON を適用しました (vSyncCount=1)");
@@ -61,7 +61,7 @@ public class ForceExclusiveFullScreenPatch
 {
     private static void Postfix()
     {
-        if (!Plugin.ConfigForceExclusiveFullScreen.Value) return;
+        if (!Configs.ForceExclusiveFullScreen.Value) return;
         if (!Screen.fullScreen) return;
 
         // 既に ExclusiveFullScreen なら再設定しない（GBSystem.Update のループ防止）

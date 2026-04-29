@@ -45,7 +45,7 @@ public static class TalkReactionPatch
 
     private static bool Prefix(CharacterHandle __instance)
     {
-        if (!Plugin.ConfigMoreTalkReactions.Value)
+        if (!Configs.MoreTalkReactions.Value)
             return true;
 
         // まずは本来のメソッドの条件にマッチさせる

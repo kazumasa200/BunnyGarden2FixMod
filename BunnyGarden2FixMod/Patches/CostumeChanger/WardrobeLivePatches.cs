@@ -29,7 +29,7 @@ internal static class WardrobeLivePatches
     {
         private static bool Prepare()
         {
-            bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+            bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
             if (enabled) PatchLogger.LogInfo("[WardrobeLivePatches.ReloadPanties] 適用");
             return enabled;
         }
@@ -52,7 +52,7 @@ internal static class WardrobeLivePatches
     {
         private static bool Prepare()
         {
-            bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+            bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
             if (enabled) PatchLogger.LogInfo("[WardrobeLivePatches.ApplyStocking] 適用");
             return enabled;
         }

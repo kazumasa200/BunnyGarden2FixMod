@@ -28,7 +28,7 @@ public static class GamepadHelper
     internal static bool IsButtonHeld(ControllerButton button)
     {
         if (button == ControllerButton.ZL || button == ControllerButton.ZR)
-            return ReadTrigger(button) >= Plugin.ConfigControllerTriggerDeadzone.Value;
+            return ReadTrigger(button) >= Configs.ControllerTriggerDeadzone.Value;
 
         return IsHeld(button);
     }

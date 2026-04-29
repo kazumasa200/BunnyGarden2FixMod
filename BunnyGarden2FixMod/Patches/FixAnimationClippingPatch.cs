@@ -73,7 +73,7 @@ public static class FixAnimationClippingPatch
 
     private static void Postfix(CharacterHandle __instance, MOTION __0, float __1)
     {
-        if (!Plugin.ConfigFixAnimationClipping.Value || __instance.m_chara == null)
+        if (!Configs.FixAnimationClipping.Value || __instance.m_chara == null)
             return;
 
         var fixer = __instance.m_chara.GetOrAddComponent<Fixer>();

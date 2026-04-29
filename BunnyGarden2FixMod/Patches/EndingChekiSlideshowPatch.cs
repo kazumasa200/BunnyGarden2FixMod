@@ -31,7 +31,7 @@ public static class EndingChekiSlideshowPatch
 
     private static void Postfix(StaffCreditScene __instance)
     {
-        if (!Plugin.ConfigEndingChekiSlideshow.Value) return;
+        if (!Configs.EndingChekiSlideshow.Value) return;
         __instance.gameObject.AddComponent<ChekiSlideshowBehaviour>();
     }
 }
@@ -167,7 +167,7 @@ public sealed class ChekiSlideshowBehaviour : MonoBehaviour
                 // 写真テクスチャ → Sprite。ExSave に hi-res があればそちらを優先し、
                 // 失敗・未設定時は vanilla 320 の raw データから構築する。
                 Texture2D tex = null;
-                if (Plugin.ConfigChekiHighResEnabled.Value)
+                if (Configs.ChekiHighResEnabled.Value)
                 {
                     string key = ChekiSaveHiResPatch.KeyFor(slot);
                     if (ExSaveStore.CurrentSession.TryGet(key, out byte[] payload)

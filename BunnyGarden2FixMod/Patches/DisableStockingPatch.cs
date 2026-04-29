@@ -30,7 +30,7 @@ public static class DisableStockingPatch
     private static void Prefix(ref int __0)
     {
         if (KneeSocksLoader.IsPreloading) return; // マテリアルプリロード中はスキップ
-        if (!Plugin.ConfigDisableStockings.Value) return;
+        if (!Configs.DisableStockings.Value) return;
         __0 = 0;
     }
 }

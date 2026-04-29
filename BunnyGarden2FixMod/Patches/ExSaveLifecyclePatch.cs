@@ -42,7 +42,7 @@ namespace BunnyGarden2FixMod.Patches;
 /// </list>
 ///
 /// <para>
-/// 本パッチは <see cref="Plugin.ConfigChekiHighResEnabled"/> の値に関係なく常に適用される
+/// 本パッチは <see cref="Configs.ChekiHighResEnabled"/> の値に関係なく常に適用される
 /// （ExSave 基盤は汎用であり、将来の機能追加でも使える共通配線）。
 /// </para>
 /// </summary>

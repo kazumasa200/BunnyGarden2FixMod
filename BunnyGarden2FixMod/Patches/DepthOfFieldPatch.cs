@@ -18,7 +18,7 @@ public static class DepthOfFieldPatch
 
     private static bool Prefix(DepthOfField __instance, ref bool __result)
     {
-        if (!Plugin.ConfigDisableDepthOfField.Value)
+        if (!Configs.DisableDepthOfField.Value)
             return true;
         __result = false;
         return false;

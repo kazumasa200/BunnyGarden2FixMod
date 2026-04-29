@@ -128,7 +128,7 @@ public static class GambleAlwaysWinPatch
     /// </summary>
     public static int RerollIfNeeded(int winAmount)
     {
-        if (!Plugin.ConfigGambleAlwaysWinEnabled.Value) return winAmount;
+        if (!Configs.GambleAlwaysWinEnabled.Value) return winAmount;
         if (winAmount >= 0) return winAmount;
 
         var gamble = Object.FindFirstObjectByType<Gamble>();

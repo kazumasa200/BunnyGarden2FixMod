@@ -377,7 +377,7 @@ internal static class KneeSocksSetupPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPatch] 適用");
         return enabled;
     }
@@ -393,7 +393,7 @@ internal static class KneeSocksSetupPantiesOnlyPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPantiesOnlyPatch] 適用");
         return enabled;
     }
@@ -411,7 +411,7 @@ internal static class KneeSocksApplyStockingPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
         if (enabled) PatchLogger.LogInfo("[KneeSocksApplyStockingPatch] 適用");
         return enabled;
     }

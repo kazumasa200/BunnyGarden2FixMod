@@ -33,7 +33,7 @@ public class FreeCameraController : MonoBehaviour
         if (useMouseView && Mouse.current != null)
         {
             Vector2 mouseDelta = Mouse.current.delta.ReadValue();
-            float sensitivity = Plugin.ConfigSensitivity.Value;
+            float sensitivity = Configs.Sensitivity.Value;
             rotationH += mouseDelta.x * sensitivity * deltaTime;
             rotationV -= mouseDelta.y * sensitivity * deltaTime;
         }
@@ -41,7 +41,7 @@ public class FreeCameraController : MonoBehaviour
         Vector2 rightStick = GamepadHelper.ReadRightStick();
         if (rightStick.sqrMagnitude > StickDeadzoneSqr)
         {
-            float sensitivity = Plugin.ConfigSensitivity.Value * ControllerLookScale;
+            float sensitivity = Configs.Sensitivity.Value * ControllerLookScale;
             rotationH += rightStick.x * sensitivity * deltaTime;
             rotationV -= rightStick.y * sensitivity * deltaTime;
         }
@@ -50,21 +50,21 @@ public class FreeCameraController : MonoBehaviour
         transform.rotation = Quaternion.AngleAxis(rotationH, Vector3.up);
         transform.rotation *= Quaternion.AngleAxis(rotationV, Vector3.right);
 
-        float speed = Plugin.ConfigSpeed.Value;
-        if (Plugin.ConfigControllerEnabled.Value)
+        float speed = Configs.Speed.Value;
+        if (Configs.ControllerEnabled.Value)
         {
             if (GamepadHelper.IsButtonHeld(ControllerButton.R))
-                speed = Plugin.ConfigFastSpeed.Value;
+                speed = Configs.FastSpeed.Value;
             else if (GamepadHelper.IsButtonHeld(ControllerButton.L))
-                speed = Plugin.ConfigSlowSpeed.Value;
+                speed = Configs.SlowSpeed.Value;
         }
 
         if (Keyboard.current != null)
         {
             if (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)
-                speed = Plugin.ConfigFastSpeed.Value;
+                speed = Configs.FastSpeed.Value;
             else if (Keyboard.current.leftCtrlKey.isPressed || Keyboard.current.rightCtrlKey.isPressed)
-                speed = Plugin.ConfigSlowSpeed.Value;
+                speed = Configs.SlowSpeed.Value;
 
             if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
                 transform.position += speed * deltaTime * transform.forward;
@@ -80,7 +80,7 @@ public class FreeCameraController : MonoBehaviour
                 transform.position += speed * deltaTime * -transform.up;
         }
 
-        if (Plugin.ConfigControllerEnabled.Value)
+        if (Configs.ControllerEnabled.Value)
         {
             Vector2 leftStick = GamepadHelper.ReadLeftStick();
             if (leftStick.sqrMagnitude > StickDeadzoneSqr)

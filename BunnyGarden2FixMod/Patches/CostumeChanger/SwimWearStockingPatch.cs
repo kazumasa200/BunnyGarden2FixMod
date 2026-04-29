@@ -64,7 +64,7 @@ public static class SwimWearStockingPatch
 
     static bool Prepare()
     {
-        bool enabled = Plugin.ConfigCostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
         if (enabled) PatchLogger.LogInfo("[SwimWearStockingPatch] 適用");
         return enabled;
     }
@@ -139,7 +139,7 @@ public static class SwimWearStockingPatch
                            && overrideType != 0;
         bool isKneeSocks = hasOverride && StockingOverrideStore.IsKneeSocksType(overrideType);
 
-        if (Plugin.ConfigDisableStockings.Value) { hasOverride = false; isKneeSocks = false; }
+        if (Configs.DisableStockings.Value) { hasOverride = false; isKneeSocks = false; }
 
         if (!hasOverride)
         {
@@ -290,9 +290,9 @@ public static class SwimWearStockingPatch
         // ニーハイは形状・カバー範囲が異なり本補正の前提（尻まわりの z-fighting）と合わないため対象外
         if (isKneeSocks) return;
 
-        float minOffset = Plugin.ConfigStockingOffset?.Value ?? 0f;
-        float skinPushAmount = Plugin.ConfigStockingSkinShrink?.Value ?? 0f;
-        float falloffRadius = Plugin.ConfigStockingSkinFalloffRadius?.Value ?? 0f;
+        float minOffset = Configs.StockingOffset?.Value ?? 0f;
+        float skinPushAmount = Configs.StockingSkinShrink?.Value ?? 0f;
+        float falloffRadius = Configs.StockingSkinFalloffRadius?.Value ?? 0f;
         if (minOffset <= 0f && skinPushAmount <= 0f) return;
 
         var currentDonor = stockingsSmr.sharedMesh;
@@ -353,7 +353,7 @@ public static class SwimWearStockingPatch
         float shapeFalloffRadius = 0f;
         if (!isKneeSocks)
         {
-            shapeFalloffRadius = Plugin.ConfigStockingShapeFalloffRadius?.Value ?? 0f;
+            shapeFalloffRadius = Configs.StockingShapeFalloffRadius?.Value ?? 0f;
             if (shapeFalloffRadius > 0f) shapeAnchorVerts = CollectShrinkAnchorVerts(renderers);
         }
 

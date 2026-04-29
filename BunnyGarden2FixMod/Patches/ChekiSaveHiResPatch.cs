@@ -67,7 +67,7 @@ public static class ChekiSaveHiResPatch
 
     private static void Postfix(GameData __instance, int slot)
     {
-        if (!Plugin.ConfigChekiHighResEnabled.Value)
+        if (!Configs.ChekiHighResEnabled.Value)
         {
             // Config OFF: sidecar は使わない。残留があれば破棄。
             ChekiHiResSidecar.DestroyIfAny();
@@ -108,7 +108,7 @@ public static class ChekiSaveHiResPatch
 
             string key = KeyFor(slot);
             ExSaveStore.CurrentSession.Set(key, payload);
-            PatchLogger.LogInfo($"[ChekiSaveHiResPatch] ExSave に格納: {key} ({size}x{size}, {Plugin.ConfigChekiFormat.Value}, {payload.Length} bytes)");
+            PatchLogger.LogInfo($"[ChekiSaveHiResPatch] ExSave に格納: {key} ({size}x{size}, {Configs.ChekiFormat.Value}, {payload.Length} bytes)");
         }
         catch (Exception ex)
         {
@@ -122,7 +122,7 @@ public static class ChekiSaveHiResPatch
     }
 
     /// <summary>
-    /// 設定された <see cref="Plugin.ConfigChekiFormat"/> に応じて Texture2D をバイト列にエンコードする。
+    /// 設定された <see cref="Configs.ChekiFormat"/> に応じて Texture2D をバイト列にエンコードする。
     ///
     /// <para>
     /// 形式:
@@ -135,7 +135,7 @@ public static class ChekiSaveHiResPatch
     /// </summary>
     private static byte[] EncodePayload(Texture2D tex)
     {
-        var format = Plugin.ConfigChekiFormat.Value;
+        var format = Configs.ChekiFormat.Value;
         try
         {
             switch (format)
@@ -143,7 +143,7 @@ public static class ChekiSaveHiResPatch
                 case ChekiImageFormat.JPG:
                     // ConfigChekiJpgQuality は YAML range [1,100] により BepInEx が起動時に
                     // AcceptableValueRange でクランプ済みのため、ここで Mathf.Clamp は不要。
-                    return ImageConversion.EncodeToJPG(tex, Plugin.ConfigChekiJpgQuality.Value);
+                    return ImageConversion.EncodeToJPG(tex, Configs.ChekiJpgQuality.Value);
 
                 case ChekiImageFormat.PNG:
                 default:

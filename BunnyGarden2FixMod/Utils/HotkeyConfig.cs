@@ -40,7 +40,7 @@ public class HotkeyConfig
     public override string ToString()
     {
         string? keyLabel = KeyConfig == null || KeyConfig.Value == Key.None ? null : KeyConfig.Value.ToString();
-        string? buttonLabel = GetControllerBindingLabel(Plugin.ConfigControllerModifier.Value, ButtonConfig?.Value);
+        string? buttonLabel = GetControllerBindingLabel(Configs.ControllerModifier.Value, ButtonConfig?.Value);
 
         if (keyLabel != null && buttonLabel != null)
             return $"{keyLabel} / {buttonLabel}";
@@ -53,7 +53,7 @@ public class HotkeyConfig
         if (KeyConfig != null && Keyboard.current?[KeyConfig.Value].isPressed == true)
             return true;
 
-        if (ButtonConfig != null && GamepadHelper.IsHeld(Plugin.ConfigControllerModifier.Value) &&
+        if (ButtonConfig != null && GamepadHelper.IsHeld(Configs.ControllerModifier.Value) &&
             GamepadHelper.IsHeld(ButtonConfig.Value))
         {
             return true;
@@ -75,7 +75,7 @@ public class HotkeyConfig
     public bool IsControllerTriggered()
     {
         if (ButtonConfig != null &&
-            IsControllerComboTriggered(Plugin.ConfigControllerModifier.Value, ButtonConfig.Value))
+            IsControllerComboTriggered(Configs.ControllerModifier.Value, ButtonConfig.Value))
         {
             Plugin.SuppressGameInputTemporarily();
             return true;

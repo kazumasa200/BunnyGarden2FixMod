@@ -15,7 +15,7 @@ namespace BunnyGarden2FixMod.Utils;
 ///
 /// <para>
 /// dedup キーは <see cref="ConfigEntry{T}"/> のインスタンス参照。
-/// <c>Plugin.ConfigXxx</c> は expression-bodied プロパティで同一の <c>Configs.Xxx</c> を返すため
+/// <c>Configs.Xxx</c> は YAML 駆動で 1 度だけ Bind された同一 <see cref="ConfigEntry{T}"/> を返すため
 /// 同 entry に対しては必ず dedup が効く。
 /// </para>
 ///
@@ -26,7 +26,7 @@ namespace BunnyGarden2FixMod.Utils;
 /// public static class FooPatch
 /// {
 ///     private static void Postfix()
-///         =&gt; LiveConfigBinding.BindAndApply(Plugin.ConfigFoo, Apply);
+///         =&gt; LiveConfigBinding.BindAndApply(Configs.Foo, Apply);
 ///
 ///     private static void Apply() { /* … */ }
 /// }

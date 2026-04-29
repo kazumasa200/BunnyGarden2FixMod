@@ -17,7 +17,7 @@ namespace BunnyGarden2FixMod.Patches;
 /// <para>
 /// <b>フォールバック:</b>
 /// <list type="bullet">
-///   <item><see cref="Plugin.ConfigChekiHighResEnabled"/> が false → 何もしない（vanilla 320）</item>
+///   <item><see cref="Configs.ChekiHighResEnabled"/> が false → 何もしない（vanilla 320）</item>
 ///   <item><c>gameData.IsChekiValid(slot)</c> が false → 何もしない（vanilla の鍵アイコン表示）</item>
 ///   <item>ExSave に該当エントリが無い → 何もしない（vanilla 320）</item>
 ///   <item>ペイロード破損（未対応 magic / LoadImage 失敗 / サイズ範囲外）→ 何もしない（警告ログのみ）</item>
@@ -59,7 +59,7 @@ public static class ChekiItemLoadHiResPatch
 
     private static void Postfix(ChekiItem __instance, GameData gameData, int slot)
     {
-        if (!Plugin.ConfigChekiHighResEnabled.Value) return;
+        if (!Configs.ChekiHighResEnabled.Value) return;
         if (gameData == null) return;
 
         // slot 範囲外は受け付けない（異常系 / 悪意のある .exmod 防御）。

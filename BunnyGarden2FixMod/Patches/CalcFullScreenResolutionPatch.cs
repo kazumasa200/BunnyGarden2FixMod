@@ -28,8 +28,8 @@ public class CalcFullScreenResolutionPatch
 {
     private static bool Prefix(ref ValueTuple<int, int, bool> __result)
     {
-        int configW = Plugin.ConfigWidth.Value;
-        int configH = Plugin.ConfigHeight.Value;
+        int configW = Configs.Width.Value;
+        int configH = Configs.Height.Value;
         Resolution mon = Screen.currentResolution;
 
         if (GameplayFullscreenUltrawideSupport.ShouldUseNativeFullscreen())
