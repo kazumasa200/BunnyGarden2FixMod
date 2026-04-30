@@ -200,15 +200,18 @@
       ui:
         kind: toggle
 
-    - name: UseMultipleDisplays
-      label: フリーカメラで複数モニターを活用
-      type: bool
-      default: false
+    - name: FreeCamDisplayMode
+      label: フリーカメラの出力先
+      type: enum
+      enumType: BunnyGarden2FixMod.FreeCamDisplayMode
+      default: MainScreen
       description: |
-        フリーカメラの映像をサブモニターに出力します。Display 1 がゲーム本体、Display 2 以降がフリーカメラになります。
-        ウィンドウモードかサブモニターがない場合はこの設定は無視されます。
+        フリーカメラの映像をどこに表示するかを選択します。
+        MainScreen: メイン画面（通常のフリーカメラ）
+        PiP: ピクチャー・イン・ピクチャー
+        Display2: サブモニター（モニター2台以上のときのみ）
       ui:
-        kind: toggle
+        kind: dropdown
 
 - section: Animation
   name: アニメーション

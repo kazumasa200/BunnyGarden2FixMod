@@ -47,8 +47,8 @@ public static class Configs
     public static ConfigEntry<bool> HideGameUiInFreeCam;
     /// <summary>フリーカメラ操作にゲームパッド入力を使用</summary>
     public static ConfigEntry<bool> ControllerEnabled;
-    /// <summary>フリーカメラで複数モニターを活用</summary>
-    public static ConfigEntry<bool> UseMultipleDisplays;
+    /// <summary>フリーカメラの出力先</summary>
+    public static ConfigEntry<BunnyGarden2FixMod.FreeCamDisplayMode> FreeCamDisplayMode;
     /// <summary>バーの背景キャスト 2 人の会話リアクションモーションを多様化</summary>
     public static ConfigEntry<bool> MoreTalkReactions;
     /// <summary>一部モーションでスカートが体にめり込む現象を補正</summary>
@@ -233,11 +233,13 @@ Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x。
             true,
             @"フリーカメラ操作にゲームパッド入力を使用");
 
-        UseMultipleDisplays = cfg.Bind("Camera", "UseMultipleDisplays",
-            false,
-            @"フリーカメラで複数モニターを活用
-フリーカメラの映像をサブモニターに出力します。Display 1 がゲーム本体、Display 2 以降がフリーカメラになります。
-ウィンドウモードかサブモニターがない場合はこの設定は無視されます。");
+        FreeCamDisplayMode = cfg.Bind("Camera", "FreeCamDisplayMode",
+            BunnyGarden2FixMod.FreeCamDisplayMode.MainScreen,
+            @"フリーカメラの出力先
+フリーカメラの映像をどこに表示するかを選択します。
+MainScreen: メイン画面（通常のフリーカメラ）
+PiP: ピクチャー・イン・ピクチャー
+Display2: サブモニター（モニター2台以上のときのみ）");
 
         MoreTalkReactions = cfg.Bind("Animation", "MoreTalkReactions",
             false,
@@ -643,10 +645,11 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Camera",
-            Label    = "フリーカメラで複数モニターを活用",
-            Desc     = "フリーカメラの映像をサブモニターに出力します。Display 1 がゲーム本体、Display 2 以降がフリーカメラになります。\nウィンドウモードかサブモニターがない場合はこの設定は無視されます。\n",
-            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
-            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => UseMultipleDisplays),
+            Label    = "フリーカメラの出力先",
+            Desc     = "フリーカメラの映像をどこに表示するかを選択します。\nMainScreen: メイン画面（通常のフリーカメラ）\nPiP: ピクチャー・イン・ピクチャー\nDisplay2: サブモニター（モニター2台以上のときのみ）\n",
+            Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Dropdown,
+            DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.FreeCamDisplayMode)),
+            Accessor        = new global::BunnyGarden2FixMod.Patches.Settings.EnumAccessor<global::BunnyGarden2FixMod.FreeCamDisplayMode>(() => FreeCamDisplayMode),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
