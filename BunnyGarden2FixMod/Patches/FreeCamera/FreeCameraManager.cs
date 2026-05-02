@@ -201,6 +201,7 @@ public class FreeCameraManager : MonoBehaviour
         pipCanvasObject = new GameObject("PiPCanvas");
         var canvas = pipCanvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = GetMaxUIOrder() + 1; // 他のUIより前面に表示
 
         // ドラッグとリサイズを有効にするためにGraphicRaycasterを追加
         pipCanvasObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
@@ -243,6 +244,18 @@ public class FreeCameraManager : MonoBehaviour
             image.texture = pipRenderTexture;
     }
 
+    // 他のUIオブジェクトの最大のソート順序を取得する
+    private int GetMaxUIOrder()
+    {
+        int maxOrder = 0;
+        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var canvas in canvases)
+        {
+            if (canvas != null && canvas.sortingOrder > maxOrder)
+                maxOrder = canvas.sortingOrder;
+        }
+        return maxOrder;
+    }
     // PiPのドラッグで，移動とリサイズを管理するクラス
     private class PiPHandler : MonoBehaviour, IDragHandler, IPointerDownHandler, IEndDragHandler
     {
