@@ -237,6 +237,7 @@ Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x。
             BunnyGarden2FixMod.FreeCamDisplayMode.MainScreen,
             @"フリーカメラの出力先
 フリーカメラの映像をどこに表示するかを選択します。
+排他的フルスクリーンモードの場合は、MainScreen が使用されます。
 MainScreen: メイン画面（通常のフリーカメラ）
 PiP: ピクチャー・イン・ピクチャー
 Display2: サブモニター（モニター2台以上のときのみ）");
@@ -646,7 +647,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         {
             Category = "Camera",
             Label    = "フリーカメラの出力先",
-            Desc     = "フリーカメラの映像をどこに表示するかを選択します。\nMainScreen: メイン画面（通常のフリーカメラ）\nPiP: ピクチャー・イン・ピクチャー\nDisplay2: サブモニター（モニター2台以上のときのみ）\n",
+            Desc     = "フリーカメラの映像をどこに表示するかを選択します。\n排他的フルスクリーンモードの場合は、MainScreen が使用されます。\nMainScreen: メイン画面（通常のフリーカメラ）\nPiP: ピクチャー・イン・ピクチャー\nDisplay2: サブモニター（モニター2台以上のときのみ）\n",
             Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Dropdown,
             DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.FreeCamDisplayMode)),
             Accessor        = new global::BunnyGarden2FixMod.Patches.Settings.EnumAccessor<global::BunnyGarden2FixMod.FreeCamDisplayMode>(() => FreeCamDisplayMode),
