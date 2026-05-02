@@ -183,6 +183,8 @@ Wardrobe パネル表示中、以下のキーで操作できます。
 | `ToggleFreeCamButton` | `Y` | フリーカメラ ON/OFFのボタン<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleFixedFreeCamKey` | `F6` | 固定フリーカメラ ON/OFFのキーボードキー<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。 |
 | `ToggleFixedFreeCamButton` | `X` | 固定フリーカメラ ON/OFFのボタン<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
+| `ToggleFreeCamDisplayModeKey` | `F4` | フリーカメラの出力先切替のキーボードキー<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。 |
+| `ToggleFreeCamDisplayModeButton` | `None` | フリーカメラの出力先切替のボタン<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleOverlayKey` | `F12` | オーバーレイ表示切替のキーボードキー<br>フリーカメラの操作ガイドが対象です。 |
 | `ToggleOverlayButton` | `Start` | オーバーレイ表示切替のボタン<br>フリーカメラの操作ガイドが対象です。<br>ControllerModifier と同時押しが必要です。 |
 | `CaptureScreenshotKey` | `P` | スクリーンショット保存のキーボードキー<br>フリーカメラ中にゲーム UI・MOD オーバーレイを写さず BepInEx/screenshots フォルダへ PNG 出力します。 |

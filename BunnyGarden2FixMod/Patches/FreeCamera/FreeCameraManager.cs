@@ -3,6 +3,7 @@ using GB;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering.Universal;
+using VLB;
 
 namespace BunnyGarden2FixMod.Patches.FreeCamera;
 
@@ -42,6 +43,9 @@ public class FreeCameraManager : MonoBehaviour
 
         if (Configs.FixedFreeCamToggle.IsTriggered())
             ToggleFixedFreeCam();
+
+        if (Configs.FreeCamDisplayModeToggle.IsTriggered())
+            ChangeFreeCamMode();
     }
 
     private void ToggleFreeCam()
@@ -51,6 +55,26 @@ public class FreeCameraManager : MonoBehaviour
         else
             Activate();
     }
+
+    private void ChangeFreeCamMode()
+    {
+        bool isExclusiveFullScreen = Configs.ForceExclusiveFullScreen.Value && Screen.fullScreen;
+        if (!IsActive || isExclusiveFullScreen) // 排他フルスクリーンモードの場合は、フリーカメラの表示モードを切り替えない
+            return;
+
+        // モードを切り替え
+        Configs.FreeCamDisplayMode.Value = Configs.FreeCamDisplayMode.Value switch
+        {
+            FreeCamDisplayMode.MainScreen => FreeCamDisplayMode.PiP,
+            FreeCamDisplayMode.PiP => Screen.fullScreen ? FreeCamDisplayMode.Display2 : FreeCamDisplayMode.MainScreen,
+            _ => FreeCamDisplayMode.MainScreen
+        };
+
+        Deactivate();
+        Activate();
+        Plugin.Logger.LogInfo("フリーカメラ切替: " + Configs.FreeCamDisplayMode.Value);
+    }
+
 
     private void ToggleFixedFreeCam()
     {
@@ -494,6 +518,9 @@ public class FreeCameraManager : MonoBehaviour
         GUILayout.Label($"Free Camera: ON ({Configs.FreeCamToggle}=OFF)");
         GUI.color = Color.yellow;
         GUILayout.Label($"Fixed Mode: {(IsFixed ? "ON" : "OFF")} ({Configs.FixedFreeCamToggle}=TOGGLE)");
+        GUI.color = Color.cyan;
+        GUILayout.Label($"Display Mode: {Configs.FreeCamDisplayMode.Value} ({Configs.FreeCamDisplayModeToggle}=TOGGLE)");
         GUI.color = Color.white;
+
     }
 }

@@ -649,6 +649,17 @@
       ui:
         kind: keybinding
 
+    - name: FreeCamDisplayModeToggle
+      label: フリーカメラの出力先切替
+      key: ToggleFreeCamDisplayMode
+      type: hotkey
+      defaultKey: F4
+      defaultButton: None
+      description: FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。
+      controllerDescription: ControllerModifier と同時押しが必要です。
+      ui:
+        kind: keybinding
+
     - name: OverlayToggle
       label: オーバーレイ表示切替
       key: ToggleOverlay

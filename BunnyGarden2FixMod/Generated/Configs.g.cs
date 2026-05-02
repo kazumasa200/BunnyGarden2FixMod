@@ -117,6 +117,8 @@ public static class Configs
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig FreeCamToggle;
     /// <summary>固定フリーカメラ ON/OFF</summary>
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig FixedFreeCamToggle;
+    /// <summary>フリーカメラの出力先切替</summary>
+    public static global::BunnyGarden2FixMod.Utils.HotkeyConfig FreeCamDisplayModeToggle;
     /// <summary>オーバーレイ表示切替</summary>
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig OverlayToggle;
     /// <summary>スクリーンショット保存</summary>
@@ -466,6 +468,14 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             global::BunnyGarden2FixMod.Utils.ControllerButton.X,
             @"固定フリーカメラ ON/OFF",
             @"フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。",
+            @"ControllerModifier と同時押しが必要です。");
+
+        FreeCamDisplayModeToggle = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
+            "Hotkey", "ToggleFreeCamDisplayMode",
+            global::UnityEngine.InputSystem.Key.F4,
+            global::BunnyGarden2FixMod.Utils.ControllerButton.None,
+            @"フリーカメラの出力先切替",
+            @"FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。",
             @"ControllerModifier と同時押しが必要です。");
 
         OverlayToggle = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
@@ -941,6 +951,15 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             Desc     = "フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。",
             Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.KeyBinding,
             HotkeyProvider  = () => FixedFreeCamToggle,
+            DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Utils.ControllerButton)),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "Hotkey",
+            Label    = "フリーカメラの出力先切替",
+            Desc     = "FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。",
+            Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.KeyBinding,
+            HotkeyProvider  = () => FreeCamDisplayModeToggle,
             DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Utils.ControllerButton)),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
