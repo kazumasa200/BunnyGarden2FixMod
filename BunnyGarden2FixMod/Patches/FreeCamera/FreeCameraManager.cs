@@ -3,7 +3,6 @@ using GB;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering.Universal;
-using VLB;
 
 namespace BunnyGarden2FixMod.Patches.FreeCamera;
 
@@ -45,7 +44,7 @@ public class FreeCameraManager : MonoBehaviour
             ToggleFixedFreeCam();
 
         if (Configs.FreeCamDisplayModeToggle.IsTriggered())
-            ChangeFreeCamMode();
+            ToggleFreeCamMode();
     }
 
     private void ToggleFreeCam()
@@ -56,9 +55,10 @@ public class FreeCameraManager : MonoBehaviour
             Activate();
     }
 
-    private void ChangeFreeCamMode()
+    private void ToggleFreeCamMode()
     {
-        bool isExclusiveFullScreen = Configs.ForceExclusiveFullScreen.Value && Screen.fullScreen;
+        bool isFullScreen = Screen.fullScreen || Screen.fullScreenMode == FullScreenMode.FullScreenWindow;
+        bool isExclusiveFullScreen = Configs.ForceExclusiveFullScreen.Value && isFullScreen;
         if (!IsActive || isExclusiveFullScreen) // 排他フルスクリーンモードの場合は、フリーカメラの表示モードを切り替えない
             return;
 
@@ -66,15 +66,20 @@ public class FreeCameraManager : MonoBehaviour
         Configs.FreeCamDisplayMode.Value = Configs.FreeCamDisplayMode.Value switch
         {
             FreeCamDisplayMode.MainScreen => FreeCamDisplayMode.PiP,
-            FreeCamDisplayMode.PiP => Screen.fullScreen ? FreeCamDisplayMode.Display2 : FreeCamDisplayMode.MainScreen,
+            FreeCamDisplayMode.PiP => isFullScreen ? FreeCamDisplayMode.Display2 : FreeCamDisplayMode.MainScreen,
             _ => FreeCamDisplayMode.MainScreen
         };
 
-        Deactivate();
-        Activate();
+        StartCoroutine(RebootFreeCamRoutine()); // Pip表示を安定させるため deactivate->activate を1フレーム遅らせる
         Plugin.Logger.LogInfo("フリーカメラ切替: " + Configs.FreeCamDisplayMode.Value);
     }
 
+    private System.Collections.IEnumerator RebootFreeCamRoutine()
+    {
+        Deactivate();
+        yield return null;
+        Activate();
+    }
 
     private void ToggleFixedFreeCam()
     {
@@ -106,7 +111,8 @@ public class FreeCameraManager : MonoBehaviour
 
         // フリーカメラの映像をどのディスプレイに出力するかのモードを判定
         // 排他的フルスクリーンモードの場合は、不安定になる可能性があるため、Display2出力モードとPiPモードを無効化する
-        bool isExclusiveFullScreen = Configs.ForceExclusiveFullScreen.Value && Screen.fullScreen;
+        bool isFullScreen = Screen.fullScreen || Screen.fullScreenMode == FullScreenMode.FullScreenWindow;
+        bool isExclusiveFullScreen = Configs.ForceExclusiveFullScreen.Value && isFullScreen;
         bool useDisplay2InFreeCam = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2 && Display.displays.Length > 1;
         bool usePiPInFreeCam = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.PiP;
 
@@ -120,8 +126,19 @@ public class FreeCameraManager : MonoBehaviour
         else if (useDisplay2InFreeCam && !isExclusiveFullScreen)
         {
             // Display2出力モードでは、フリーカメラをDisplay2に出力する
+
+            // Display.Activateの副作用でフルスクリーンが解除されるので，解像度とモードを保存して復元
+            // 現在の解像度とフルスクリーンモードを保存
+            int currentWidth = Screen.width;
+            int currentHeight = Screen.height;
+            var currentMode = Screen.fullScreenMode;
+
             Display.displays[1].Activate();
             freeCam.targetDisplay = 1;
+
+            // 解像度を復元することで、フルスクリーン状態も一緒に復元される
+            Screen.SetResolution(currentWidth, currentHeight, currentMode, Screen.currentResolution.refreshRateRatio);
+
             originalCam.enabled = true; // 元のカメラは引き続きメインディスプレイに出力
             Plugin.Logger.LogInfo("Display2でフリーカメラを有効化");
         }
@@ -145,14 +162,17 @@ public class FreeCameraManager : MonoBehaviour
 
     public void Deactivate()
     {
-        CleanupPiP();
-
         if (freeCamObject != null)
         {
+            var cam = freeCamObject.GetComponent<Camera>();
+            if (cam != null)
+                cam.targetTexture = null;
             StartCoroutine(BlackoutAndDestroyRoutine(freeCamObject)); // ブラックアウトと破棄をコルーチンで実行
             freeCamObject = null;
             controller = null;
         }
+
+        CleanupPiP();
 
         if (originalCam != null)
         {
@@ -194,14 +214,15 @@ public class FreeCameraManager : MonoBehaviour
 
         pipRenderTexture = new RenderTexture(pipWidth, pipHeight, 16);
         pipRenderTexture.antiAliasing = MsaaSetupPatch.GetMSAASamples();
-
         pipRenderTexture.Create();
+
         if (freeCamObject != null)
         {
             var cam = freeCamObject.GetComponent<Camera>();
-            if (cam != null && cam.targetTexture != pipRenderTexture)
+            if (cam != null)
             {
                 cam.targetTexture = pipRenderTexture;
+                cam.enabled = true;
             }
         }
 
@@ -213,7 +234,7 @@ public class FreeCameraManager : MonoBehaviour
         image.raycastTarget = true;
 
         // ドラッグによる移動とリサイズ用のコンポーネントを追加
-        var pipHandler = pipUIObject.AddComponent<PiPHandler>();
+        var pipHandler = pipUIObject.AddComponent<FreeCameraPiPHandler>();
         pipHandler.TargetAspectRatio = pipAspectRatio;
         // PiPのリサイズが確定したときにテクスチャもリサイズするようにコールバックを設定
         pipHandler.OnResizeCommitted = (newWidth, newHeight) =>
@@ -280,112 +301,9 @@ public class FreeCameraManager : MonoBehaviour
         }
         return maxOrder;
     }
-    // PiPのドラッグで，移動とリサイズを管理するクラス
-    private class PiPHandler : MonoBehaviour, IDragHandler, IPointerDownHandler, IEndDragHandler
-    {
-        private RectTransform rectTransform;
-        private const float EdgeSize = 30f; // ドラッグでリサイズするエリアのサイズ
-        public float TargetAspectRatio { get; set; } = 16f / 9f; // デフォルトの縦横比
-        private enum DragMode
-        {
-            None,
-            Move,
-            Resize
-        }
-        private DragMode currentDragMode = DragMode.None;
-        private bool isLeft, isRight, isTop, isBottom;
-        public System.Action<int, int> OnResizeCommitted; // リサイズ確定時のコールバック（幅と高さを引数に）
-
-        void Awake()
-        {
-            rectTransform = GetComponent<RectTransform>();
-        }
-        public void OnPointerDown(PointerEventData eventData)
-        {
-            // 常に最前面に持ってくる
-            rectTransform.SetAsLastSibling();
-
-             // --- ドラッグ開始時の判定 ---
-            Vector2 localPoint;
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(rectTransform, eventData.pressPosition, eventData.pressEventCamera, out localPoint);
-
-            float width = rectTransform.rect.width;
-            float height = rectTransform.rect.height;
-
-            // Pivot(1,0)基準の判定
-            isLeft   = localPoint.x <  EdgeSize - width;
-            isRight  = localPoint.x > -EdgeSize;
-            isBottom = localPoint.y <  EdgeSize;
-            isTop    = localPoint.y > -EdgeSize + height ;
-
-            if (isLeft || isRight || isBottom || isTop)
-            {
-                currentDragMode = DragMode.Resize;
-            }
-            else
-            {
-                currentDragMode = DragMode.Move;
-            }
-        }
-
-        public void OnDrag(PointerEventData eventData)
-        {
-            if (currentDragMode == DragMode.Resize)
-            {
-                // --- リサイズ処理のみ ---
-                Vector2 sizeDelta = rectTransform.sizeDelta;
-                float deltaX = isRight ? eventData.delta.x : (isLeft   ? -eventData.delta.x : 0);
-                float deltaY = isTop   ? eventData.delta.y : (isBottom ? -eventData.delta.y : 0);
-
-                if (Mathf.Abs(deltaX) > Mathf.Abs(deltaY))
-                {
-                    sizeDelta.x += deltaX;
-                    sizeDelta.y = sizeDelta.x / TargetAspectRatio;
-                }
-                else
-                {
-                    sizeDelta.y += deltaY;
-                    sizeDelta.x = sizeDelta.y * TargetAspectRatio;
-                }
-
-                if (sizeDelta.x > 100f && sizeDelta.y > 100f)
-                {
-                    rectTransform.sizeDelta = sizeDelta;
-                }
-            }
-            else if (currentDragMode == DragMode.Move)
-            {
-                // --- 移動処理のみ ---
-                rectTransform.anchoredPosition += eventData.delta;
-            }
-        }
-
-        // ドラッグが終わったら解像度を再設定し，モードをリセット
-        public void OnEndDrag(PointerEventData eventData)
-        {
-            if (currentDragMode == DragMode.Resize)
-            {
-                var rectTransform = GetComponent<RectTransform>();
-                if (rectTransform != null)
-                {
-                    int newWidth = Mathf.RoundToInt(rectTransform.rect.width);
-                    int newHeight = Mathf.RoundToInt(rectTransform.rect.height);
-                    OnResizeCommitted?.Invoke(newWidth, newHeight);
-                    Plugin.Logger.LogInfo($"PiPサイズ変更: {newWidth}x{newHeight}");
-                }
-            }
-            currentDragMode = DragMode.None;
-        }
-    }
 
     private void CleanupPiP()
     {
-        if (freeCamObject != null)
-        {
-            var cam = freeCamObject.GetComponent<Camera>();
-            if (cam != null)
-                cam.targetTexture = null;
-        }
         if (pipRenderTexture != null)
         {
             pipRenderTexture.Release();
