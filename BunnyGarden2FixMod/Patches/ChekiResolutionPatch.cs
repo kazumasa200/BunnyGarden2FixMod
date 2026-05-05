@@ -186,8 +186,20 @@ public static class ChekiResolutionPatch
 
         yield return new WaitForEndOfFrame();
 
-        // 画面の実アスペクト比でキャプチャを取得。
-        s_captureRef(self) = ScreenCapture.CaptureScreenshotAsTexture();
+        // フリーカメラでないか，PiP, MainScreenのときは ScreenShotを使用
+        bool useMainCameraCapture = Patches.FreeCamera.FreeCameraManager.IsActive &&
+                                    Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2;
+
+        if (useMainCameraCapture)
+        {
+            // メインカメラの現在の画像を直接取得
+            s_captureRef(self) = CaptureMainCameraTexture();
+        }
+        else
+        {
+            s_captureRef(self) = ScreenCapture.CaptureScreenshotAsTexture();
+        }
+
         var capture = s_captureRef(self);
         float captureAspect = (float)capture.width / Mathf.Max(1, capture.height);
 
@@ -266,4 +278,49 @@ public static class ChekiResolutionPatch
             Object.Destroy(hiRT);
         }
     }
+
+    // Display2を用いているときは，メインカメラの画像をキャプチャする
+    private static Texture2D CaptureMainCameraTexture()
+    {
+        Camera targetCam = null;
+        foreach (var cam in Camera.allCameras)
+        {
+            if (cam.targetDisplay == 0 && cam.enabled)
+            {
+                targetCam = cam;
+                break;
+            }
+        }
+
+        if (targetCam == null) targetCam = Camera.main;
+        if (targetCam == null) return null;
+
+        int width = targetCam.pixelWidth;
+        int height = targetCam.pixelHeight;
+
+        var tempRT = RenderTexture.GetTemporary(
+            width, height, 24,
+            RenderTextureFormat.Default,
+            RenderTextureReadWrite.Default);
+        var prevRT = targetCam.targetTexture;
+        var prevActive = RenderTexture.active;
+
+        targetCam.targetTexture = tempRT;
+        targetCam.Render();
+
+        RenderTexture.active = tempRT;
+
+        bool linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
+        Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false, linear);
+
+        tex.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
+        tex.Apply();
+
+        targetCam.targetTexture = prevRT;
+        RenderTexture.active = prevActive;
+        RenderTexture.ReleaseTemporary(tempRT);
+
+        return tex;
+    }
+
 }
