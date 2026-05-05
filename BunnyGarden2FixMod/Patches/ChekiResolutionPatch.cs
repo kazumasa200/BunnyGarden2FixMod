@@ -186,9 +186,8 @@ public static class ChekiResolutionPatch
 
         yield return new WaitForEndOfFrame();
 
-        // フリーカメラでないか，PiP, MainScreenのときは ScreenShotを使用
-        bool useMainCameraCapture = Patches.FreeCamera.FreeCameraManager.IsActive &&
-                                    Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2;
+        // フリーカメラがDisplay2を使用する時のみ，Cameraからのキャプチャを使用する
+        bool useMainCameraCapture = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2;
 
         if (useMainCameraCapture)
         {
@@ -197,6 +196,7 @@ public static class ChekiResolutionPatch
         }
         else
         {
+            // スクリーンショットから画像を取得
             s_captureRef(self) = ScreenCapture.CaptureScreenshotAsTexture();
         }
 
