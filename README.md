@@ -5,9 +5,7 @@
 <img width="1920" height="1000" alt="スクリーンショット 2026-04-16 191718-e" src="https://github.com/user-attachments/assets/f6c86e6b-2ad5-4b5f-bfa8-6ff66fcaf43b" />
 
 ## おしらせ
-バージョン1.0.3から、BepInEx6にも対応しました！！  
-今までのBepInEx5版もひきつづき開発します！！  
-また、下で紹介している導入方法はBepInEx5のものになります！ご了承ください～  
+**DLC完全対応！**
 
 ## 対応バージョン(MODバージョンv1.0.8.1現在)
 - ゲームバージョン1.0.2のみ対応  
