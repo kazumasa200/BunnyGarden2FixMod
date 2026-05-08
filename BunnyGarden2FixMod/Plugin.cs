@@ -53,6 +53,11 @@ public class Plugin : BaseUnityPlugin
         }
 
         StartCoroutine(UpdateChecker.Check());
+        // DIAGNOSTIC ONLY — SwimWear 物理診断 (issue 解決後削除)。PatchAll より前で Bind しないと
+        // SwimWearPhysicsDiagPatch.Prepare() が null 評価で常に false を返し patch が貼られない。
+        Configs.SwimWearPhysicsDiag = Config.Bind(
+            "Diagnostics", "SwimWearPhysicsDiag", false,
+            "DIAGNOSTIC ONLY — remove after issue resolved. Logs SwimWear hierarchy/animator/MagicaCloth on first setup per (char, costume, scene).");
         var harmony = new Harmony(MyPluginInfo.PLUGIN_GUID);
         harmony.PatchAll();
         // async ステートマシンは Harmony でパッチできないため LateUpdate 方式で補正
@@ -64,6 +69,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CostumeChanger.StockingsDonorLoader.Initialize(gameObject);
         freeCamera = Patches.FreeCamera.FreeCameraManager.Initialize(gameObject);
         Patches.TimeController.Initialize(gameObject);
+        Patches.CostumeChanger.SwimWearPhysicsDiag.Initialize(gameObject);
         SceneManager.sceneUnloaded += Patches.CostumeChanger.PantiesAltSlotMatchPatch.OnSceneUnloaded;
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");
         PatchLogger.LogInfo($"解像度パッチを適用しました: {Configs.Width.Value}x{Configs.Height.Value}");

@@ -31,6 +31,9 @@ public static class CostumeChangerPatch
 
     internal static FieldInfo s_fittingRoomCharIDField;  // m_charID: FittingRoomOnEnterPatch で参照
 
+    // CharacterHandle.m_parent リフレクションキャッシュ。Prefix で donor preload 判定用。
+    private static FieldInfo s_characterHandleParentField;
+
     // 本体 CostumeOverride 尊重でスキップした際のログ dedup（スパム防止）。id 粒度で 1 回だけ出す。
     private static CharID s_lastRespectSkipId = CharID.NUM;
 
@@ -47,13 +50,15 @@ public static class CostumeChangerPatch
     public static void Initialize(GameObject parent)
     {
         if (!Configs.CostumeChangerEnabled.Value) return;
-        // FittingRoom リフレクションキャッシュを起動時に一括取得。
         s_fittingRoomLoadingField = AccessTools.Field(typeof(FittingRoom), "m_loading");
         s_fittingRoomCharIDField = AccessTools.Field(typeof(FittingRoom), "m_charID");
+        s_characterHandleParentField = AccessTools.Field(typeof(CharacterHandle), "m_parent");
         var pickerHost = new GameObject("BG2CostumePicker");
         Object.DontDestroyOnLoad(pickerHost);
         pickerHost.AddComponent<UI.CostumePickerController>();
         KneeSocksLoader.Initialize(pickerHost);
+        BottomsLoader.Initialize(pickerHost);
+        TopsLoader.Initialize(pickerHost);
         // シーン遷移時に FittingRoom キャッシュを失効させる。
         // 破棄済み Unity Object も Unity の == null で true になるが、
         // DontDestroyOnLoad 下に移動された場合のフェイルセーフ。
@@ -77,14 +82,27 @@ public static class CostumeChangerPatch
 
     // 注意: HarmonyX は引数名一致 or __0/__1 の序数束縛で bind する。逆コンパイル由来の
     // シグネチャで引数名が揺れる可能性を避けるため __0 / __1 の序数束縛を使う。
-    // Preload の引数順序は (CharID id, LoadArg arg) であることを Task 3 Step 2 で grep 確認する。
     // arg は参照型なので、arg.Costume の書換はそのまま呼出元の LoadArg に反映される。
-    private static void Prefix(CharID __0, CharacterHandle.LoadArg __1)
+    private static void Prefix(CharacterHandle __instance, CharID __0, CharacterHandle.LoadArg __1)
     {
         var id = __0;
         var arg = __1;
         if (arg == null) return;
         if (id >= CharID.NUM) return;
+
+        // donor preload 経路 (BottomsLoader / TopsLoader が独自に作る host 配下の CharacterHandle)
+        // で arg.Costume を override してしまうと、donor が target と同じ costume の prefab を
+        // ロードしてしまい「同 char 別衣装で実体が常に override 衣装になる」 bug になる。
+        // CostumeOverrideStore は active scene character のみに適用すべきなので skip する。
+        // Panties/Stocking 等の override も donor には不要 (donor は SMR 参照源として使うだけ)。
+        if (s_characterHandleParentField != null)
+        {
+            var parent = s_characterHandleParentField.GetValue(__instance) as GameObject;
+            if (BottomsLoader.IsDonorPreloadParent(parent) || TopsLoader.IsDonorPreloadParent(parent))
+            {
+                return;
+            }
+        }
 
         // FittingRoom が動作中は本体側の選択を尊重（競合回避）
         if (IsFittingRoomActive()) return;
@@ -104,7 +122,6 @@ public static class CostumeChangerPatch
         // スキップ抜け時は dedup をリセットして次回尊重スキップ時に再度ログを出す
         s_lastRespectSkipId = CharID.NUM;
 
-        // Costume override
         if (CostumeOverrideStore.TryGet(id, out var overrideCostume))
         {
             // DLC 未所持なら override を破棄（整合性防御）
@@ -119,14 +136,12 @@ public static class CostumeChangerPatch
             }
         }
 
-        // Panties override
         if (PantiesOverrideStore.TryGet(id, out var pType, out var pColor))
         {
             arg.PantiesType = pType;
             arg.PantiesColor = pColor;
         }
 
-        // Stocking override
         if (StockingOverrideStore.TryGet(id, out var stocking))
         {
             // KneeSocks 系（type 5-7）はゲーム本体が認識しない型。0 (no stocking) として注入し、
@@ -142,11 +157,20 @@ public static class CostumeChangerPatch
     // LoadCharacter 側の await IsPreloadDone 後に記録する必要があるが、Preload が
     // キャンセル・例外で完了失敗するケースは稀なので、本 MOD では要求確定時点を
     // 「表示した」とみなす（シンプルさ優先）。
-    private static void Postfix(CharID __0, CharacterHandle.LoadArg __1)
+    private static void Postfix(CharacterHandle __instance, CharID __0, CharacterHandle.LoadArg __1)
     {
         if (__1 == null) return;
         var id = __0;
         var arg = __1;
+        // donor preload 経路は履歴対象外 (Wardrobe / ViewHistory は active scene character のみ追跡)。
+        if (s_characterHandleParentField != null)
+        {
+            var parent = s_characterHandleParentField.GetValue(__instance) as GameObject;
+            if (BottomsLoader.IsDonorPreloadParent(parent) || TopsLoader.IsDonorPreloadParent(parent))
+            {
+                return;
+            }
+        }
         // 履歴対象か否かに関わらず、キャラ毎の「最後に Preload で適用された見た目」を記憶する。
         // 後で SetCurrentCast Postfix が新 current キャラの見た目を履歴へフラッシュするのに使う。
         // KneeSocks 系 override 中は arg.Stocking が 0 に変換済み。
@@ -242,6 +266,10 @@ internal static class FittingRoomOnEnterPatch
         if (charId >= CharID.NUM) return;
         CostumeOverrideStore.Clear(charId);
         PantiesOverrideStore.Clear(charId);
+        // Bottoms / Tops は意図的にクリアしない: Bottoms MVP の設計判断で
+        // 「FittingRoom で衣装を選び直しても override は維持」が許容されている。
+        // FittingRoom 退出後の setup() Postfix で再 Apply されるので一貫した挙動。
+        // Tops も同方針で揃える。
         // KneeSocks 系 override 中は Restore してから Clear（副作用を元に戻す）
         if (StockingOverrideStore.TryGet(charId, out var stk)
             && StockingOverrideStore.IsKneeSocksType(stk))

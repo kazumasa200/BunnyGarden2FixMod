@@ -415,7 +415,7 @@
       description: |
         水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。
         押し出すと水着の食い込み（タイトな演出）が再現できますが、stocking が水着を貫通します。
-        0 で無効化。デフォルト 0 (無効)。
+        0 で無効化。
       ui:
         kind: slider
         step: 0.0001
@@ -431,7 +431,7 @@
         保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を
         stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
         押し込むと肌の貫通はなくなりますが、水着の食い込み（タイトな演出）が再現できません。
-        0 で無効化。デフォルト 0.001 (1mm)。
+        0 で無効化。
       ui:
         kind: slider
         step: 0.0001
@@ -445,7 +445,6 @@
       description: |
         肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
         距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぎます。0 で無効化（一様押し込み）。
-        デフォルト 0.001 (1mm)。
       ui:
         kind: slider
         step: 0.0001
@@ -460,11 +459,88 @@
         skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、
         隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
         距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消します。
-        0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。
+        0 で無効化（blendShape 効果は全頂点 100%）。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
+
+    - name: TopsDistancePreserveRange
+      label: 上衣 距離保存 検索範囲 (m)
+      type: float
+      default: 0.100
+      range: [0.010, 0.500]
+      description: |
+        上衣移植時の per-vert 距離保存 (distance preservation) で、donor 服頂点から
+        Babydoll skin (upper + lower) への最近傍探索の最大距離（メートル）。
+        この距離より遠い頂点は補正対象外（outOfRange）として元位置のまま残ります。
+        小さすぎるとワンピース型衣装の下半身などが補正対象から外れ、大きすぎると
+        服から離れた位置の頂点が無理に skin に揃えられて不自然になります。
+      ui:
+        kind: slider
+        step: 0.010
+        format: '{0:F3}'
+
+    - name: TopsSkinMinOffset
+      label: 上衣 肌からの最小距離 (m)
+      type: float
+      default: 0.007
+      range: [0.0, 0.010]
+      description: |
+        donor 服が donor 側 Babydoll 肌にめり込んでいる箇所を解決するための safety margin（メートル）。
+        donor 服頂点 v_i の signedD(v_i, donor_skin) < TopsSkinMinOffset なら、近傍 donor skin 頂点を
+        逆距離² 重み平均で内側へ凹ませ、d_donor を最低この値まで持ち上げます。その後で標準の距離保存
+        (target skin との差分を target 法線方向に push) を適用します。
+        donor 服頂点自体は触らず、reference skin だけを部分的に凹ませる方式のため、頂点間の push 量分散
+        による裏面 flip が原理的に起きません。
+        0 で無効（純粋な距離保存のみ＝めり込みは未補正で持ち越し）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinSampleRadius
+      label: 上衣 肌サンプル半径 (m)
+      type: float
+      default: 0.06
+      range: [0.0, 0.100]
+      description: |
+        上衣移植の距離保存で、donor 頂点が参照する skin の最近傍点を「半径内の全 skin 頂点」
+        の距離重み平均で求めるようにします。0 で K=3 固定、>0 で指定半径内の全頂点を
+        使った滑らかな表面推定になります。半径内に頂点が無い場合は K=3 にフォールバック。
+        skin の細かいトポロジ凹凸 (鎖骨・肩甲骨・肩関節等) で d_donor / d_target が
+        不安定にばらつく場合に有効です。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
+    - name: TopsSkinWeightFalloff
+      label: 上衣 肌 weight 転送 falloff (m)
+      type: float
+      default: 0.02
+      range: [0.0, 0.050]
+      description: |
+        donor cloth が target body の関節 (肩・肘等) を曲げたとき、肌から剥離・突き抜けるのを
+        防ぐため、cloth の boneWeight を skin 由来の weight と blend します。
+        各 cloth vert で t = saturate(d_donor_eff / TopsSkinWeightFalloff) として
+        (1-t) * skin 由来 weight + t * donor 元 weight を線形 blend し、距離が小さい (skin 密着)
+        頂点ほど skin と同じ deformation で動くようにします。
+        0 で機能 disable (donor 元の weight をそのまま使用、従来挙動)。
+        推奨開始値: 0.020 (20mm) で「skin 密着部のみ skin 化」の控えめ有効化。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
+    - name: TopsLoaderVerbose
+      label: 上衣移植デバッグログ
+      type: bool
+      default: false
+      description: |
+        上衣移植 (Tops Transplant) の詳細ログを出力します。dev 向け調査用。
+        donor / target の SMR 一覧、Tops 候補、同名重複、共通/donor 専用/target 専用 SMR の差分を
+        BepInEx ログに出力します。F9 設定パネルには出ません。
 
     - name: PantiesAltSlotMatch
       label: 水着・バニーガール衣装でも下着を表示

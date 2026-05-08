@@ -1,0 +1,1325 @@
+using BunnyGarden2FixMod.Utils;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using UnityEngine;
+
+namespace BunnyGarden2FixMod.Patches.CostumeChanger;
+
+/// <summary>
+/// Bottoms swap 後の MagicaCloth_Skirt (MeshCloth) 物理を donor 側設定で再 build する。
+///
+/// 背景: MeshCloth は build 時に sharedMesh から proxy mesh を生成し、毎フレ vertex を直接書換える。
+/// SwapSmr で SMR.sharedMesh を donor mesh に差し替えると proxy mesh と乖似して物理が止まる。
+///
+/// 解決: target 側 cloth component を Destroy → 新規 AddComponent → donor の serializeData /
+/// serializeData2 を field-wise コピー → sourceRenderers を target SMR にマップ → BuildAndRun。
+/// MagicaCloth2.MagicaCloth 型は AppDomain reflection で解決 (DLL 直接 reference を避ける)。
+///
+/// component 名は costume により "MagicaCloth_Skirt" / "Magica Cloth_Skirt" の 2 種あるため、
+/// 名前ではなく clothType=MeshCloth + name contains "Skirt" でフィルタする。
+///
+/// Restore 経路: <see cref="RebuildSkirtCloth"/> 初回呼出時に target の元 config を
+/// <see cref="s_snapshots"/> に保存し、<see cref="RestoreSkirtCloth"/> で同手順で逆 rebuild する。
+/// </summary>
+internal static class MagicaClothRebuilder
+{
+    private struct Snapshot
+    {
+        public object SerData;        // ClothSerializeData (deep field-wise copy)
+        public object SerData2;       // ClothSerializeData2 (同上)
+        public IList SrcRenderers;    // target 元の sourceRenderers (target 自身の SMR 参照)
+        public bool CreatedByMod;     // true = Restore 時に GO ごと Destroy (元々 stock に存在しなかった component)
+    }
+
+    private static readonly Dictionary<(int InstanceId, string SkirtGoName), Snapshot> s_snapshots = new();
+    private static Type s_magicaClothType;
+    private static bool s_typeResolveAttempted;
+
+    // MagicaCloth API reflection cache (ResolveType の一括解決で埋まる、再解決不要のため)
+    private static PropertyInfo s_serProp;
+    private static MethodInfo s_serData2Method;
+    private static MethodInfo s_disableAutoBuildMethod;
+    private static MethodInfo s_buildAndRunMethod;
+    private static MethodInfo s_replaceTransformMethod;
+    private static MethodInfo s_resetClothMethod;
+    private static MethodInfo s_setParameterChangeMethod;
+
+    private static Type ResolveType()
+    {
+        if (s_magicaClothType != null) return s_magicaClothType;
+        if (s_typeResolveAttempted) return null;
+        s_typeResolveAttempted = true;
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var t = asm.GetType("MagicaCloth2.MagicaCloth", false);
+                if (t != null)
+                {
+                    s_magicaClothType = t;
+                    s_serProp = t.GetProperty("SerializeData", BindingFlags.Instance | BindingFlags.Public);
+                    s_serData2Method = t.GetMethod("GetSerializeData2");
+                    s_disableAutoBuildMethod = t.GetMethod("DisableAutoBuild");
+                    s_buildAndRunMethod = t.GetMethod("BuildAndRun");
+                    s_replaceTransformMethod = t.GetMethod("ReplaceTransform", new[] { typeof(Dictionary<string, Transform>) });
+                    s_resetClothMethod = t.GetMethod("ResetCloth", new[] { typeof(bool) });
+                    s_setParameterChangeMethod = t.GetMethod("SetParameterChange", Type.EmptyTypes);
+                    return t;
+                }
+            }
+            catch (Exception ex) { PatchLogger.LogDebug($"[MCR] assembly 走査中に例外: {asm?.FullName}: {ex.Message}"); }
+        }
+        PatchLogger.LogWarning("[MagicaClothRebuilder] MagicaCloth2.MagicaCloth 型未解決 (1 回限り走査)");
+        return null;
+    }
+
+    /// <summary>
+    /// シーン unload 時に呼ぶ。次シーンで instanceId 再採番されるためスナップショット無効化。
+    /// </summary>
+    public static void ClearAllSnapshots() => s_snapshots.Clear();
+
+    /// <summary>
+    /// BottomsLoader が SwapSmr / hide / CaptureSnapshotIfFirst で SMR.sharedMesh を捕獲する前に呼び、
+    /// target の各 active MagicaCloth が SMR に書き込んだ customMesh を originalMesh (build 時 cache asset)
+    /// に戻しておく。これで BottomsLoader が捕獲する snap.OriginalMesh が stable な Mesh asset になり、
+    /// 後続の rebuild で customMesh が dispose されても dangling reference にならない (Restore 時に
+    /// SMR.sharedMesh=null 状態で BuildAndRun が失敗するのを防ぐ)。
+    /// </summary>
+    public static void NormalizeSmrMeshBeforeSwap(GameObject character)
+    {
+        if (character == null) return;
+        var magicaType = ResolveType();
+        if (magicaType == null) return;
+
+        var magicaRoot = character.transform.Find("MagicaCloth");
+        if (magicaRoot == null || !magicaRoot.gameObject.activeSelf) return;
+
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        var getOriginalMesh = magicaType.GetMethod("GetOriginalMesh", new[] { typeof(Renderer) });
+        if (serProp == null || getOriginalMesh == null) return;
+
+        int normalized = 0;
+        var allComponents = character.GetComponentsInChildren(magicaType, true);
+        foreach (var comp in allComponents)
+        {
+            if (!(comp is Behaviour beh) || !beh.isActiveAndEnabled) continue;
+            var sdata = serProp.GetValue(comp);
+            if (sdata == null) continue;
+            if (!(sdata.GetType().GetField("sourceRenderers", bf)?.GetValue(sdata) is IList srcList)) continue;
+            foreach (var item in srcList)
+            {
+                if (!(item is SkinnedMeshRenderer smr) || smr == null) continue;
+                try
+                {
+                    var orig = getOriginalMesh.Invoke(comp, new object[] { smr }) as Mesh;
+                    if (orig != null && smr.sharedMesh != orig)
+                    {
+                        smr.sharedMesh = orig;
+                        normalized++;
+                    }
+                }
+                catch (Exception ex) { PatchLogger.LogDebug($"[MCR] GetOriginalMesh 失敗: {smr?.name}: {ex.Message}"); }
+            }
+        }
+        if (normalized > 0)
+            PatchLogger.LogInfo($"[MagicaClothRebuilder] normalize SMR mesh (customMesh→originalMesh): {character.name} (count={normalized})");
+    }
+
+    /// <summary>
+    /// character 配下の MagicaCloth_Skirt (MeshCloth) を、donor 側の同種 component の
+    /// serializeData / serializeData2 で再 build する。
+    /// 初回 rebuild 時に target の元 config を snapshot 保存し、後続 <see cref="RestoreSkirtCloth"/> で復元可能にする。
+    /// donor 側に skirt cloth 無 (例: MIUKA/Casual) の場合は target component を Destroy (物理 OFF) する。
+    /// target 側に skirt cloth 無 (現衣装が pants 系) の場合は no-op。
+    /// </summary>
+    public static void RebuildSkirtCloth(GameObject character, GameObject donorHost)
+    {
+        if (character == null) return;
+        var magicaType = ResolveType();
+        if (magicaType == null) return;
+
+        var magicaRoot = character.transform.Find("MagicaCloth");
+        if (magicaRoot == null || !magicaRoot.gameObject.activeSelf) return;
+
+        var targetSkirt = FindSkirtMeshCloth(character, magicaType);
+        var donorSkirt = donorHost != null ? FindSkirtMeshCloth(donorHost, magicaType) : null;
+
+        // donor 側無 + target 側有 → snapshot を取って Destroy (Restore で復元できるように)
+        if (donorSkirt == null)
+        {
+            if (targetSkirt != null)
+            {
+                SnapshotIfFirst(character, targetSkirt, magicaType);
+                PatchLogger.LogInfo($"[MagicaClothRebuilder] donor に skirt cloth 無 → target component を Destroy (物理 OFF): {character.name}");
+                UnityEngine.Object.DestroyImmediate(targetSkirt);
+            }
+            return;
+        }
+        if (targetSkirt == null)
+        {
+            // 過去の「donor 無」 apply (e.g. MIUKA/Casual 等 pants 専用 donor) で
+            // target 側 component が Destroy されたまま、後続 skirt 系 donor が選ばれた場合
+            // snapshot から component を復元してから donor rebuild に進む。
+            // snapshot 無なら本当に target に skirt 系 GO が無い (現衣装が pants 系等) ので
+            // 新規生成を試みる。
+            if (TryRecoverDestroyedSkirt(character, magicaType))
+            {
+                targetSkirt = FindSkirtMeshCloth(character, magicaType);
+            }
+            if (targetSkirt == null)
+            {
+                // SwimWear 等 stock skirt cloth 無 の target に donor config で新規生成 (VIP のみ)。
+                // caller (BottomsLoader.RebindMagicaClothIfActive) が magicaRoot.activeSelf=true をガード済みなので
+                // ここに到達するのは VIP シーン相当。Bar では呼ばれない。
+                var createdComp = TryCreateSkirtCloth(character, donorSkirt, magicaType);
+                if (createdComp == null)
+                {
+                    PatchLogger.LogInfo($"[MagicaClothRebuilder] target に skirt cloth 無 + 新規生成失敗 → no-op: {character.name}");
+                    return;
+                }
+                // 新規生成成功 → snapshot を CreatedByMod=true で登録。
+                // 通常 RebuildFromComponent 経路には進まず、ここで完了 (BuildFromConfig は TryCreateSkirtCloth 内で実行済)。
+                SnapshotAsCreated(character, createdComp);
+                return;
+            }
+        }
+
+        try
+        {
+            SnapshotIfFirst(character, targetSkirt, magicaType);
+            RebuildFromComponent(targetSkirt, donorSkirt, character, magicaType);
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogError($"[MagicaClothRebuilder] rebuild 失敗 {character.name}: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// 過去の「donor 無」 apply で <see cref="DestroyImmediate"/> された target MagicaCloth_Skirt component を
+    /// snapshot から復元する。snapshot は **消費しない** (後続 user toggle-off 時の <see cref="RestoreSkirtCloth"/>
+    /// で再利用するため)。1 件以上復元できたら true。
+    ///
+    /// この関数は「component を取り戻すための throwaway build」に過ぎない。直後の caller (
+    /// <see cref="RebuildSkirtCloth"/> の continue 経路) が <see cref="RebuildFromComponent"/> を呼び、
+    /// <see cref="SafeDestroyPreservingSmrState"/> で破棄して donor config で再 build する。
+    /// proxy mesh build → 直後 destroy のオーバーヘッドはあるが、component を AddComponent 単独で
+    /// 残すと <see cref="FindSkirtMeshCloth"/> 等の探索 / serializeData 復元との整合が崩れるため
+    /// 最低限 build まで通している (remapColliders=false で collider 再マップは省略)。
+    /// </summary>
+    private static bool TryRecoverDestroyedSkirt(GameObject character, Type magicaType)
+    {
+        int instId = character.GetInstanceID();
+        var keys = s_snapshots.Keys.Where(k => k.InstanceId == instId).ToList();
+        bool any = false;
+        foreach (var key in keys)
+        {
+            if (!s_snapshots.TryGetValue(key, out var snap)) continue;
+            if (snap.CreatedByMod) continue; // mod 生成 component は recover 対象外 (元々 stock に存在しない)
+            var skirtGo = FindGameObjectByName(character, key.SkirtGoName);
+            if (skirtGo == null) continue;
+            if (skirtGo.GetComponent(magicaType) != null) continue; // 既に component 有 → recovery 不要
+            try
+            {
+                if (BuildFromConfig(skirtGo, character, magicaType, snap.SerData, snap.SerData2, snap.SrcRenderers, "recover", remapColliders: false))
+                {
+                    PatchLogger.LogInfo($"[MagicaClothRebuilder] destroyed skirt を snapshot から復元: {character.name}/{key.SkirtGoName}");
+                    any = true;
+                }
+                else
+                {
+                    PatchLogger.LogWarning($"[MagicaClothRebuilder] recovery build 失敗: {character.name}/{key.SkirtGoName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                PatchLogger.LogError($"[MagicaClothRebuilder] recover 例外 ({key.SkirtGoName}): {ex}");
+            }
+        }
+        return any;
+    }
+
+    /// <summary>
+    /// 過去の <see cref="RebuildSkirtCloth"/> で取得した snapshot から target の MagicaCloth_Skirt を
+    /// 元 config で rebuild する。snapshot 無 (= 一度も rebuild してない) なら no-op。
+    /// 同 character への複数 skirt GO (将来対応用) も全エントリ復元する。
+    /// </summary>
+    public static void RestoreSkirtCloth(GameObject character)
+    {
+        if (character == null) return;
+        var magicaType = ResolveType();
+        if (magicaType == null) return;
+        var instId = character.GetInstanceID();
+
+        var keys = s_snapshots.Keys.Where(k => k.InstanceId == instId).ToList();
+
+        // mod 注入した collider component を全削除 (marker と同 GO 上の Magica*Collider 両方)。
+        // CreatedByMod の skirt 削除より前 / per-snapshot の rebuild より前に character 単位で 1 回実施する。
+        // 非 CreatedByMod 経路 (target が stock skirt 持ち + donor 由来の clone collider が injected された
+        // ケース) でも残留 collider を確実に掃除し、stock skirt の collision に donor の余剰 collider が
+        // 残らないようにする。複数 snapshot がある場合も先頭で 1 回掃除すれば足りる。
+        if (keys.Count > 0)
+        {
+            CleanupInjectedColliders(character);
+        }
+
+        foreach (var key in keys)
+        {
+            if (!s_snapshots.TryGetValue(key, out var snap)) continue;
+
+            // CreatedByMod な snapshot は GO ごと Destroy (元々 stock に存在しなかったため元状態は「無し」)
+            if (snap.CreatedByMod)
+            {
+                var skirtGoToDestroy = FindGameObjectByName(character, key.SkirtGoName);
+                if (skirtGoToDestroy != null)
+                {
+                    var existingComp = skirtGoToDestroy.GetComponent(magicaType);
+                    // SafeDestroyPreservingSmrState の SrcRenderers は CreatedByMod の場合 null だが
+                    // 内部実装が null check しているため安全に呼べる。
+                    if (existingComp != null) SafeDestroyPreservingSmrState(existingComp, null);
+                    UnityEngine.Object.DestroyImmediate(skirtGoToDestroy);
+                    PatchLogger.LogInfo($"[MagicaClothRebuilder] CreatedByMod skirt cloth を Destroy: {character.name}/{key.SkirtGoName}");
+                }
+                s_snapshots.Remove(key);
+                continue;
+            }
+
+            bool buildSucceeded = false;
+            try
+            {
+                var skirtGo = FindGameObjectByName(character, key.SkirtGoName);
+                if (skirtGo == null)
+                {
+                    PatchLogger.LogWarning($"[MagicaClothRebuilder] restore: skirt GO '{key.SkirtGoName}' 未存在");
+                    continue;
+                }
+                var existing = skirtGo.GetComponent(magicaType);
+                if (existing != null)
+                {
+                    SafeDestroyPreservingSmrState(existing, snap.SrcRenderers);
+                }
+                buildSucceeded = BuildFromConfig(skirtGo, character, magicaType, snap.SerData, snap.SerData2, snap.SrcRenderers, "restore", remapColliders: false);
+            }
+            catch (Exception ex)
+            {
+                PatchLogger.LogError($"[MagicaClothRebuilder] restore 例外 ({key.SkirtGoName}): {ex}");
+            }
+            // build 成功時のみ snapshot 消費。失敗時は次回 Restore で retry できるよう保持。
+            if (buildSucceeded) s_snapshots.Remove(key);
+        }
+    }
+
+    /// <summary>
+    /// host 配下の MagicaCloth component で clothType=MeshCloth かつ
+    /// GameObject 名に "Skirt" を含む最初の component を返す。
+    /// </summary>
+    private static Component FindSkirtMeshCloth(GameObject host, Type magicaType)
+    {
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        if (serProp == null) return null;
+
+        var allComponents = host.GetComponentsInChildren(magicaType, true);
+        foreach (var comp in allComponents)
+        {
+            var name = (comp as UnityEngine.Object)?.name ?? "";
+            if (name.IndexOf("Skirt", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            var sdata = serProp.GetValue(comp);
+            if (sdata == null) continue;
+            var ctValue = sdata.GetType().GetField("clothType", bf)?.GetValue(sdata)?.ToString();
+            if (ctValue == "MeshCloth") return comp;
+        }
+        return null;
+    }
+
+    private static GameObject FindGameObjectByName(GameObject character, string name)
+    {
+        foreach (var t in character.GetComponentsInChildren<Transform>(true))
+        {
+            if (t != null && t.name == name) return t.gameObject;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// target に skirt cloth component が無い (例: SwimWear) ケースで、donor の config を流用して
+    /// target の MagicaCloth root 配下に新規 GameObject + MagicaCloth component を生成する。
+    /// 成功時は新規 component を返し、失敗時は null。
+    /// VIP シーン (magicaRoot.activeSelf=true) でのみ呼ばれる前提 (caller がガード)。
+    /// </summary>
+    private static Component TryCreateSkirtCloth(GameObject character, Component donorComp, Type magicaType)
+    {
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        var s2Method = s_serData2Method;
+        if (serProp == null || s2Method == null) return null;
+
+        // target の MagicaCloth root を取得 (無ければ防御的に no-op)
+        var magicaRootTrans = character.transform.Find("MagicaCloth");
+        if (magicaRootTrans == null)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] target に MagicaCloth root 無し → 新規生成中止: {character.name}");
+            return null;
+        }
+
+        var donorSerData = serProp.GetValue(donorComp);
+        var donorSerData2 = s2Method.Invoke(donorComp, null);
+        if (donorSerData == null || donorSerData2 == null)
+        {
+            PatchLogger.LogError("[MagicaClothRebuilder] donor serializeData/2 取得失敗 (新規生成)");
+            return null;
+        }
+
+        // GO 名は固定で "Magica Cloth_Skirt" (スペース有) を使う。
+        // CharacterHandle.EnableMagicaCloth (CharacterHandle.cs:1322) が "Magica Cloth_Skirt" 名で lookup
+        // するため、donor 側 GO 名 ("Magica Cloth_Skirt" / "MagicaCloth_Skirt" の 2 種あり) をそのまま
+        // 継承すると EnableMagicaCloth 経由のパラメータ強制上書きを受けないケースが発生する。
+        // また、連続 Override (donor A→B) で GO 名が異なると 1 回目の GO が孤児化する問題も回避。
+        const string SkirtGoName = "Magica Cloth_Skirt";
+        var donorGoName = SkirtGoName;
+
+        // 既に同名 GO があれば衝突回避 (連続 Override で完全 destroy できてないケース)
+        if (magicaRootTrans.Find(donorGoName) != null)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] 同名 GO '{donorGoName}' 既存 → 新規生成 skip: {character.name}");
+            return null;
+        }
+
+        // target hierarchy 内 SMR の name → SMR 辞書 (sourceRenderers 解決用)。
+        // activeInHierarchy=true を優先し、無ければ activeSelf=true (祖先 inactive) を採用。
+        var smrByName = new Dictionary<string, SkinnedMeshRenderer>();
+        foreach (var smr in character.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            if (smr == null) continue;
+            if (!smr.gameObject.activeSelf) continue;
+            if (!smrByName.TryGetValue(smr.name, out var existing))
+            {
+                smrByName[smr.name] = smr;
+                continue;
+            }
+            if (!existing.gameObject.activeInHierarchy && smr.gameObject.activeInHierarchy)
+                smrByName[smr.name] = smr;
+        }
+
+        // donor の sourceRenderers をターゲット SMR 名でリマップ
+        var srcField = donorSerData.GetType().GetField("sourceRenderers", bf);
+        if (srcField == null)
+        {
+            PatchLogger.LogError("[MagicaClothRebuilder] sourceRenderers field 未解決 (新規生成)");
+            return null;
+        }
+        var donorSrcList = srcField.GetValue(donorSerData) as IList;
+        var newSrcList = (IList)Activator.CreateInstance(srcField.FieldType);
+        if (donorSrcList != null)
+        {
+            foreach (var item in donorSrcList)
+            {
+                var srcSmr = item as SkinnedMeshRenderer;
+                if (srcSmr == null) continue;
+                if (smrByName.TryGetValue(srcSmr.name, out var targetSmr))
+                    newSrcList.Add(targetSmr);
+            }
+        }
+        if (newSrcList.Count == 0)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] target に対応 SMR 無 (新規生成中止): {character.name}");
+            return null;
+        }
+
+        // 新規 GameObject を MagicaCloth root 配下に作成
+        var newGo = new GameObject(donorGoName);
+        newGo.transform.SetParent(magicaRootTrans, false);
+        newGo.transform.localPosition = Vector3.zero;
+        newGo.transform.localRotation = Quaternion.identity;
+        newGo.transform.localScale = Vector3.one;
+
+        bool ok = false;
+        try
+        {
+            ok = BuildFromConfig(newGo, character, magicaType, donorSerData, donorSerData2, newSrcList, "create", remapColliders: true);
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogError($"[MagicaClothRebuilder] 新規生成 BuildFromConfig 例外: {character.name}: {ex}");
+        }
+
+        if (!ok)
+        {
+            UnityEngine.Object.DestroyImmediate(newGo);
+            return null;
+        }
+
+        var newComp = newGo.GetComponent(magicaType);
+        if (newComp == null)
+        {
+            PatchLogger.LogError($"[MagicaClothRebuilder] 新規 component 取得失敗: {character.name}");
+            UnityEngine.Object.DestroyImmediate(newGo);
+            return null;
+        }
+
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] target に skirt cloth を新規生成: {character.name}/{donorGoName} (srcRenderers={newSrcList.Count})");
+        return newComp;
+    }
+
+    /// <summary>
+    /// 新規生成された skirt cloth component の snapshot を CreatedByMod=true で登録する。
+    /// 既存 SnapshotIfFirst の ContainsKey ガードと共存し、同 key で 2 回登録されない。
+    /// </summary>
+    private static void SnapshotAsCreated(GameObject character, Component createdComp)
+    {
+        var key = (character.GetInstanceID(), createdComp.gameObject.name);
+        if (s_snapshots.ContainsKey(key)) return;
+        s_snapshots[key] = new Snapshot
+        {
+            SerData = null,
+            SerData2 = null,
+            SrcRenderers = null,
+            CreatedByMod = true,
+        };
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] snapshot saved (CreatedByMod): {character.name}/{createdComp.gameObject.name}");
+    }
+
+    /// <summary>
+    /// 同 (instanceId, skirtGoName) で既に snapshot があれば no-op。
+    /// 初回 rebuild 時のみ target の元 serializeData / serializeData2 / sourceRenderers を保存し、
+    /// Restore で素 config への逆 rebuild ができるようにする。
+    ///
+    /// 重要: ContainsKey ガードは <see cref="SnapshotAsCreated"/> で登録した CreatedByMod=true な
+    /// snapshot を上書きしないことが Restore 経路の前提。これを無条件上書きに変えると、
+    /// Restore で「mod 生成 GO を Destroy」ではなく「null SerData で rebuild」してしまい挙動破綻する。
+    /// </summary>
+    private static void SnapshotIfFirst(GameObject character, Component targetComp, Type magicaType)
+    {
+        var key = (character.GetInstanceID(), targetComp.gameObject.name);
+        if (s_snapshots.ContainsKey(key)) return;
+
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        var s2Method = s_serData2Method;
+        if (serProp == null || s2Method == null) return;
+
+        var origSer = serProp.GetValue(targetComp);
+        var origSer2 = s2Method.Invoke(targetComp, null);
+        if (origSer == null || origSer2 == null) return;
+
+        var snapSer = Activator.CreateInstance(origSer.GetType());
+        CopyFields(origSer, snapSer);
+        var snapSer2 = Activator.CreateInstance(origSer2.GetType());
+        CopyFields(origSer2, snapSer2);
+
+        // sourceRenderers のスナップショットは target 自身の SMR 参照 (target hierarchy に存続)
+        var srcField = origSer.GetType().GetField("sourceRenderers", bf);
+        IList snapSrcList = null;
+        if (srcField != null)
+        {
+            var origSrc = srcField.GetValue(origSer) as IList;
+            snapSrcList = (IList)Activator.CreateInstance(srcField.FieldType);
+            if (origSrc != null)
+            {
+                foreach (var item in origSrc) snapSrcList.Add(item);
+            }
+        }
+
+        s_snapshots[key] = new Snapshot
+        {
+            SerData = snapSer,
+            SerData2 = snapSer2,
+            SrcRenderers = snapSrcList
+        };
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] snapshot saved: {character.name}/{targetComp.gameObject.name} (srcRenderers={snapSrcList?.Count ?? -1})");
+    }
+
+    private static void RebuildFromComponent(Component targetComp, Component donorComp, GameObject character, Type magicaType)
+    {
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        var s2Method = s_serData2Method;
+        if (serProp == null || s2Method == null) return;
+
+        var donorSerData = serProp.GetValue(donorComp);
+        var donorSerData2 = s2Method.Invoke(donorComp, null);
+        if (donorSerData == null || donorSerData2 == null)
+        {
+            PatchLogger.LogError("[MagicaClothRebuilder] donor serializeData/2 取得失敗");
+            return;
+        }
+
+        var targetGo = targetComp.gameObject;
+
+        // target hierarchy 内 SMR の name → SMR 辞書 (sourceRenderers 解決用)。
+        //
+        // COSTUME 切替直後は古い衣装の SMR (祖先 inactive で activeInHierarchy=false な orphan) と
+        // 新衣装の SMR (activeInHierarchy=true な生身) が同名で重複しているケースがある
+        // (env.LoadCharacter が wrapper GO を再利用しつつ children を入れ替える経路で発生)。
+        // 単純な「先勝ち」だと iteration order により古い orphan を採用してしまい、
+        // SwapSmr が orphan に donor mesh を swap → 生身 SMR は prefab mesh のまま → 物理 OFF に見える。
+        //
+        // 採用優先順位: activeInHierarchy=true > activeSelf=true (祖先 inactive)。
+        // COSTUME 切替直後 (ShowCharacter 前) で activeInHierarchy=true な SMR が無いケースの fallback として
+        // activeSelf=true も拾う。
+        var smrByName = new Dictionary<string, SkinnedMeshRenderer>();
+        foreach (var smr in character.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            if (smr == null) continue;
+            if (!smr.gameObject.activeSelf) continue;
+            if (!smrByName.TryGetValue(smr.name, out var existing))
+            {
+                smrByName[smr.name] = smr;
+                continue;
+            }
+            // 既存が activeInHierarchy=false で新しいのが true → 入替 (生身を優先)
+            if (!existing.gameObject.activeInHierarchy && smr.gameObject.activeInHierarchy)
+            {
+                smrByName[smr.name] = smr;
+            }
+        }
+
+        var srcField = donorSerData.GetType().GetField("sourceRenderers", bf);
+        if (srcField == null)
+        {
+            PatchLogger.LogError("[MagicaClothRebuilder] sourceRenderers field 未解決");
+            return;
+        }
+        var donorSrcList = srcField.GetValue(donorSerData) as IList;
+        var newSrcList = (IList)Activator.CreateInstance(srcField.FieldType);
+        if (donorSrcList != null)
+        {
+            foreach (var item in donorSrcList)
+            {
+                var srcSmr = item as SkinnedMeshRenderer;
+                if (srcSmr == null) continue;
+                if (smrByName.TryGetValue(srcSmr.name, out var targetSmr))
+                {
+                    newSrcList.Add(targetSmr);
+                }
+            }
+        }
+
+        if (newSrcList.Count == 0)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] target に対応 active SMR 無 (rebuild 中止): {character.name}/{targetGo.name}");
+            return;
+        }
+
+        SafeDestroyPreservingSmrState(targetComp, newSrcList);
+        BuildFromConfig(targetGo, character, magicaType, donorSerData, donorSerData2, newSrcList, "rebuild", remapColliders: true);
+    }
+
+    /// <summary>
+    /// component Destroy 時の OnDisable → <c>RenderData.SwapOriginalMesh</c> が SMR.sharedMesh /
+    /// bones / sharedMaterials を build 時 cache (= 古い state) に巻き戻す副作用がある。
+    /// donor swap 後の現在の SMR state を保持したまま rebuild するため、Destroy 直前に
+    /// 各 sourceRenderer の state を捕獲し Destroy 後に再適用する。
+    /// 再適用しないと build 時 snapshot される sharedMesh が old original になり、
+    /// donor mesh で proxy build されず user は「donor 適用したのに元 mesh のまま」 となる。
+    /// </summary>
+    private static void SafeDestroyPreservingSmrState(Component oldComp, IList sourceRenderers)
+    {
+        var saved = new List<(SkinnedMeshRenderer Smr, Mesh Mesh, Transform[] Bones, Material[] Mats, bool Active, bool Enabled)>();
+        if (sourceRenderers != null)
+        {
+            foreach (var item in sourceRenderers)
+            {
+                if (item is SkinnedMeshRenderer smr)
+                    saved.Add((smr, smr.sharedMesh, smr.bones, smr.sharedMaterials, smr.gameObject.activeSelf, smr.enabled));
+            }
+        }
+
+        UnityEngine.Object.DestroyImmediate(oldComp);
+
+        foreach (var (smr, mesh, bones, mats, active, enabled) in saved)
+        {
+            if (smr == null) continue;
+            if (mesh != null) smr.sharedMesh = mesh;
+            if (bones != null) smr.bones = bones;
+            if (mats != null) smr.sharedMaterials = mats;
+            smr.gameObject.SetActive(active);
+            smr.enabled = enabled;
+        }
+    }
+
+    /// <summary>
+    /// targetGo に新規 MagicaCloth を AddComponent し、srcSerData/srcSerData2 を field-wise コピー、
+    /// sourceRenderers を sourceRenderers で上書きして BuildAndRun する。
+    /// build 後に ReplaceTransform で donor 由来 Transform 参照を target hierarchy に再マップする。
+    /// build 失敗時は新 component を Destroy。
+    /// </summary>
+    private static bool BuildFromConfig(
+        GameObject targetGo, GameObject character, Type magicaType,
+        object srcSerData, object srcSerData2, IList sourceRenderers, string label, bool remapColliders)
+    {
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        var s2Method = s_serData2Method;
+        var disableAutoBuildMethod = s_disableAutoBuildMethod;
+        var buildAndRunMethod = s_buildAndRunMethod;
+        var replaceTransformMethod = s_replaceTransformMethod;
+        var resetClothMethod = s_resetClothMethod;
+        var setParameterChangeMethod = s_setParameterChangeMethod;
+
+        if (serProp == null || s2Method == null || disableAutoBuildMethod == null || buildAndRunMethod == null)
+        {
+            PatchLogger.LogError("[MagicaClothRebuilder] MagicaCloth API 未解決");
+            return false;
+        }
+
+        var newComp = targetGo.AddComponent(magicaType);
+        try { disableAutoBuildMethod.Invoke(newComp, null); } catch { }
+
+        var newSerData = serProp.GetValue(newComp);
+        // donor → newComp の sub-object 共有を断つため deep clone。
+        // shallow copy だと colliderCollisionConstraint 等が donor と共有 → RemapColliderRefs の
+        // in-place mutation で donor が破壊され、target GO 死亡で donor.cc が dead ref で詰まる。
+        CopyFields(srcSerData, newSerData, deep: true);
+
+        var srcField = newSerData.GetType().GetField("sourceRenderers", bf);
+        srcField?.SetValue(newSerData, sourceRenderers);
+
+        var newSerData2 = s2Method.Invoke(newComp, null);
+        CopyFields(srcSerData2, newSerData2, deep: true);
+
+        // donor 由来の colliderList / collisionBones は donor body の ColliderComponent / Transform を
+        // 参照しているため、target の同名 GameObject に attached された同型 component / Transform に
+        // 差し替える。差し替えできなかったエントリは drop して衝突計算から除外する。
+        // BuildAndRun 前に行う必要 (build 時 collision データが構築されるため)。
+        if (remapColliders)
+        {
+            RemapColliderRefs(newSerData, character);
+        }
+
+        bool result = false;
+        try
+        {
+            var ret = buildAndRunMethod.Invoke(newComp, null);
+            result = ret is bool b && b;
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogError($"[MagicaClothRebuilder] BuildAndRun 例外 ({label}): {ex}");
+        }
+
+        if (!result)
+        {
+            // build 失敗診断: source SMR の状態をダンプ
+            for (int i = 0; sourceRenderers != null && i < sourceRenderers.Count; i++)
+            {
+                var smr = sourceRenderers[i] as SkinnedMeshRenderer;
+                if (smr == null) { PatchLogger.LogWarning($"[MagicaClothRebuilder] [{label}-FAIL] sourceRenderer[{i}]=null"); continue; }
+                var meshInfo = smr.sharedMesh != null ? $"{smr.sharedMesh.name}(vc={smr.sharedMesh.vertexCount})" : "<null>";
+                PatchLogger.LogWarning($"[MagicaClothRebuilder] [{label}-FAIL] {smr.name}: enabled={smr.enabled} active={smr.gameObject.activeInHierarchy} bones={smr.bones?.Length ?? -1} mesh={meshInfo}");
+            }
+        }
+
+        if (result && replaceTransformMethod != null)
+        {
+            var dict = new Dictionary<string, Transform>();
+            foreach (var t in character.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                if (!dict.ContainsKey(t.name)) dict[t.name] = t;
+            }
+            try { replaceTransformMethod.Invoke(newComp, new object[] { dict }); }
+            catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] post-build ReplaceTransform 失敗 ({label}): {ex.Message}"); }
+        }
+
+        // build 成功後、simulation が走らないケース (KANA/Babydoll on Casual 等) への防御策。
+        // SetParameterChange() で内部パラメータ更新フラグを立て、ResetCloth(true) で
+        // simulation 状態を強制再初期化 (T-pose に戻す + 内部 buffer リセット)。
+        if (result)
+        {
+            try { setParameterChangeMethod?.Invoke(newComp, null); }
+            catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] SetParameterChange 失敗 ({label}): {ex.Message}"); }
+            try { resetClothMethod?.Invoke(newComp, new object[] { true }); }
+            catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] ResetCloth 失敗 ({label}): {ex.Message}"); }
+        }
+
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] {label} {(result ? "OK" : "失敗")}: {character.name}/{targetGo.name} (srcRenderers={sourceRenderers?.Count ?? -1})");
+
+        if (!result)
+        {
+            UnityEngine.Object.DestroyImmediate(newComp);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// donor 由来の serializeData.colliderCollisionConstraint.colliderList /collisionBones を
+    /// target hierarchy 内同名 GameObject の同型 component / 同名 Transform に再マップ。
+    /// 不一致エントリは drop (衝突対象から除外)。BuildAndRun 前に呼ぶこと。
+    /// </summary>
+    private static void RemapColliderRefs(object serData, GameObject character)
+    {
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var ccField = serData.GetType().GetField("colliderCollisionConstraint", bf);
+        if (ccField == null) return;
+        var ccData = ccField.GetValue(serData);
+        if (ccData == null) return;
+
+        // target hierarchy: name → Transform 辞書。
+        // COSTUME 切替直後は古い衣装の orphan Transform (祖先 inactive) と新衣装の Transform が同名で
+        // 重複するケースがある。素朴な先勝ちだと orphan に bind され simulate 時 no-effect になるため、
+        // activeInHierarchy=true な Transform を優先採用する。
+        var transformByName = new Dictionary<string, Transform>();
+        foreach (var t in character.GetComponentsInChildren<Transform>(true))
+        {
+            if (t == null) continue;
+            if (!transformByName.TryGetValue(t.name, out var existing))
+            {
+                transformByName[t.name] = t;
+                continue;
+            }
+            if (!existing.gameObject.activeInHierarchy && t.gameObject.activeInHierarchy)
+            {
+                transformByName[t.name] = t;
+            }
+        }
+
+        int colRemapped = 0, colCloned = 0, colInjected = 0, colDropped = 0, colMirrored = 0;
+        var colListField = ccData.GetType().GetField("colliderList", BindingFlags.Instance | BindingFlags.Public);
+        if (colListField?.GetValue(ccData) is IList colList)
+        {
+            for (int i = colList.Count - 1; i >= 0; i--)
+            {
+                var donorCollider = colList[i] as Component;
+                if (donorCollider == null) { colList.RemoveAt(i); colDropped++; continue; }
+                var donorGoName = donorCollider.gameObject.name;
+                var donorParentBoneName = donorCollider.transform.parent != null ? donorCollider.transform.parent.name : null;
+                var (resolved, action) = ResolveOrInjectCollider(donorCollider, donorGoName, donorParentBoneName, transformByName);
+                if (resolved == null) { colList.RemoveAt(i); colDropped++; continue; }
+                colList[i] = resolved;
+                switch (action)
+                {
+                    case "remap": colRemapped++; break;
+                    case "clone": colCloned++; break;
+                    case "inject": colInjected++; break;
+                }
+            }
+
+            // donor のコリジョン定義は片側のみ (例: 'R_Upperleg' はあるが 'L_Upperleg' は無し) という
+            // asymmetric な構成が観測される。各エントリの L↔R mirror counterpart を target に解決
+            // (remap → clone → inject) して同じ list に追加し両側に collide させる。重複は skip。
+            // 起点は post-resolve の entry.gameObject.name を使う点に注意: ResolveOrInjectCollider が
+            // remap/clone/inject いずれの経路でも target 側 component の GO 名を donor 側名と同一に保つ前提
+            // (CloneColliderTo は AddComponent で同 GO に同名 attach、InjectColliderGo は goName をそのまま使用)。
+            // 名前を変える経路を将来導入する場合は donor 側 entry から mirror を引く 2-pass 構造に直すこと。
+            var existingComponents = new HashSet<Component>();
+            var snapshot = new List<Component>();
+            foreach (var entry in colList)
+            {
+                if (entry is Component c) { existingComponents.Add(c); snapshot.Add(c); }
+            }
+            foreach (var entry in snapshot)
+            {
+                if (entry == null) continue;
+                var mirroredGoName = MirrorBoneName(entry.gameObject.name);
+                if (mirroredGoName == null) continue;
+                var entryParentName = entry.transform.parent != null ? entry.transform.parent.name : null;
+                var mirroredBoneName = entryParentName != null ? MirrorBoneName(entryParentName) : null;
+                var (mirroredComp, _) = ResolveOrInjectCollider(entry, mirroredGoName, mirroredBoneName, transformByName);
+                if (mirroredComp == null) continue;
+                if (existingComponents.Contains(mirroredComp)) continue;
+                colList.Add(mirroredComp);
+                existingComponents.Add(mirroredComp);
+                colMirrored++;
+            }
+        }
+
+        int boneRemapped = 0, boneDropped = 0;
+        var boneListField = ccData.GetType().GetField("collisionBones", BindingFlags.Instance | BindingFlags.Public);
+        if (boneListField?.GetValue(ccData) is IList boneList)
+        {
+            for (int i = boneList.Count - 1; i >= 0; i--)
+            {
+                var donorBone = boneList[i] as Transform;
+                if (donorBone == null) { boneList.RemoveAt(i); boneDropped++; continue; }
+                if (!transformByName.TryGetValue(donorBone.name, out var targetBone))
+                {
+                    boneList.RemoveAt(i); boneDropped++;
+                    continue;
+                }
+                boneList[i] = targetBone;
+                boneRemapped++;
+            }
+        }
+
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] collider remap: {character.name} (colliderList: remapped={colRemapped} cloned={colCloned} injected={colInjected} mirrored={colMirrored} dropped={colDropped}, collisionBones: remapped={boneRemapped} dropped={boneDropped})");
+    }
+
+    /// <summary>
+    /// 名前内の左右トークン (R_/L_, _R_/_L_, _R/_L 末尾) を反転させる。該当無 / 中央線 (Hip / Spine
+    /// 等) / R 側と L 側両方のトークンを含む曖昧な名前 (例: <c>R_L_thing</c>, <c>Bone(R_skirt_L)</c>) は
+    /// null を返し mirror 対象外とする。両方含むパターンは「どちらを反転すべきか確定しない」ため安全に
+    /// 諦める方針。検出はトークン単位で行い、単独 'R' / 'L' (Ribbon の R 等) は単語境界判定で除外する。
+    /// </summary>
+    private static string MirrorBoneName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        bool hasR = HasSideToken(name, 'R');
+        bool hasL = HasSideToken(name, 'L');
+        if (hasR && hasL) return null; // ambiguous
+        if (!hasR && !hasL) return null;
+
+        // 末尾 _R / _L
+        if (name.EndsWith("_R", StringComparison.Ordinal)) return name.Substring(0, name.Length - 2) + "_L";
+        if (name.EndsWith("_L", StringComparison.Ordinal)) return name.Substring(0, name.Length - 2) + "_R";
+
+        // 中央 _R_ / _L_ (最初の出現のみ)
+        int idx;
+        idx = name.IndexOf("_R_", StringComparison.Ordinal);
+        if (idx >= 0) return name.Substring(0, idx) + "_L_" + name.Substring(idx + 3);
+        idx = name.IndexOf("_L_", StringComparison.Ordinal);
+        if (idx >= 0) return name.Substring(0, idx) + "_R_" + name.Substring(idx + 3);
+
+        // 接頭 R_ / L_ (単語境界判定: 先頭 / 非英数字直後)
+        // GO 名は "MCC (R_Upperleg_skinJT)" 形式があり、'(' 直後の R_ をひっかけたい
+        for (int i = 0; i + 2 <= name.Length; i++)
+        {
+            if (name[i] != 'R' && name[i] != 'L') continue;
+            if (name[i + 1] != '_') continue;
+            // 単語境界: 先頭 or 非英数字 (アンダースコア以外) 直後
+            bool atBoundary = i == 0 || !char.IsLetterOrDigit(name[i - 1]) && name[i - 1] != '_';
+            if (!atBoundary) continue;
+            char flipped = name[i] == 'R' ? 'L' : 'R';
+            return name.Substring(0, i) + flipped + name.Substring(i + 1);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 名前内に side トークン (<paramref name="side"/>_ 接頭・_<paramref name="side"/>_ 中央・末尾 _<paramref name="side"/>)
+    /// が単語境界で含まれるかを判定。<see cref="MirrorBoneName"/> の ambiguous 検出に使う。
+    /// </summary>
+    private static bool HasSideToken(string name, char side)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        if (name.EndsWith("_" + side, StringComparison.Ordinal)) return true;
+        if (name.IndexOf("_" + side + "_", StringComparison.Ordinal) >= 0) return true;
+        for (int i = 0; i + 2 <= name.Length; i++)
+        {
+            if (name[i] != side) continue;
+            if (name[i + 1] != '_') continue;
+            bool atBoundary = i == 0 || !char.IsLetterOrDigit(name[i - 1]) && name[i - 1] != '_';
+            if (atBoundary) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// donor collider component を target hierarchy に解決する 3 段階フォールバック helper。
+    /// 戻り値: (component, action) — action ∈ {"remap","clone","inject"}。失敗時 (null, null)。
+    ///
+    /// 1. <paramref name="goName"/> 同名 GO + 同型 component → <b>remap</b> (既存再利用)
+    /// 2. 同名 GO 存在 / 同型 component 無 → <b>clone</b> (<see cref="CloneColliderTo"/> で AddComponent、marker 付与、DestroyGameObject=false)
+    /// 3. 同名 GO 無 / <paramref name="boneName"/> 親 bone あり → <b>inject</b> (<see cref="InjectColliderGo"/> で 新規 GO 生成 + AddComponent、marker DestroyGameObject=true)
+    /// 4. いずれも失敗 → (null, null)
+    ///
+    /// 用途: main loop (donor → target) と mirror loop (post-remap entry → target mirror) の両方で使う。
+    /// </summary>
+    private static (Component comp, string action) ResolveOrInjectCollider(
+        Component source,
+        string goName,
+        string boneName,
+        Dictionary<string, Transform> transformByName)
+    {
+        if (source == null || string.IsNullOrEmpty(goName)) return (null, null);
+        if (transformByName.TryGetValue(goName, out var existingGoTrans))
+        {
+            var sourceType = source.GetType();
+            var existing = existingGoTrans.gameObject.GetComponent(sourceType);
+            if (existing != null) return (existing, "remap");
+            var cloned = CloneColliderTo(existingGoTrans.gameObject, source);
+            return cloned != null ? (cloned, "clone") : (null, null);
+        }
+        if (string.IsNullOrEmpty(boneName)) return (null, null);
+        if (!transformByName.TryGetValue(boneName, out var parentBoneTrans)) return (null, null);
+        var injected = InjectColliderGo(parentBoneTrans.gameObject, source, goName);
+        return injected != null ? (injected, "inject") : (null, null);
+    }
+
+    /// <summary>
+    /// target hierarchy に MCC 系子 GO 自体が無いケース (Bunnygirl target で骨格に collider GO が
+    /// 含まれない等) の救済。<paramref name="parentBone"/> 配下に <paramref name="goName"/> の新規
+    /// GameObject を生成し、source の local TRS / layer を継承、source 同型 component を AddComponent
+    /// + <see cref="CopyFields"/> shallow 移植する。<see cref="MagicaClothInjectedColliderMarker"/>
+    /// を <c>DestroyGameObject=true</c> で付与し、Restore 時に GO ごと destroy する。
+    ///
+    /// layer を親 bone から継承する点は <c>feedback_inject_smr_layer.md</c> と同根の注意 (新規 GO
+    /// は親 layer を自動継承しないため明示コピーしないと grey 描画 / 物理レイヤミスマッチが起きる)。
+    ///
+    /// local TRS 前提: source の localPosition/localRotation/localScale をそのまま target 親 bone 配下に
+    /// 貼ると、bone の局所空間が左右対称な humanoid rig では mirror 注入で自然に対称配置となる。
+    /// 片側だけ twist 加工 / 軸 flip された non-symmetric rig では位置がずれる可能性あり。同様に
+    /// MagicaCapsuleCollider.center / size 等の field も CopyFields で donor 値そのまま転写されるため
+    /// bone 局所空間で対称な前提に依存する。本 mod が対象とする vanilla MagicaCloth GO 命名規則
+    /// (<c>MCC (R_Upperleg_skinJT)</c> 等) では実機検証済で問題無し。
+    /// </summary>
+    private static Component InjectColliderGo(GameObject parentBone, Component source, string goName)
+    {
+        if (parentBone == null || source == null || string.IsNullOrEmpty(goName)) return null;
+        var sourceGo = source.gameObject;
+        if (sourceGo == null) return null;
+        GameObject newGo;
+        try
+        {
+            newGo = new GameObject(goName);
+            newGo.transform.SetParent(parentBone.transform, worldPositionStays: false);
+            newGo.transform.localPosition = sourceGo.transform.localPosition;
+            newGo.transform.localRotation = sourceGo.transform.localRotation;
+            newGo.transform.localScale = sourceGo.transform.localScale;
+            newGo.layer = parentBone.layer;
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] InjectColliderGo GO 生成失敗: {goName} under {parentBone.name}: {ex.Message}");
+            return null;
+        }
+        Component injected;
+        try { injected = newGo.AddComponent(source.GetType()); }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] InjectColliderGo AddComponent 失敗: {source.GetType().FullName} on {newGo.name}: {ex.Message}");
+            UnityEngine.Object.DestroyImmediate(newGo);
+            return null;
+        }
+        if (injected == null)
+        {
+            UnityEngine.Object.DestroyImmediate(newGo);
+            return null;
+        }
+        try { CopyFields(source, injected, deep: false); }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] InjectColliderGo CopyFields 失敗: {source.GetType().FullName} on {newGo.name}: {ex.Message}");
+            UnityEngine.Object.DestroyImmediate(newGo);
+            return null;
+        }
+        var marker = newGo.AddComponent<MagicaClothInjectedColliderMarker>();
+        marker.DestroyGameObject = true;
+        return injected;
+    }
+
+    /// <summary>
+    /// target bone GO に donor collider component と同型の component を AddComponent し、
+    /// <see cref="CopyFields"/> (shallow) で値型/public field を移植する。同型 component が既に
+    /// あれば再利用 (連続 Override の冪等性確保)。新規 add 時は <see cref="MagicaClothInjectedColliderMarker"/>
+    /// を同 GO に付与 (<c>DestroyGameObject=false</c>) し、Restore で component のみ destroy できるようにする。
+    /// CopyFields shallow モードでは <see cref="Type.GetFields(BindingFlags)"/> の仕様上、private 継承 field
+    /// (e.g. ColliderComponent の back-ref cprocess) は転写されない。public field (center/size/radius 等) のみ
+    /// 移植され、back-ref は新 component の Build 経路で再設定される。
+    /// </summary>
+    private static Component CloneColliderTo(GameObject target, Component donor)
+    {
+        if (target == null || donor == null) return null;
+        var donorType = donor.GetType();
+        var existing = target.GetComponent(donorType);
+        if (existing != null)
+        {
+            // 既に同型 collider 在 (前回 Override の clone 残留 or stock 有) → 再利用。
+            // marker は前回付与時のまま (重複 add 不要)。stock 由来の場合 marker 無 = Restore 対象外。
+            return existing;
+        }
+        Component cloned;
+        try { cloned = target.AddComponent(donorType); }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] CloneColliderTo AddComponent 失敗: {donorType.FullName} on {target.name}: {ex.Message}");
+            return null;
+        }
+        if (cloned == null) return null;
+        try { CopyFields(donor, cloned, deep: false); }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] CloneColliderTo CopyFields 失敗: {donorType.FullName} on {target.name}: {ex.Message}");
+            UnityEngine.Object.DestroyImmediate(cloned);
+            return null;
+        }
+        if (target.GetComponent<MagicaClothInjectedColliderMarker>() == null)
+        {
+            target.AddComponent<MagicaClothInjectedColliderMarker>();
+        }
+        return cloned;
+    }
+
+    /// <summary>
+    /// inject された MagicaCloth collider を全削除する。
+    /// <see cref="MagicaClothInjectedColliderMarker.DestroyGameObject"/> によって 2 経路を分岐:
+    /// - <c>true</c>: <see cref="InjectColliderGo"/> で生成した新規 GO → GameObject ごと destroy
+    /// - <c>false</c>: <see cref="CloneColliderTo"/> で既存 GO に AddComponent しただけ → 同 GO 上の
+    ///   <c>MagicaCloth2.Magica*Collider</c> component と marker のみ destroy、GO 自体は target body bone のため残置
+    ///
+    /// 前提: clone 経路 (DestroyGameObject=false) では同 GO に **複数 type の Magica*Collider が共存しない**。
+    /// vanilla MCC GO は 1 GO 1 collider component の構成で、stock collider と clone collider が同 GO に
+    /// 異なる type で共存するケースは想定外。共存が発生する rig では stock 側まで destroy される懸念がある。
+    /// </summary>
+    private static void CleanupInjectedColliders(GameObject character)
+    {
+        if (character == null) return;
+        int destroyedColliders = 0, destroyedMarkers = 0, destroyedGos = 0;
+        var markers = character.GetComponentsInChildren<MagicaClothInjectedColliderMarker>(true);
+        foreach (var marker in markers)
+        {
+            if (marker == null) continue;
+            var go = marker.gameObject;
+            if (marker.DestroyGameObject)
+            {
+                // GO ごと destroy (新規 inject 経路)。同 GO 上の collider component は GO destroy で
+                // 巻き取られるため明示 destroy 不要。
+                try { UnityEngine.Object.DestroyImmediate(go); destroyedGos++; destroyedMarkers++; }
+                catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] injected GO destroy 失敗: {go.name}: {ex.Message}"); }
+                continue;
+            }
+            var comps = go.GetComponents<Component>();
+            foreach (var comp in comps)
+            {
+                if (comp == null || comp == marker) continue;
+                var fullName = comp.GetType().FullName;
+                if (fullName == null) continue;
+                if (fullName.StartsWith("MagicaCloth2.Magica", StringComparison.Ordinal)
+                    && fullName.EndsWith("Collider", StringComparison.Ordinal))
+                {
+                    // 個別 destroy の例外で marker 削除に到達できず「marker 在 / collider 無」の
+                    // 整合性崩れ状態にならないよう、collider ごとに try/catch する。
+                    try { UnityEngine.Object.DestroyImmediate(comp); destroyedColliders++; }
+                    catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] injected collider destroy 失敗: {fullName} on {go.name}: {ex.Message}"); }
+                }
+            }
+            try { UnityEngine.Object.DestroyImmediate(marker); destroyedMarkers++; }
+            catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] injected marker destroy 失敗: {go.name}: {ex.Message}"); }
+        }
+        if (destroyedMarkers > 0)
+        {
+            PatchLogger.LogInfo($"[MagicaClothRebuilder] injected collider 掃除: {character.name} (markers={destroyedMarkers}, colliders={destroyedColliders}, gos={destroyedGos})");
+        }
+    }
+
+    /// <summary>
+    /// reflection で全 instance field を src から dst へコピー。
+    /// List/Array 以外は参照コピー (sub-setting object は src と dst で共有される)。
+    /// donor 由来コピーでは Transform 参照が donor 側を指すため、呼出側で ReplaceTransform 必須。
+    ///
+    /// <paramref name="deep"/>=true のとき、MagicaCloth2 系 namespace の custom class field を再帰的に deep-clone する。
+    /// donor → target newComp 経路で donor の SerializeData sub-object (colliderCollisionConstraint 等) が
+    /// target newComp と参照共有 → <see cref="RemapColliderRefs"/> 等の in-place mutation で donor が破壊され、
+    /// COSTUME 切替で旧 target の dead Unity Object が donor.cc に残留 → 後続 apply で全 drop → 物理消失するのを防ぐ。
+    /// </summary>
+    private static void CopyFields(object src, object dst, bool deep = false, HashSet<object> visited = null)
+    {
+        if (src == null || dst == null) return;
+        var type = src.GetType();
+        if (dst.GetType() != type) return;
+        if (deep)
+        {
+            if (visited == null) visited = new HashSet<object>(RefEqualityComparer.Instance);
+            if (!visited.Add(src)) return; // 循環参照ガード (再訪問時は dst をそのままにして抜ける)
+        }
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        foreach (var field in type.GetFields(bf))
+        {
+            if (field.IsInitOnly) continue;
+            // delegate / event 系は skip (deep clone 不可、shallow も意味薄)
+            if (typeof(MulticastDelegate).IsAssignableFrom(field.FieldType)) continue;
+
+            object value;
+            try { value = field.GetValue(src); }
+            catch (Exception ex) { PatchLogger.LogDebug($"[MCR] reflection field.GetValue 失敗: {field.Name}: {ex.Message}"); continue; }
+
+            // List 経路: 宣言型が IList でも実型が generic List<T> ならそこから要素型を取る。
+            // 宣言型の IsGenericType ガードを掛けると非 generic 宣言で deep clone を素通りして
+            // donor と shallow share になるため使わない。
+            if (value is IList list && !(value is Array))
+            {
+                Type listType = field.FieldType.IsArray ? null : field.FieldType;
+                Type runtimeListType = value.GetType();
+                Type instantiationType = listType != null && !listType.IsAbstract && !listType.IsInterface ? listType : runtimeListType;
+                Type elemType = null;
+                if (instantiationType.IsGenericType && instantiationType.GetGenericArguments().Length == 1)
+                    elemType = instantiationType.GetGenericArguments()[0];
+                else if (runtimeListType.IsGenericType && runtimeListType.GetGenericArguments().Length == 1)
+                    elemType = runtimeListType.GetGenericArguments()[0];
+
+                IList newList = null;
+                try { newList = (IList)Activator.CreateInstance(instantiationType); }
+                catch (Exception ex) { PatchLogger.LogDebug($"[MCR] list CreateInstance 失敗: {instantiationType?.Name}: {ex.Message}"); newList = null; }
+                if (newList != null)
+                {
+                    bool listFilled = true;
+                    bool deepCloneElems = deep && elemType != null && IsMagicaClothCloneableType(elemType);
+                    try
+                    {
+                        foreach (var item in list)
+                        {
+                            if (deepCloneElems && item != null && IsMagicaClothCloneableType(item.GetType()))
+                            {
+                                try
+                                {
+                                    var clone = Activator.CreateInstance(item.GetType());
+                                    CopyFields(item, clone, deep: true, visited);
+                                    newList.Add(clone);
+                                    continue;
+                                }
+                                catch { /* fall through to shallow add */ }
+                            }
+                            newList.Add(item);
+                        }
+                    }
+                    catch (Exception ex) { PatchLogger.LogDebug($"[MCR] list 要素コピー失敗: {field.Name}: {ex.Message}"); listFilled = false; }
+                    if (listFilled)
+                    {
+                        try { field.SetValue(dst, newList); continue; }
+                        catch { /* fall through to skip */ }
+                    }
+                }
+                // deep mode で list 経路が破綻したら donor 共有を避けるため field を skip。
+                // shallow mode では従来通り src の参照を流す (snapshot 経路は破壊されないため許容)。
+                if (deep)
+                {
+                    LogDeepCloneFallback(type, field, value.GetType(), "list");
+                    continue;
+                }
+                try { field.SetValue(dst, value); } catch (Exception ex) { PatchLogger.LogDebug($"[MCR] field.SetValue (list shallow) 失敗: {field.Name}: {ex.Message}"); }
+                continue;
+            }
+
+            // Array は IList でもあるが新規 Array は Activator.CreateInstance で生成不可のため
+            // Array.CreateInstance + Array.Copy で要素 shallow copy する (要素は ref 共有、value 型は値 copy)。
+            // shallow share だと MagicaCloth の build/sim で mutation が donor に伝播する懸念があるため
+            // deep モード時のみ実施。要素が MagicaCloth.* class なら個別に deep clone する。
+            if (deep && value is Array srcArr)
+            {
+                var elemType = field.FieldType.GetElementType() ?? srcArr.GetType().GetElementType();
+                Array newArr = null;
+                if (elemType != null)
+                {
+                    try { newArr = Array.CreateInstance(elemType, srcArr.Length); }
+                    catch (Exception ex) { PatchLogger.LogDebug($"[MCR] Array.CreateInstance 失敗: {elemType?.Name}: {ex.Message}"); newArr = null; }
+                }
+                if (newArr != null)
+                {
+                    bool arrFilled = true;
+                    bool deepCloneElems = IsMagicaClothCloneableType(elemType);
+                    try
+                    {
+                        if (deepCloneElems)
+                        {
+                            for (int i = 0; i < srcArr.Length; i++)
+                            {
+                                var item = srcArr.GetValue(i);
+                                if (item != null && IsMagicaClothCloneableType(item.GetType()))
+                                {
+                                    try
+                                    {
+                                        var clone = Activator.CreateInstance(item.GetType());
+                                        CopyFields(item, clone, deep: true, visited);
+                                        newArr.SetValue(clone, i);
+                                        continue;
+                                    }
+                                    catch { /* fall through to shallow set */ }
+                                }
+                                newArr.SetValue(item, i);
+                            }
+                        }
+                        else
+                        {
+                            Array.Copy(srcArr, newArr, srcArr.Length);
+                        }
+                    }
+                    catch (Exception ex) { PatchLogger.LogDebug($"[MCR] array 要素コピー失敗: {field.Name}: {ex.Message}"); arrFilled = false; }
+                    if (arrFilled)
+                    {
+                        try { field.SetValue(dst, newArr); continue; }
+                        catch { /* fall through to skip */ }
+                    }
+                }
+                // deep mode で array 経路が破綻したら donor 共有を避けるため field を skip。
+                LogDeepCloneFallback(type, field, value.GetType(), "array");
+                continue;
+            }
+
+            // deep mode: MagicaCloth2 namespace の custom class のみ再帰 deep-clone
+            // (Unity asset / System / UnityEngine 型は誤爆を避けるため shallow ref のまま)
+            if (deep && value != null && IsMagicaClothCloneableType(value.GetType()))
+            {
+                try
+                {
+                    var clone = Activator.CreateInstance(value.GetType());
+                    CopyFields(value, clone, deep: true, visited);
+                    field.SetValue(dst, clone);
+                    continue;
+                }
+                catch
+                {
+                    // donor 共有を避けるため class 経路は raw 参照を流さず field を skip。
+                    LogDeepCloneFallback(type, field, value.GetType(), "class");
+                    continue;
+                }
+            }
+
+            try { field.SetValue(dst, value); } catch (Exception ex) { PatchLogger.LogDebug($"[MCR] field.SetValue 失敗: {field.Name}: {ex.Message}"); }
+        }
+    }
+
+    // 同 (ownerType, fieldName, valueType, scope) の組合わせはプロセス内で 1 回だけログ出す。
+    private static readonly HashSet<string> s_warnedDeepCloneFallbacks = new();
+    private static void LogDeepCloneFallback(Type ownerType, FieldInfo field, Type valueType, string scope)
+    {
+        var key = $"{ownerType.FullName}.{field.Name}|{valueType.FullName}|{scope}";
+        if (!s_warnedDeepCloneFallbacks.Add(key)) return;
+        PatchLogger.LogWarning($"[MagicaClothRebuilder] deep clone fallback ({scope}, field skipped to avoid donor share): {ownerType.Name}.{field.Name} ({valueType.FullName})");
+    }
+
+    /// <summary>
+    /// deep-clone 対象判定。MagicaCloth2 namespace の custom class のみ。
+    /// 値型 / string / Unity asset (UnityEngine.Object 派生) / System / UnityEngine 名前空間は除外。
+    /// </summary>
+    private static bool IsMagicaClothCloneableType(Type type)
+    {
+        if (type == null || type.IsValueType || type.IsPrimitive || type.IsEnum) return false;
+        if (type == typeof(string)) return false;
+        if (type.IsArray) return false; // Array は専用パスで処理 (Activator.CreateInstance 不可)
+        if (typeof(UnityEngine.Object).IsAssignableFrom(type)) return false;
+        var ns = type.Namespace ?? "";
+        return ns.StartsWith("MagicaCloth", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// netstandard2.1 では <c>System.Collections.Generic.ReferenceEqualityComparer</c> が利用不可
+    /// (.NET 5+ 標準) のため自前実装。
+    /// </summary>
+    private sealed class RefEqualityComparer : IEqualityComparer<object>
+    {
+        public static readonly RefEqualityComparer Instance = new RefEqualityComparer();
+        public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+    }
+
+    /// <summary>
+    /// DIAGNOSTIC ONLY — SwimWear 物理問題解決後に削除。
+    /// character 配下の MagicaCloth component を全列挙し、診断用情報 (name, clothType, sourceRenderersCount) を返す。
+    /// </summary>
+    internal static IEnumerable<(string Name, string ClothType, int SourceRendererCount)> EnumerateForDiag(GameObject character)
+    {
+        var magicaType = ResolveType();
+        if (magicaType == null) yield break;
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var serProp = s_serProp;
+        if (serProp == null) yield break;
+
+        foreach (var comp in character.GetComponentsInChildren(magicaType, true))
+        {
+            var name = (comp as UnityEngine.Object)?.name ?? "<null>";
+            var sdata = serProp.GetValue(comp);
+            var ct = sdata?.GetType().GetField("clothType", bf)?.GetValue(sdata)?.ToString() ?? "<unknown>";
+            int srcCount = -1;
+            if (sdata != null)
+            {
+                var srcField = sdata.GetType().GetField("sourceRenderers", bf);
+                if (srcField?.GetValue(sdata) is IList list) srcCount = list.Count;
+            }
+            yield return (name, ct, srcCount);
+        }
+    }
+}

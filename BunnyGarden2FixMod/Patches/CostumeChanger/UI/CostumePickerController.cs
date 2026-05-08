@@ -30,11 +30,14 @@ public class CostumePickerController : MonoBehaviour
     private bool m_followCurrentCast = true;          // true: currentCast 変化に自動追従
 
     private enum PickerMode
-    { Picker, Settings }
+    { Picker, Settings, Debug }
 
     private PickerMode m_mode = PickerMode.Picker;
     private int m_settingsSelected = -1;  // -1: 未選択, 0: 初期化, 1: すべて解放
     private bool m_dialogPending;         // ConfirmDialog 呼出〜アクション完了までの多重実行防止
+
+    // Debug ビュー (mesh / MagicaCloth inspector) の状態
+    private readonly DebugInspectorState m_debugState = new();
 
     // タブ状態
     private CostumePickerView.WardrobeTab m_activeTab = CostumePickerView.WardrobeTab.Costume;
@@ -42,12 +45,18 @@ public class CostumePickerController : MonoBehaviour
     private int m_costumeSelected = -1;
     private int m_pantiesSelected = -1;
     private int m_stockingSelected = -1;
+    private int m_bottomsSelected = -1;
+    private int m_topsSelected = -1;
 
     // 各タブの選択肢（Locked=true は未開放。モック準拠で "???" 表示、選択・適用不可）
     private List<(CostumeType Costume, bool Locked)> m_costumeItems = new();
 
     private List<(int Type, int Color, bool Locked)> m_pantiesItems = new();
     private List<(int Type, bool Locked)> m_stockingItems = new();
+    // Bottoms タブは閲覧履歴の概念がないため Locked は常に false。RenderData の整合性のため保持する。
+    private List<(CharID Donor, CostumeType Costume, bool Locked)> m_bottomsItems = new();
+    // Tops タブも同様。Locked は常に false。
+    private List<(CharID Donor, CostumeType Costume, bool Locked)> m_topsItems = new();
 
     public static CostumePickerController Instance { get; private set; }
 
@@ -106,6 +115,9 @@ public class CostumePickerController : MonoBehaviour
         m_view.OnBackClicked += HandleBackClicked;
         m_view.OnResetAllClicked += HandleResetAllClicked;
         m_view.OnUnlockAllClicked += HandleUnlockAllClicked;
+        m_view.OnDebugClicked += HandleDebugClicked;
+        m_view.OnDebugSmrToggleClicked += HandleDebugSmrToggleClicked;
+        m_view.OnDebugClearAllClicked += HandleDebugClearAllClicked;
 
         // F9 設定パネル等から Stocking 系 Config が変更された場合、picker open 中なら即時メッシュ反映する。
         // ShapeFalloff は blendShape 全 frame の再構築を伴って重いので Update() でデバウンスする。
@@ -113,6 +125,7 @@ public class CostumePickerController : MonoBehaviour
         if (Configs.StockingSkinShrink != null) Configs.StockingSkinShrink.SettingChanged += OnStockingTuneChanged;
         if (Configs.StockingSkinFalloffRadius != null) Configs.StockingSkinFalloffRadius.SettingChanged += OnStockingTuneChanged;
         if (Configs.StockingShapeFalloffRadius != null) Configs.StockingShapeFalloffRadius.SettingChanged += OnStockingShapeFalloffChanged;
+        // Tops 距離保存の閾値変更は TopsLoader 側で全 target に適用するため、ここでは購読しない。
     }
 
     private void OnDestroy()
@@ -127,7 +140,12 @@ public class CostumePickerController : MonoBehaviour
             m_view.OnBackClicked -= HandleBackClicked;
             m_view.OnResetAllClicked -= HandleResetAllClicked;
             m_view.OnUnlockAllClicked -= HandleUnlockAllClicked;
+            m_view.OnDebugClicked -= HandleDebugClicked;
+            m_view.OnDebugSmrToggleClicked -= HandleDebugSmrToggleClicked;
+            m_view.OnDebugClearAllClicked -= HandleDebugClearAllClicked;
         }
+        // Debug 中の highlight が dead instance のまま残らないように一括解除
+        MeshHighlighter.ClearAll();
         if (Configs.StockingOffset != null) Configs.StockingOffset.SettingChanged -= OnStockingTuneChanged;
         if (Configs.StockingSkinShrink != null) Configs.StockingSkinShrink.SettingChanged -= OnStockingTuneChanged;
         if (Configs.StockingSkinFalloffRadius != null) Configs.StockingSkinFalloffRadius.SettingChanged -= OnStockingTuneChanged;
@@ -157,7 +175,7 @@ public class CostumePickerController : MonoBehaviour
     private void HandleTabClicked(int index)
     {
         if (!m_view.IsShown) return;
-        if (index < 0 || index > 2) return;
+        if (index < 0 || index > 4) return;
         m_activeTab = (CostumePickerView.WardrobeTab)index;
         m_view.Render(BuildRenderData());
     }
@@ -183,6 +201,18 @@ public class CostumePickerController : MonoBehaviour
                 if (rowIndex < 0 || rowIndex >= m_stockingItems.Count) return;
                 if (m_stockingItems[rowIndex].Locked) return;
                 m_stockingSelected = rowIndex;
+                break;
+
+            case CostumePickerView.WardrobeTab.Bottoms:
+                if (rowIndex < 0 || rowIndex >= m_bottomsItems.Count) return;
+                if (m_bottomsItems[rowIndex].Locked) return;
+                m_bottomsSelected = rowIndex;
+                break;
+
+            case CostumePickerView.WardrobeTab.Tops:
+                if (rowIndex < 0 || rowIndex >= m_topsItems.Count) return;
+                if (m_topsItems[rowIndex].Locked) return;
+                m_topsSelected = rowIndex;
                 break;
         }
         // 行クリックは即トグル適用（cur==selected なら解除、違えば apply）。
@@ -216,7 +246,7 @@ public class CostumePickerController : MonoBehaviour
         {
             if (m_view.IsShown)
             {
-                m_view.Hide();
+                HideView();
             }
             else if (CanOpen(out var charId))
             {
@@ -273,7 +303,7 @@ public class CostumePickerController : MonoBehaviour
 
         if (kb[Key.Escape].wasPressedThisFrame)
         {
-            m_view.Hide();
+            HideView();
             return;
         }
 
@@ -291,17 +321,14 @@ public class CostumePickerController : MonoBehaviour
         var env = sys.GetActiveEnvScene();
         if (env == null) return false;
 
-        // FittingRoom 動作中はピッカーを開かない
         if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return false;
 
         var gameData = sys.RefGameData();
         if (gameData == null) return false;
 
-        // 表示中（Preload 済み + activeInHierarchy）のキャスト一覧を取得
         GetVisibleCastIds(m_visibleCastsBuf);
         if (m_visibleCastsBuf.Count == 0) return false;
 
-        // currentCast が visible なら優先、なければ visible[0]
         var currentCast = gameData.GetCurrentCast();
         charId = currentCast < CharID.NUM && m_visibleCastsBuf.Contains(currentCast)
             ? currentCast
@@ -366,6 +393,47 @@ public class CostumePickerController : MonoBehaviour
             m_stockingItems.Add((i, locked));
         }
 
+        // Bottoms: Bunnygirl / Shirt / SwimWear は除外。
+        // - SwimWear: KANA 以外はワンピース型で skirt/pants 構造が無い。Tops 経由 (full-body) で扱う方針。
+        //             ただし (KANA, SwimWear) のみ「花奈のビーチスカート」として bikini bottom 移植用に特例許可。
+        // - Bunnygirl: フルボディスーツで構造差大。
+        // - Shirt: 下半身に実体的な差分なし（Tops と対称）。
+        // donor == target も許可（自身の他コスチューム由来の bottoms を素体に移植可能）。
+        m_bottomsItems = new List<(CharID, CostumeType, bool)>();
+        for (int d = (int)CharID.KANA; d < (int)CharID.NUM; d++)
+        {
+            var donor = (CharID)d;
+            for (int c = 0; c < (int)CostumeType.Num; c++)
+            {
+                var costume = (CostumeType)c;
+                if (costume == CostumeType.Bunnygirl) continue;
+                if (costume == CostumeType.Shirt) continue;
+                // SwimWear は (KANA, SwimWear) のみ「花奈のビーチスカート」として許可、それ以外は除外。
+                // target=KANA のとき (KANA, SwimWear) は self donor で no-op になりラベルが混乱するため除外。
+                if (costume == CostumeType.SwimWear && donor != CharID.KANA) continue;
+                if (costume == CostumeType.SwimWear && donor == CharID.KANA && charId == CharID.KANA) continue;
+                if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
+                m_bottomsItems.Add((donor, costume, false));
+            }
+        }
+
+        // Tops: SwimWear donor を許可、Bunnygirl と Shirt は除外。
+        // Shirt は mesh_costume_sleeve のみ実体的な Tops 差分で見栄えが薄いため UI から外す。
+        // donor == target も許可（自身の他コスチューム由来の tops を素体に移植可能）。
+        m_topsItems = new List<(CharID, CostumeType, bool)>();
+        for (int d = (int)CharID.KANA; d < (int)CharID.NUM; d++)
+        {
+            var donor = (CharID)d;
+            for (int c = 0; c < (int)CostumeType.Num; c++)
+            {
+                var costume = (CostumeType)c;
+                if (costume == CostumeType.Bunnygirl) continue;
+                if (costume == CostumeType.Shirt) continue;
+                if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
+                m_topsItems.Add((donor, costume, false));
+            }
+        }
+
         m_costumeSelected = FindOverrideOrFirstUnlocked(
             m_costumeItems,
             CostumeOverrideStore.TryGet(charId, out var ovCostume),
@@ -380,6 +448,16 @@ public class CostumePickerController : MonoBehaviour
             m_stockingItems,
             StockingOverrideStore.TryGet(charId, out var ovStk),
             x => x.Type == ovStk,
+            x => x.Locked);
+        m_bottomsSelected = FindOverrideOrFirstUnlocked(
+            m_bottomsItems,
+            BottomsOverrideStore.TryGet(charId, out var ovBottoms),
+            x => x.Donor == ovBottoms.DonorChar && x.Costume == ovBottoms.DonorCostume,
+            x => x.Locked);
+        m_topsSelected = FindOverrideOrFirstUnlocked(
+            m_topsItems,
+            TopsOverrideStore.TryGet(charId, out var ovTops),
+            x => x.Donor == ovTops.DonorChar && x.Costume == ovTops.DonorCostume,
             x => x.Locked);
     }
 
@@ -403,7 +481,7 @@ public class CostumePickerController : MonoBehaviour
             var fallback = gameData.GetCurrentCast();
             if (fallback >= CharID.NUM)
             {
-                m_view.Hide();
+                HideView();
                 return;
             }
             m_visibleCastsBuf.Add(fallback);
@@ -499,8 +577,16 @@ public class CostumePickerController : MonoBehaviour
         var oldId = m_activeChar;
         // m_activeTab は意図的に引き継ぐ — キャスト切替時は現在タブを維持する。
         RebuildItemsFor(newId);
+        // Debug ビュー中: 旧キャラの highlight を解除し、新キャラで Rebuild + 再描画。
+        // Picker / Settings 中でも highlight は新キャラに引き継ぐべきでないので念のため掃除。
+        MeshHighlighter.ClearFor(m_debugState.Smrs);
         if (m_mode == PickerMode.Settings)
             m_view.RenderSettings(BuildSettingsData());
+        else if (m_mode == PickerMode.Debug)
+        {
+            m_debugState.Rebuild(newId, GetCharaGameObject(newId));
+            m_view.RenderDebug(BuildDebugData());
+        }
         else
             m_view.Render(BuildRenderData());
         PatchLogger.LogInfo($"[CostumePicker] キャスト切替: {oldId} → {newId}");
@@ -540,18 +626,32 @@ public class CostumePickerController : MonoBehaviour
             CostumeLabels = m_costumeItems.Select(x => x.Locked ? "???" : ResolveCostumeName(x.Costume)).ToList(),
             PantiesLabels = m_pantiesItems.Select(x => x.Locked ? "???" : ResolvePantiesName(m_activeChar, x.Type, x.Color)).ToList(),
             StockingLabels = m_stockingItems.Select(x => x.Locked ? "???" : ResolveStockingName(x.Type)).ToList(),
+            BottomsLabels = m_bottomsItems.Select(x =>
+                // 特例: (KANA, SwimWear) は「花奈のビーチスカート」(bikini bottom 移植) として表示。
+                x.Donor == CharID.KANA && x.Costume == CostumeType.SwimWear
+                    ? "花奈のビーチスカート"
+                    : $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
+            TopsLabels = m_topsItems.Select(x => $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
             CostumeLocks = m_costumeItems.Select(x => x.Locked).ToList(),
             PantiesLocks = m_pantiesItems.Select(x => x.Locked).ToList(),
             StockingLocks = m_stockingItems.Select(x => x.Locked).ToList(),
+            BottomsLocks = m_bottomsItems.Select(x => x.Locked).ToList(),
+            TopsLocks = m_topsItems.Select(x => x.Locked).ToList(),
             CostumeSelected = m_costumeSelected,
             PantiesSelected = m_pantiesSelected,
             StockingSelected = m_stockingSelected,
+            BottomsSelected = m_bottomsSelected,
+            TopsSelected = m_topsSelected,
             CostumeCurrent = CostumeOverrideStore.TryGet(m_activeChar, out var oc)
                 ? m_costumeItems.FindIndex(x => x.Costume == oc) : -1,
             PantiesCurrent = PantiesOverrideStore.TryGet(m_activeChar, out var opT, out var opC)
                 ? m_pantiesItems.FindIndex(x => x.Type == opT && x.Color == opC) : -1,
             StockingCurrent = StockingOverrideStore.TryGet(m_activeChar, out var os)
                 ? m_stockingItems.FindIndex(x => x.Type == os) : -1,
+            BottomsCurrent = BottomsOverrideStore.TryGet(m_activeChar, out var ob)
+                ? m_bottomsItems.FindIndex(x => x.Donor == ob.DonorChar && x.Costume == ob.DonorCostume) : -1,
+            TopsCurrent = TopsOverrideStore.TryGet(m_activeChar, out var ot)
+                ? m_topsItems.FindIndex(x => x.Donor == ot.DonorChar && x.Costume == ot.DonorCostume) : -1,
             VisibleCasts = m_visibleCasts.AsReadOnly(),
             VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
         };
@@ -573,6 +673,20 @@ public class CostumePickerController : MonoBehaviour
         if (mid == null) return costume.ToString();
         try { return msg.RefText(mid); }
         catch { return costume.ToString(); }
+    }
+
+    /// <summary>
+    /// CharID を本体ローカライズされた表示名で解決する。
+    /// マッピングは <see cref="GB.Game.CharIDUtil.GetMSGID"/> を流用（本体側で更新があれば追従する）。
+    /// </summary>
+    private static string ResolveCharName(CharID id)
+    {
+        var mid = id.GetMSGID();
+        if (mid == null || mid.ID == 0) return id.ToString();
+        var msg = GBSystem.Instance?.RefMessage();
+        if (msg == null) return id.ToString();
+        try { return msg.RefText(mid); }
+        catch { return id.ToString(); }
     }
 
     private static MSGID CostumeToMsgId(CostumeType c) => c switch
@@ -657,7 +771,7 @@ public class CostumePickerController : MonoBehaviour
 
     private void ChangeTab(int delta)
     {
-        int next = ((int)m_activeTab + delta + 3) % 3;
+        int next = ((int)m_activeTab + delta + 5) % 5;
         m_activeTab = (CostumePickerView.WardrobeTab)next;
         m_view.Render(BuildRenderData());
     }
@@ -680,6 +794,16 @@ public class CostumePickerController : MonoBehaviour
             case CostumePickerView.WardrobeTab.Stocking:
                 if (m_stockingItems.Count == 0) return;
                 m_stockingSelected = MoveToUnlocked(m_stockingItems, x => x.Locked, m_stockingSelected, delta);
+                break;
+
+            case CostumePickerView.WardrobeTab.Bottoms:
+                if (m_bottomsItems.Count == 0) return;
+                m_bottomsSelected = MoveToUnlocked(m_bottomsItems, x => x.Locked, m_bottomsSelected, delta);
+                break;
+
+            case CostumePickerView.WardrobeTab.Tops:
+                if (m_topsItems.Count == 0) return;
+                m_topsSelected = MoveToUnlocked(m_topsItems, x => x.Locked, m_topsSelected, delta);
                 break;
         }
         m_view.Render(BuildRenderData());
@@ -744,7 +868,166 @@ public class CostumePickerController : MonoBehaviour
                 }
                 ApplyStocking();
                 break;
+
+            case CostumePickerView.WardrobeTab.Bottoms:
+                if (m_bottomsSelected < 0 || m_bottomsSelected >= m_bottomsItems.Count) return;
+                if (m_bottomsItems[m_bottomsSelected].Locked) return;
+                var bItem = m_bottomsItems[m_bottomsSelected];
+                if (BottomsOverrideStore.TryGet(m_activeChar, out var curB)
+                    && curB.DonorChar == bItem.Donor && curB.DonorCostume == bItem.Costume)
+                {
+                    // トグル解除: store クリア + target SMR をスナップショットから素状態に復元。
+                    // env.LoadCharacter は同 costume だと no-op で setup() Postfix が発火しないため
+                    // 直接 Restore する。
+                    BottomsOverrideStore.Clear(m_activeChar);
+                    var envR = GBSystem.Instance?.GetActiveEnvScene();
+                    var charObjR = envR?.FindCharacter(m_activeChar);
+                    if (charObjR != null) BottomsLoader.RestoreFor(charObjR);
+                    m_view.Render(BuildRenderData());
+                    return;
+                }
+                ApplyBottomsAsync(m_activeChar, bItem.Donor, bItem.Costume).Forget();
+                m_view.Render(BuildRenderData());
+                break;
+
+            case CostumePickerView.WardrobeTab.Tops:
+                if (m_topsSelected < 0 || m_topsSelected >= m_topsItems.Count) return;
+                if (m_topsItems[m_topsSelected].Locked) return;
+                var tItem = m_topsItems[m_topsSelected];
+                if (TopsOverrideStore.TryGet(m_activeChar, out var curTops)
+                    && curTops.DonorChar == tItem.Donor && curTops.DonorCostume == tItem.Costume)
+                {
+                    // トグル解除: store クリア + target SMR をスナップショットから素状態に復元。
+                    // env.LoadCharacter は同 costume だと no-op で setup() Postfix が発火しないため
+                    // 直接 Restore する（Bottoms と同方針）。
+                    TopsOverrideStore.Clear(m_activeChar);
+                    var envR = GBSystem.Instance?.GetActiveEnvScene();
+                    var charObjR = envR?.FindCharacter(m_activeChar);
+                    if (charObjR != null) TopsLoader.RestoreFor(charObjR);
+                    m_view.Render(BuildRenderData());
+                    return;
+                }
+                ApplyTopsAsync(m_activeChar, tItem.Donor, tItem.Costume).Forget();
+                m_view.Render(BuildRenderData());
+                break;
         }
+    }
+
+    private async UniTaskVoid ApplyTopsAsync(CharID id, CharID donor, CostumeType costume)
+    {
+        if (m_loading) return;
+        m_loading = true;
+        bool hadPrev = TopsOverrideStore.TryGet(id, out var prev);
+        try
+        {
+            // 1. lazy preload（既ロード or in-flight なら即返）
+            bool donorOk = await TopsLoader.PreloadDonorAsync(donor, costume);
+            if (!donorOk)
+            {
+                PatchLogger.LogWarning($"[CostumePicker] donor {donor}/{costume} に Tops SMR が無く apply 中止");
+                return;
+            }
+            // 1.5. skin donor を target/Babydoll で固定先行 preload。
+            //      Apply 内で target の mesh_skin_upper を target/Babydoll 版に差し替えるため。
+            //      Babydoll が最も汎用的な mesh_skin_upper を持つので donor.costume に関係なく固定。
+            //      戻り値 false (preload 失敗 or Tops 候補ゼロ) は警告ログ。Apply は続行するが、
+            //      Apply (d) の skin upper swap がスキップされ Babydoll 基準の境界整合は得られない。
+            bool skinDonorOk = await TopsLoader.PreloadDonorAsync(id, TopsLoader.SkinDonorCostume);
+            if (!skinDonorOk)
+                PatchLogger.LogWarning($"[CostumePicker] skin donor (target {id}/{TopsLoader.SkinDonorCostume}) preload 失敗、境界整合不全のまま apply 続行");
+            // 1.6. donor 側 Babydoll skin reference を先行 preload。
+            //      Apply (e) の per-vert distance preservation が「donor Babydoll skin / target Babydoll skin」
+            //      の対称な基準で d_donor / d_target を比較するため。donorCostume が既に Babydoll なら
+            //      PreloadDonorAsync は即返。失敗時は (e) で skip + warning が走る。
+            if (costume != TopsLoader.SkinDonorCostume)
+            {
+                bool donorSkinDonorOk = await TopsLoader.PreloadDonorAsync(donor, TopsLoader.SkinDonorCostume);
+                if (!donorSkinDonorOk)
+                    PatchLogger.LogWarning($"[CostumePicker] donor skin donor ({donor}/{TopsLoader.SkinDonorCostume}) preload 失敗、距離保存補正は skip され apply 続行");
+            }
+            // 2. store 更新
+            if (!TopsOverrideStore.Set(id, donor, costume))
+            {
+                PatchLogger.LogWarning($"[CostumePicker] TopsOverrideStore.Set 失敗: target={id} donor={donor} costume={costume}");
+                return;
+            }
+            // 3. 直接 SMR 差し替え。env.LoadCharacter 経由の reload は同 costume だと
+            //    no-op で setup() Postfix が発火しないため、target の既存 GameObject に直接適用する。
+            var env = GBSystem.Instance?.GetActiveEnvScene();
+            var charObj = env?.FindCharacter(id);
+            if (charObj == null)
+            {
+                PatchLogger.LogWarning($"[CostumePicker] target {id} の GameObject が見つからず apply 中止");
+                if (hadPrev) TopsOverrideStore.Set(id, prev.DonorChar, prev.DonorCostume);
+                else TopsOverrideStore.Clear(id);
+                return;
+            }
+            TopsLoader.ApplyDirectly(charObj, donor, costume);
+            m_view.Render(BuildRenderData());
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[CostumePicker] 上衣移植失敗: {ex}");
+            // 部分的に SMR 変更後の例外で乖離が起きないよう、SMR を素状態に戻してから
+            // store を旧状態へ revert する（Bottoms と同方針）。
+            var envC = GBSystem.Instance?.GetActiveEnvScene();
+            var charObjC = envC?.FindCharacter(id);
+            if (charObjC != null) TopsLoader.RestoreFor(charObjC);
+            if (hadPrev) TopsOverrideStore.Set(id, prev.DonorChar, prev.DonorCostume);
+            else TopsOverrideStore.Clear(id);
+        }
+        finally { m_loading = false; }
+    }
+
+    private async UniTaskVoid ApplyBottomsAsync(CharID id, CharID donor, CostumeType costume)
+    {
+        if (m_loading) return;
+        m_loading = true;
+        // 失敗時に旧 override を復元するため事前保存
+        bool hadPrev = BottomsOverrideStore.TryGet(id, out var prev);
+        try
+        {
+            // 1. lazy preload（既ロード or in-flight なら即返）
+            // donorOk == false (donor に skirt/pants 無し) でも続行する。
+            // Apply 内で hide 経路を走らせて target の bottoms を非表示にする
+            // (RIN/MIUKA SwimWear などワンピース型 donor 選択時の意図的「下半身素」)。
+            bool donorOk = await BottomsLoader.PreloadDonorAsync(donor, costume);
+            if (!donorOk)
+                PatchLogger.LogInfo($"[CostumePicker] donor {donor}/{costume} に bottoms SMR が無いため target の bottoms を非表示にします");
+            // 2. store 更新（後続 setup() 系での再適用にも一貫性を持たせるため必ず更新）
+            if (!BottomsOverrideStore.Set(id, donor, costume))
+            {
+                PatchLogger.LogWarning($"[CostumePicker] BottomsOverrideStore.Set 失敗: target={id} donor={donor} costume={costume}");
+                return;
+            }
+            // 3. 直接 SMR 差し替え。env.LoadCharacter 経由の reload は同 costume だと
+            //    no-op で setup() Postfix が発火しないため、target の既存 GameObject に直接適用する。
+            var env = GBSystem.Instance?.GetActiveEnvScene();
+            var charObj = env?.FindCharacter(id);
+            if (charObj == null)
+            {
+                PatchLogger.LogWarning($"[CostumePicker] target {id} の GameObject が見つからず apply 中止");
+                // store だけ新 donor を指す orphan を防ぐため revert
+                if (hadPrev) BottomsOverrideStore.Set(id, prev.DonorChar, prev.DonorCostume);
+                else BottomsOverrideStore.Clear(id);
+                return;
+            }
+            BottomsLoader.ApplyDirectly(charObj, donor, costume);
+            m_view.Render(BuildRenderData());
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[CostumePicker] 下衣移植失敗: {ex}");
+            // ApplyDirectly が部分的に SMR を変更した後の例外で乖離が起きないよう、
+            // SMR を素状態に戻してから override store を旧状態へ revert する。
+            // RestoreFor は snapshot 未捕捉時は no-op。
+            var envC = GBSystem.Instance?.GetActiveEnvScene();
+            var charObjC = envC?.FindCharacter(id);
+            if (charObjC != null) BottomsLoader.RestoreFor(charObjC);
+            if (hadPrev) BottomsOverrideStore.Set(id, prev.DonorChar, prev.DonorCostume);
+            else BottomsOverrideStore.Clear(id);
+        }
+        finally { m_loading = false; }
     }
 
     private void ApplyPanties()
@@ -849,16 +1132,26 @@ public class CostumePickerController : MonoBehaviour
     {
         if (m_activeChar >= CharID.NUM) return;
         CostumeOverrideStore.Clear(m_activeChar);
+        // Bottoms / Tops: store クリア + target SMR を素状態に復元（reload 経路では同 costume の場合に
+        // setup() Postfix が発火せず復元されないため直接 Restore）。両者は SMR 集合が排他なので順序依存なし。
+        BottomsOverrideStore.Clear(m_activeChar);
+        TopsOverrideStore.Clear(m_activeChar);
+        var env = GBSystem.Instance?.GetActiveEnvScene();
+        var charObj = env?.FindCharacter(m_activeChar);
+        if (charObj != null)
+        {
+            BottomsLoader.RestoreFor(charObj);
+            TopsLoader.RestoreFor(charObj);
+        }
         ReloadCurrentAsync(m_activeChar).Forget();
         PantiesOverrideStore.Clear(m_activeChar);
         RestoreDefaultPanties(m_activeChar);
-        // KneeSocks 系 override 中は Restore してから Clear
+        // KneeSocks 系 override 中は Restore してから Clear（charObj は上で取得済みを再利用）
         if (StockingOverrideStore.TryGet(m_activeChar, out var stkForReset)
-            && StockingOverrideStore.IsKneeSocksType(stkForReset))
+            && StockingOverrideStore.IsKneeSocksType(stkForReset)
+            && charObj != null)
         {
-            var env = GBSystem.Instance?.GetActiveEnvScene();
-            var charObj = env?.FindCharacter(m_activeChar);
-            if (charObj != null) KneeSocksLoader.Restore(charObj);
+            KneeSocksLoader.Restore(charObj);
         }
         StockingOverrideStore.Clear(m_activeChar);
         RestoreDefaultStocking(m_activeChar);
@@ -868,12 +1161,22 @@ public class CostumePickerController : MonoBehaviour
     internal void HideIfShown()
     {
         if (m_view == null || !m_view.IsShown) return;
-        m_view.Hide();
+        HideView();
     }
 
     private void HandleCloseClicked()
     {
         if (!m_view.IsShown) return;
+        HideView();
+    }
+
+    /// <summary>
+    /// パネル非表示にする統一経路。Esc / × / hotkey toggle / fallback など
+    /// すべての close 経路でこれを呼ぶことで Debug 中の赤 tint 残留を防ぐ。
+    /// </summary>
+    private void HideView()
+    {
+        MeshHighlighter.ClearFor(m_debugState.Smrs);
         m_view.Hide();
     }
 
@@ -986,7 +1289,7 @@ public class CostumePickerController : MonoBehaviour
     private void HandleBackClicked()
     {
         if (!m_view.IsShown) return;
-        if (m_mode != PickerMode.Settings) return;
+        if (m_mode != PickerMode.Settings && m_mode != PickerMode.Debug) return;
         ShowPicker();
     }
 
@@ -1000,8 +1303,91 @@ public class CostumePickerController : MonoBehaviour
 
     private void ShowPicker()
     {
+        // Debug → Back の遷移時は SMR の赤 tint と CheckedSmrInstanceIds を意図的に維持する。
+        // 再度 [D] で戻ったとき同じ選択が見える方が調査作業フローとして自然 (panel close では HideView が解除)。
         m_mode = PickerMode.Picker;
         m_view.ShowPicker(BuildRenderData());
+    }
+
+    /// <summary>
+    /// [D] ボタン押下: Debug ビュー (mesh / MagicaCloth inspector) に遷移。
+    /// 現在の m_activeChar 配下を再スキャンし、過去 highlight 残骸 (dead SMR) を整理。
+    /// </summary>
+    private void HandleDebugClicked()
+    {
+        if (!m_view.IsShown) return;
+        if (m_activeChar >= CharID.NUM) return;
+        ShowDebug();
+    }
+
+    private void ShowDebug()
+    {
+        m_mode = PickerMode.Debug;
+        m_debugState.Rebuild(m_activeChar, GetCharaGameObject(m_activeChar));
+        m_view.ShowDebug(BuildDebugData());
+    }
+
+    private void HandleDebugSmrToggleClicked(int idx)
+    {
+        if (!m_view.IsShown || m_mode != PickerMode.Debug) return;
+        if (idx < 0 || idx >= m_debugState.Smrs.Count) return;
+        var smr = m_debugState.Smrs[idx];
+        if (smr == null) return;
+        int instId = smr.GetInstanceID();
+        if (m_debugState.CheckedSmrInstanceIds.Contains(instId))
+        {
+            m_debugState.CheckedSmrInstanceIds.Remove(instId);
+            MeshHighlighter.Unhighlight(smr);
+        }
+        else
+        {
+            m_debugState.CheckedSmrInstanceIds.Add(instId);
+            MeshHighlighter.Highlight(smr);
+        }
+        m_view.RenderDebug(BuildDebugData());
+    }
+
+    private void HandleDebugClearAllClicked()
+    {
+        if (!m_view.IsShown || m_mode != PickerMode.Debug) return;
+        MeshHighlighter.ClearFor(m_debugState.Smrs);
+        m_debugState.CheckedSmrInstanceIds.Clear();
+        m_view.RenderDebug(BuildDebugData());
+    }
+
+    private CostumePickerView.DebugData BuildDebugData()
+    {
+        var labels = new List<string>(m_debugState.Smrs.Count);
+        var paths = new List<string>(m_debugState.Smrs.Count);
+        var checks = new List<bool>(m_debugState.Smrs.Count);
+        for (int i = 0; i < m_debugState.Smrs.Count; i++)
+        {
+            var smr = m_debugState.Smrs[i];
+            labels.Add(smr != null ? smr.name : "(null)");
+            paths.Add(i < m_debugState.SmrPaths.Count ? m_debugState.SmrPaths[i] : "");
+            checks.Add(smr != null && m_debugState.CheckedSmrInstanceIds.Contains(smr.GetInstanceID()));
+        }
+        return new CostumePickerView.DebugData
+        {
+            CharId = m_activeChar,
+            SmrLabels = labels,
+            SmrPaths = paths,
+            SmrChecked = checks,
+            MagicaLabels = new List<string>(m_debugState.MagicaInfos),
+            VisibleCasts = new List<CharID>(m_visibleCasts),
+            VisibleCastSelectedIndex = m_visibleCasts.IndexOf(m_activeChar),
+        };
+    }
+
+    /// <summary>
+    /// 現シーンの EnvSceneBase から CharID に対応する CharacterHandle.Chara (GameObject) を取得。
+    /// </summary>
+    private static GameObject GetCharaGameObject(CharID id)
+    {
+        var env = GBSystem.Instance?.GetActiveEnvScene();
+        if (env == null || env.m_characters == null) return null;
+        var handle = env.m_characters.Find(x => x != null && x.GetCharID() == id);
+        return handle?.Chara;
     }
 
     private void HandleResetAllClicked()
@@ -1071,6 +1457,13 @@ public class CostumePickerController : MonoBehaviour
             CostumeOverrideStore.Clear(id);
             PantiesOverrideStore.Clear(id);
             StockingOverrideStore.Clear(id);
+            BottomsOverrideStore.Clear(id);
+            TopsOverrideStore.Clear(id);
+            // Bottoms / Tops: reload 前に Restore（reload 経路は同 costume だと no-op になり SMR が戻らないため）
+            var envB = GBSystem.Instance?.GetActiveEnvScene();
+            var charObjB = envB?.FindCharacter(id);
+            if (charObjB != null) BottomsLoader.RestoreFor(charObjB);
+            if (charObjB != null) TopsLoader.RestoreFor(charObjB);
             await ReloadCurrentInternal(id);
             RestoreDefaultPanties(id);
             RestoreDefaultStocking(id);
@@ -1133,7 +1526,6 @@ public class CostumePickerController : MonoBehaviour
             return;
         }
 
-        // Esc: ピッカーに戻る
         if (kb[Key.Escape].wasPressedThisFrame)
         {
             ShowPicker();

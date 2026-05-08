@@ -500,6 +500,9 @@ public static class SwimWearStockingPatch
 
         var go = new GameObject(InjectedName);
         go.transform.SetParent(parentTransform, false);
+        // Unity Layer は SetParent で継承されないため明示設定（layer mismatch で本体 lighting
+        // から外れて grey 描画になる bug 対応、Bottoms/Tops と対称適用）。
+        go.layer = referenceSmr != null ? referenceSmr.gameObject.layer : chara.layer;
 
         return go.AddComponent<SkinnedMeshRenderer>();
     }
