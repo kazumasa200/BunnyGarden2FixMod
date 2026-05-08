@@ -533,6 +533,51 @@
         step: 0.001
         format: '{0:F3}'
 
+    - name: TopsSkinShrink
+      label: 上衣 肌押込み量 (m)
+      type: float
+      default: 0
+      range: [0, 0.01]
+      description: |
+        上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に
+        保つ目標距離（メートル）。tops と肌が z-fighting している箇所では、まず肌を
+        tops 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
+        StockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と
+        補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。
+        0 で無効化。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinShrinkFalloffRadius
+      label: 上衣 肌押込み フェード半径 (m)
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        肌の押し込み量を、隣接 mesh（mesh_skin_lower 等）からの距離で線形フェードさせる半径（メートル）。
+        距離 0 で押し込み 0、半径以上で 100%。境界（首・ウエスト等）での段差を防ぎます。0 で無効化（一様押し込み）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinShrinkSampleRadius
+      label: 上衣 肌押込み cloth サンプル半径 (m)
+      type: float
+      default: 0
+      range: [0, 0.1]
+      description: |
+        肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」
+        の距離重み平均で求めます。0 で K=3 固定（既定）、>0 で指定半径内の全頂点を使った滑らかな表面推定に
+        なります。半径内に頂点が無い場合は K=3 にフォールバック。
+        mesh_costume の frill / sleeve / 双面ジオメトリで signedD が頂点単位で揺れて push 量が不安定な場合に有効。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
     - name: TopsLoaderVerbose
       label: 上衣移植デバッグログ
       type: bool
@@ -569,6 +614,17 @@
       default: false
       ui:
         kind: toggle
+
+- section: Diagnostics
+  name: 診断
+  configs:
+    - name: SwimWearPhysicsDiag
+      label: 水着 物理診断ログ
+      type: bool
+      default: false
+      description: |
+        DIAGNOSTIC ONLY — issue 解決後削除予定。
+        SwimWear setup 時の hierarchy / animator / MagicaCloth を初回 (char, costume, scene) ごとに 1 回だけログ出力します。
 
 - section: General
   name: 全般

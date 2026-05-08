@@ -93,6 +93,12 @@ public static class Configs
     public static ConfigEntry<float> TopsSkinSampleRadius;
     /// <summary>上衣 肌 weight 転送 falloff (m)</summary>
     public static ConfigEntry<float> TopsSkinWeightFalloff;
+    /// <summary>上衣 肌押込み量 (m)</summary>
+    public static ConfigEntry<float> TopsSkinShrink;
+    /// <summary>上衣 肌押込み フェード半径 (m)</summary>
+    public static ConfigEntry<float> TopsSkinShrinkFalloffRadius;
+    /// <summary>上衣 肌押込み cloth サンプル半径 (m)</summary>
+    public static ConfigEntry<float> TopsSkinShrinkSampleRadius;
     /// <summary>上衣移植デバッグログ</summary>
     public static ConfigEntry<bool> TopsLoaderVerbose;
     /// <summary>水着・バニーガール衣装でも下着を表示</summary>
@@ -101,6 +107,8 @@ public static class Configs
     public static ConfigEntry<bool> PantiesAltSlotOverrideOnly;
     /// <summary>キャストのストッキング(パンスト)を非表示</summary>
     public static ConfigEntry<bool> DisableStockings;
+    /// <summary>水着 物理診断ログ</summary>
+    public static ConfigEntry<bool> SwimWearPhysicsDiag;
     /// <summary>Steam 経由起動を強制</summary>
     public static ConfigEntry<bool> SteamLaunchCheck;
     /// <summary>MOD UI スケール</summary>
@@ -137,8 +145,6 @@ public static class Configs
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig FastForward;
     /// <summary>衣装変更 UI 表示</summary>
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig CostumeChangerShow;
-    /// <summary>DIAGNOSTIC ONLY — SwimWear 物理診断ログ (issue 解決後削除)</summary>
-    public static BepInEx.Configuration.ConfigEntry<bool> SwimWearPhysicsDiag;
 
     // ─── BindAll: Plugin.Awake から1回呼ぶ ──────────
     public static void BindAll(ConfigFile cfg)
@@ -422,6 +428,36 @@ donor cloth が target body の関節 (肩・肘等) を曲げたとき、肌か
 推奨開始値: 0.020 (20mm) で「skin 密着部のみ skin 化」の控えめ有効化。",
                 new AcceptableValueRange<float>(0.0f, 0.05f)));
 
+        TopsSkinShrink = cfg.Bind("CostumeChanger", "TopsSkinShrink",
+            0.0f,
+            new ConfigDescription(
+                @"上衣 肌押込み量 (m)
+上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に
+保つ目標距離（メートル）。tops と肌が z-fighting している箇所では、まず肌を
+tops 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
+StockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と
+補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。
+0 で無効化。",
+                new AcceptableValueRange<float>(0.0f, 0.01f)));
+
+        TopsSkinShrinkFalloffRadius = cfg.Bind("CostumeChanger", "TopsSkinShrinkFalloffRadius",
+            0.001f,
+            new ConfigDescription(
+                @"上衣 肌押込み フェード半径 (m)
+肌の押し込み量を、隣接 mesh（mesh_skin_lower 等）からの距離で線形フェードさせる半径（メートル）。
+距離 0 で押し込み 0、半径以上で 100%。境界（首・ウエスト等）での段差を防ぎます。0 で無効化（一様押し込み）。",
+                new AcceptableValueRange<float>(0.0f, 0.01f)));
+
+        TopsSkinShrinkSampleRadius = cfg.Bind("CostumeChanger", "TopsSkinShrinkSampleRadius",
+            0.0f,
+            new ConfigDescription(
+                @"上衣 肌押込み cloth サンプル半径 (m)
+肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」
+の距離重み平均で求めます。0 で K=3 固定（既定）、>0 で指定半径内の全頂点を使った滑らかな表面推定に
+なります。半径内に頂点が無い場合は K=3 にフォールバック。
+mesh_costume の frill / sleeve / 双面ジオメトリで signedD が頂点単位で揺れて push 量が不安定な場合に有効。",
+                new AcceptableValueRange<float>(0.0f, 0.1f)));
+
         TopsLoaderVerbose = cfg.Bind("CostumeChanger", "TopsLoaderVerbose",
             false,
             @"上衣移植デバッグログ
@@ -445,6 +481,12 @@ PantiesAltSlotMatch=OFF のときはこの設定は無視されます。");
         DisableStockings = cfg.Bind("CostumeChanger", "DisableStockings",
             false,
             @"キャストのストッキング(パンスト)を非表示");
+
+        SwimWearPhysicsDiag = cfg.Bind("Diagnostics", "SwimWearPhysicsDiag",
+            false,
+            @"水着 物理診断ログ
+DIAGNOSTIC ONLY — issue 解決後削除予定。
+SwimWear setup 時の hierarchy / animator / MagicaCloth を初回 (char, costume, scene) ごとに 1 回だけログ出力します。");
 
         SteamLaunchCheck = cfg.Bind("General", "SteamLaunchCheck",
             true,
@@ -914,6 +956,42 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             SliderStep = 0.001f,
             Format     = "{0:F3}",
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => TopsSkinWeightFalloff, 0.001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "上衣 肌押込み量 (m)",
+            Desc     = "上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に\n保つ目標距離（メートル）。tops と肌が z-fighting している箇所では、まず肌を\ntops 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。\nStockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と\n補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。\n0 で無効化。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.01f,
+            SliderStep = 0.0001f,
+            Format     = "{0:F4}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => TopsSkinShrink, 0.0001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "上衣 肌押込み フェード半径 (m)",
+            Desc     = "肌の押し込み量を、隣接 mesh（mesh_skin_lower 等）からの距離で線形フェードさせる半径（メートル）。\n距離 0 で押し込み 0、半径以上で 100%。境界（首・ウエスト等）での段差を防ぎます。0 で無効化（一様押し込み）。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.01f,
+            SliderStep = 0.0001f,
+            Format     = "{0:F4}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => TopsSkinShrinkFalloffRadius, 0.0001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "上衣 肌押込み cloth サンプル半径 (m)",
+            Desc     = "肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」\nの距離重み平均で求めます。0 で K=3 固定（既定）、>0 で指定半径内の全頂点を使った滑らかな表面推定に\nなります。半径内に頂点が無い場合は K=3 にフォールバック。\nmesh_costume の frill / sleeve / 双面ジオメトリで signedD が頂点単位で揺れて push 量が不安定な場合に有効。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.1f,
+            SliderStep = 0.001f,
+            Format     = "{0:F3}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => TopsSkinShrinkSampleRadius, 0.001f),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {

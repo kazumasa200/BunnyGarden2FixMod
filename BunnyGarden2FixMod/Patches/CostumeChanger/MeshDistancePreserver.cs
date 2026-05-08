@@ -180,6 +180,20 @@ internal static class MeshDistancePreserver
         // Pass 4 で書き換える boneWeight 配列 (skip 頂点は donor 原状維持で初期化)。
         var newBoneWeights = weightTransferEnabled ? (BoneWeight[])donorBoneWeights.Clone() : null;
 
+        // 姿勢従属副骨 (Twist / deltoid / breast 等) を skin 由来 weight 集計から除外する mask。
+        // donor cloth bone idx 空間で「この bone は副骨か」を per-bone 1 回判定。Phase 1 の hot loop は
+        // 単純な bool[] lookup で済む。
+        bool[] donorBoneIsAux = null;
+        if (weightTransferEnabled)
+        {
+            donorBoneIsAux = new bool[donorBones.Length];
+            for (int b = 0; b < donorBones.Length; b++)
+            {
+                var bone = donorBones[b];
+                if (bone != null && IsAuxiliaryBone(bone.name)) donorBoneIsAux[b] = true;
+            }
+        }
+
         // カバー外判定閾値: 呼び出し側 (Configs) から指定。最小フロアで負値弾く。
         if (maxNeighborDist <= 0f)
         {
@@ -324,10 +338,12 @@ internal static class MeshDistancePreserver
         // Pass 4 統計
         int weightTransferred = 0;
         float maxWeightLoss = 0f;
+        int auxSkippedTotal = 0;        // skin 由来集計から副骨理由で skip した slot 累計
         // per-vert アロケーション排除のため reuse buffer (typical 4–8 keys)。
         var blendScratch = weightTransferEnabled ? new Dictionary<int, float>(8) : null;
         var blendScratchKeys = weightTransferEnabled ? new List<int>(8) : null;
         var blendScratchSorted = weightTransferEnabled ? new List<KeyValuePair<int, float>>(8) : null;
+
         for (int i = 0; i < donorVerts.Length; i++)
         {
             if (pass1Status[i] == STATUS_OUT_RANGE) { outOfRangeP1Donor++; continue; }
@@ -358,10 +374,11 @@ internal static class MeshDistancePreserver
                 // 0=skin (密着), 1=donor (離脱)。負値 (= cloth が skin より内側) は 0 にクランプして 100% skin。
                 float t = Mathf.Clamp01(d_donor_eff / weightFalloffOuter);
                 var blended = ComputeBlendedBoneWeight(
-                    v, neighbors, modSkinVerts, dSkinRemappedToCloth, donorBoneWeights[i],
-                    t, weightEps, blendScratch, blendScratchKeys, blendScratchSorted, out var loss);
+                    v, neighbors, modSkinVerts, dSkinRemappedToCloth, donorBoneIsAux, donorBoneWeights[i],
+                    t, weightEps, blendScratch, blendScratchKeys, blendScratchSorted, out var loss, out var auxSkipped);
                 newBoneWeights[i] = blended;
                 if (loss > maxWeightLoss) maxWeightLoss = loss;
+                auxSkippedTotal += auxSkipped;
                 weightTransferred++;
             }
 
@@ -422,7 +439,7 @@ internal static class MeshDistancePreserver
             ? $"shareBand[<.1/<.5/<.9/>=.9]={shareBand[0]}/{shareBand[1]}/{shareBand[2]}/{shareBand[3]} boneScaleZeroed={boneScaleZeroed}"
             : "shareBand=N/A";
         string weightTransferStr = weightTransferEnabled
-            ? $"weightTransferred={weightTransferred} maxWeightLoss={maxWeightLoss:F3}"
+            ? $"weightTransferred={weightTransferred} maxWeightLoss={maxWeightLoss:F3} auxSlotsSkipped={auxSkippedTotal}"
             : "weightTransfer=disabled";
         PatchLogger.LogInfo(
             $"[{logTag}] distance preserve: donor={donorMesh.name}({donorVerts.Length}v) " +
@@ -469,18 +486,53 @@ internal static class MeshDistancePreserver
         List<int> neighbors,
         Vector3[] modSkinVerts,
         BoneWeight[] dSkinRemappedToCloth,
+        bool[] donorBoneIsAux,
         BoneWeight donorBw,
         float t,
         float weightEps,
         Dictionary<int, float> scratch,
         List<int> scratchKeys,
         List<KeyValuePair<int, float>> scratchSorted,
-        out float weightLoss)
+        out float weightLoss,
+        out int auxSkipped)
     {
         weightLoss = 0f;
+        int auxSkippedLocal = 0;
         scratch.Clear();
 
+        // Phase 0: per-vert 動的副骨判定マスク。
+        // bone 名 pattern (Twist/deltoid 等) で aux と判定され、かつ donor 元 cloth bw 内でその bone の
+        // weight が AuxWeightThreshold 未満のときだけ「副骨扱い」とする。
+        // donor がその bone を主骨レベルで使う cloth vert (例: 脇腕側 / mesh_costume_sleeve の
+        // ForearmTwist3=1.0 vert) では aux mask を解除し、通常 blend で skin 追従させる。
+        int dom0 = donorBw.weight0 >= AuxWeightThreshold ? donorBw.boneIndex0 : -1;
+        int dom1 = donorBw.weight1 >= AuxWeightThreshold ? donorBw.boneIndex1 : -1;
+        int dom2 = donorBw.weight2 >= AuxWeightThreshold ? donorBw.boneIndex2 : -1;
+        int dom3 = donorBw.weight3 >= AuxWeightThreshold ? donorBw.boneIndex3 : -1;
+
         // Phase 1: skin 由来 weight 集計 (distance² 重み)
+        // per-vert mask で副骨扱いの bone idx は集計対象外。skin の人体最適化比率が cloth に流れ込んで
+        // 腕回転追従度を増幅するのを防ぐ。donor 元 weight (Phase 2.5) で副骨は temprese (温存) される。
+        // wSum は副骨 skip 後の有効 slot weight 合計で集計し、Phase 2 正規化が「副骨を除く skin 主骨」だけで
+        // 100% スケールになるようにする。slot weight は通常 sum=1 のため副骨 skip が無いとき従来挙動と一致する。
+        // ローカル関数は static + ref 引数で書込み変数を受けて closure capture (display class allocation)
+        // を完全排除している。Pass 4 hot path 用。
+        static void TryAddSkin(
+            int idx, float bw, float wCur,
+            bool[] donorBoneIsAuxArg, int d0, int d1, int d2, int d3,
+            Dictionary<int, float> scratchArg,
+            ref float wSumRef, ref int auxSkippedRef)
+        {
+            if (bw <= 0f) return;
+            if (IsAuxBone(idx, donorBoneIsAuxArg, d0, d1, d2, d3))
+            {
+                auxSkippedRef++;
+                return;
+            }
+            float bwW = bw * wCur;
+            AddOrAccum(scratchArg, idx, bwW);
+            wSumRef += bwW;
+        }
         float wSum = 0f;
         for (int k = 0; k < neighbors.Count; k++)
         {
@@ -488,13 +540,15 @@ internal static class MeshDistancePreserver
             if (sj < 0 || sj >= dSkinRemappedToCloth.Length) continue;
             var sbw = dSkinRemappedToCloth[sj];
             float dsq = (modSkinVerts[sj] - v).sqrMagnitude;
-            float w = 1f / (dsq + weightEps);
-            if (sbw.weight0 > 0f) AddOrAccum(scratch, sbw.boneIndex0, sbw.weight0 * w);
-            if (sbw.weight1 > 0f) AddOrAccum(scratch, sbw.boneIndex1, sbw.weight1 * w);
-            if (sbw.weight2 > 0f) AddOrAccum(scratch, sbw.boneIndex2, sbw.weight2 * w);
-            if (sbw.weight3 > 0f) AddOrAccum(scratch, sbw.boneIndex3, sbw.weight3 * w);
-            wSum += w;
+            float wCur = 1f / (dsq + weightEps);
+            TryAddSkin(sbw.boneIndex0, sbw.weight0, wCur, donorBoneIsAux, dom0, dom1, dom2, dom3, scratch, ref wSum, ref auxSkippedLocal);
+            TryAddSkin(sbw.boneIndex1, sbw.weight1, wCur, donorBoneIsAux, dom0, dom1, dom2, dom3, scratch, ref wSum, ref auxSkippedLocal);
+            TryAddSkin(sbw.boneIndex2, sbw.weight2, wCur, donorBoneIsAux, dom0, dom1, dom2, dom3, scratch, ref wSum, ref auxSkippedLocal);
+            TryAddSkin(sbw.boneIndex3, sbw.weight3, wCur, donorBoneIsAux, dom0, dom1, dom2, dom3, scratch, ref wSum, ref auxSkippedLocal);
         }
+        // auxSkippedLocal の単位: (skin neighbor) × (4 slot) のうち副骨理由で集計対象外になった slot 累計。
+        // vert 数や有効 weight 量とは直接対応しない指標 (= サマリログ auxSlotsSkipped と同じ単位)。
+        auxSkipped = auxSkippedLocal;
 
         // Phase 2: skin 集計を per-bone 正規化して (1-t) で blend に積む
         if (wSum > 0f && scratch.Count > 0)
@@ -514,11 +568,24 @@ internal static class MeshDistancePreserver
             scratch.Clear();
         }
 
-        // Phase 3: donor 元 weight を t で加算
-        if (donorBw.weight0 > 0f) AddOrAccum(scratch, donorBw.boneIndex0, t * donorBw.weight0);
-        if (donorBw.weight1 > 0f) AddOrAccum(scratch, donorBw.boneIndex1, t * donorBw.weight1);
-        if (donorBw.weight2 > 0f) AddOrAccum(scratch, donorBw.boneIndex2, t * donorBw.weight2);
-        if (donorBw.weight3 > 0f) AddOrAccum(scratch, donorBw.boneIndex3, t * donorBw.weight3);
+        // Phase 2.5: donor 元 bw の副骨 slot を 100% scratch に温存する (per-vert mask 使用)。
+        // Phase 1 で skin 由来集計から副骨を除外しているため、Phase 3 で t 倍加算するだけだと
+        // 結果の副骨比率が donor 元の t 倍 (= 密着域でほぼゼロ) に減衰し、cloth が捻り bone
+        // (UpperarmTwist 等) に追従しなくなって肩周りで target body を貫通する。
+        // 主骨は Phase 3 で通常通り t 倍加算するため、副骨と主骨で二重加算しない。
+        // 副作用: scratch の合計が一時的に 1 を超えうる (主骨 (1-t)*100% + 副骨 100% + 主骨 t*100%)。
+        // Phase 4 の top-4 truncate + 末尾正規化で吸収されるため数値破綻はないが、weightLoss は
+        // 「元 sum (>1 の場合あり) に対する相対的 loss」になる点に留意 (= 絶対 loss 量より小さく見える)。
+        if (donorBw.weight0 > 0f && IsAuxBone(donorBw.boneIndex0, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex0, donorBw.weight0);
+        if (donorBw.weight1 > 0f && IsAuxBone(donorBw.boneIndex1, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex1, donorBw.weight1);
+        if (donorBw.weight2 > 0f && IsAuxBone(donorBw.boneIndex2, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex2, donorBw.weight2);
+        if (donorBw.weight3 > 0f && IsAuxBone(donorBw.boneIndex3, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex3, donorBw.weight3);
+
+        // Phase 3: donor 元 weight (主骨のみ) を t で加算。副骨は Phase 2.5 で温存済みなので skip。
+        if (donorBw.weight0 > 0f && !IsAuxBone(donorBw.boneIndex0, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex0, t * donorBw.weight0);
+        if (donorBw.weight1 > 0f && !IsAuxBone(donorBw.boneIndex1, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex1, t * donorBw.weight1);
+        if (donorBw.weight2 > 0f && !IsAuxBone(donorBw.boneIndex2, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex2, t * donorBw.weight2);
+        if (donorBw.weight3 > 0f && !IsAuxBone(donorBw.boneIndex3, donorBoneIsAux, dom0, dom1, dom2, dom3)) AddOrAccum(scratch, donorBw.boneIndex3, t * donorBw.weight3);
 
         if (scratch.Count == 0) return donorBw;
 
@@ -704,6 +771,49 @@ internal static class MeshDistancePreserver
         var b = bones[idx];
         if (b == null) return false;
         return skinBoneNames.Contains(b.name);
+    }
+
+    /// <summary>
+    /// 「姿勢従属副骨」判定。Twist / deltoid 系は artist が意図的に控えめに割った姿勢補助骨で、skin
+    /// (人体表現) 由来の比率を blend で取り込むと cloth vert の腕回転追従度等が増幅し脇下突き抜けを
+    /// 悪化させる。Pass 4 (skin → cloth weight 転送) の Phase 1 集計でこれら bone は skip し、donor 元の
+    /// 比率を温存する。
+    /// <para>
+    /// breast / pectoral 等の動的 driver は「主骨レベルで cloth に使われる」ため除外しない（除外すると
+    /// cloth の breast 追従度が減衰して胸まわり cloth が skin から浮く現象が発生する）。
+    /// </para>
+    /// 命名 pattern は project により増減しうる。
+    /// </summary>
+    private static bool IsAuxiliaryBone(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        string n = name.ToLowerInvariant();
+        return n.Contains("twist")
+            || n.Contains("deltoid");
+    }
+
+    /// <summary>
+    /// Pass 4 副骨判定の動的閾値: donor 元 cloth bw でその bone の weight がこの値以上の場合は
+    /// 「主骨レベルで使われている」と判断して副骨扱いを解除する（aux 名 pattern 一致でも）。
+    /// 経験則:
+    ///   artist が aux bone を控えめに割っている場合は weight &lt; 0.20 が典型 → 副骨扱い
+    ///   主骨レベルで使う cloth (mesh_costume_sleeve の ForearmTwist3=1.0 等) は weight &gt;= 0.40 が典型 → 主骨扱い
+    /// 中間 0.30 で振り分ける。
+    /// </summary>
+    private const float AuxWeightThreshold = 0.30f;
+
+    /// <summary>
+    /// Pass 4 副骨判定 (per-vert): bone idx が aux 名 pattern 一致 (<see cref="IsAuxiliaryBone"/>) かつ
+    /// donor 元 cloth bw で主骨レベル保有 (<see cref="AuxWeightThreshold"/> 以上) でないとき true。
+    /// donorBoneIsAux mask は <see cref="Preserve"/> で per-bone 1 回事前計算したものを使う。
+    /// d0..d3 は cloth vert の donor 元 bw で「主骨レベル保有」slot の bone idx (該当なしは -1)。
+    /// </summary>
+    private static bool IsAuxBone(int idx, bool[] donorBoneIsAux, int d0, int d1, int d2, int d3)
+    {
+        if (donorBoneIsAux == null || idx < 0 || idx >= donorBoneIsAux.Length) return false;
+        if (!donorBoneIsAux[idx]) return false;
+        if (idx == d0 || idx == d1 || idx == d2 || idx == d3) return false;
+        return true;
     }
 
     // SampleSkinSurface の戻り値

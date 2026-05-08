@@ -36,12 +36,23 @@ internal static class MeshPenetrationResolver
     /// <param name="skinAnchorVerts">skin push の falloff anchor (隣接 skin mesh 頂点)。null/空なら falloff 無し。</param>
     /// <param name="skinFalloffRadius">skin push の境界フェード半径 (m)。&lt;= 0 で falloff 無し。</param>
     /// <param name="logTag">ログ出力タグ。</param>
+    /// <param name="useSkinNormalForPush">true で skin push の axis に skin 自身の外向き法線を使う。
+    /// false (既定) では donor cloth 外向き法線を使う (Stocking 既存挙動)。
+    /// Tops cloth は frill / 双面ジオメトリで cloth 法線が反転・突発的に変わるケースがあり、
+    /// 法線軸として cloth 側を使うと skin が外側 (cloth 方向) に押されて z-fighting 悪化することがあるため、
+    /// Tops 系呼出では skin 法線で押し方向を固定する方が安定。</param>
+    /// <param name="clothSampleRadius">skin push pass で「skin 頂点近傍の cloth 表面 (vAvg / vnAvg)」を
+    /// 推定する際に半径内の全 cloth 頂点を距離重み平均する。&lt;= 0 (既定) で K=3 固定。半径内に頂点が
+    /// 無ければ K=3 にフォールバック。MeshDistancePreserver.skinSampleRadius と同方針。
+    /// pass 1 (cloth push) は対象外: Stocking 経路は K=3 のまま。Tops では minOffset=0 で pass 1 走らない。</param>
     /// <returns>(adjusted donor, adjusted skin)。それぞれ null なら no-op（差し替え不要）。</returns>
     internal static (Mesh donor, Mesh skin) Resolve(
         Mesh donorMesh, Mesh referenceMesh, string referenceShape,
         float minOffset, float skinPushAmount,
         Vector3[] skinAnchorVerts, float skinFalloffRadius,
-        string logTag)
+        string logTag,
+        bool useSkinNormalForPush = false,
+        float clothSampleRadius = 0f)
     {
         if (donorMesh == null || referenceMesh == null) return (null, null);
         if (minOffset <= 0f && skinPushAmount <= 0f) return (null, null);
@@ -205,27 +216,91 @@ internal static class MeshPenetrationResolver
         var bandCount = new int[3];
         var bandMax = new float[3];
         var bandSum = new float[3];
+
+        // 早期 AABB cull 用の donor 範囲。skin vert がこの外なら nearest donor までの距離 > maxNeighborDist
+        // が確定するため、grid 探索 (radius mode で 729 cells/query 等) を skip して outOfRange 同等扱い。
+        // 病的ケース (小 donor + 大 skin ref + 大 sampleR) で FindWithinRadius の cell lookup 爆発を防ぐ。
+        // 拡張量は maxNeighborDist + minOffset: pass 1 で donor 自身が最大 minOffset 外側に push され得るため、
+        // post-push donor 位置を安全側でカバーする (Tops は minOffset=0 で影響無し、Stocking は数 mm 拡張)。
+        Vector3 cullMin = Vector3.zero, cullMax = Vector3.zero;
+        if (skinPushAmount > 0f && donorGrid != null)
+        {
+            cullMin = donorVerts[0];
+            cullMax = donorVerts[0];
+            for (int i = 1; i < donorVerts.Length; i++)
+            {
+                var p = donorVerts[i];
+                if (p.x < cullMin.x) cullMin.x = p.x; else if (p.x > cullMax.x) cullMax.x = p.x;
+                if (p.y < cullMin.y) cullMin.y = p.y; else if (p.y > cullMax.y) cullMax.y = p.y;
+                if (p.z < cullMin.z) cullMin.z = p.z; else if (p.z > cullMax.z) cullMax.z = p.z;
+            }
+            float cullExpand = maxNeighborDist + Mathf.Max(0f, minOffset);
+            cullMin.x -= cullExpand; cullMin.y -= cullExpand; cullMin.z -= cullExpand;
+            cullMax.x += cullExpand; cullMax.y += cullExpand; cullMax.z += cullExpand;
+        }
         if (skinPushAmount > 0f && donorGrid != null && hasDonorNormals)
         {
             long pStart = sw.ElapsedMilliseconds;
             for (int i = 0; i < refVerts.Length; i++)
             {
                 var s = refVerts[i];
+
+                // 早期 AABB cull: donor AABB ± maxNeighborDist の外なら nearest donor までの距離 > maxNeighborDist
+                // 確定なので、後段 outOfRange と同等扱いで grid 探索を skip する。
+                if (s.x < cullMin.x || s.x > cullMax.x ||
+                    s.y < cullMin.y || s.y > cullMax.y ||
+                    s.z < cullMin.z || s.z > cullMax.z)
+                {
+                    skinOutOfRange++;
+                    continue;
+                }
+
                 Vector3 vAvg, vnAvg;
 
+                // clothSampleRadius > 0: 半径内の全 cloth 頂点を採用 (MeshDistancePreserver.skinSampleRadius と同方針)。
+                //   半径内に頂点が無ければ K=3 にフォールバック。skin 表面推定の頂点単位ノイズを smoothing。
+                // clothSampleRadius <= 0: K=3 固定 (Stocking 既存挙動)。
                 neighbors.Clear();
-                donorGrid.FindKNearest(s, neighborK, neighbors);
+                bool radiusMode = clothSampleRadius > 0f;
+                if (radiusMode)
+                {
+                    donorGrid.FindWithinRadius(s, clothSampleRadius, neighbors);
+                    if (neighbors.Count == 0)
+                        donorGrid.FindKNearest(s, neighborK, neighbors);
+                }
+                else
+                {
+                    donorGrid.FindKNearest(s, neighborK, neighbors);
+                }
                 if (neighbors.Count == 0) continue;
                 {
+                    // カバー外チェック: K=3 モードでは scratch[0] が必ず最近傍だが、radius モードでは
+                    // 必ずしも先頭が最近傍とは限らないため、radius モード時は全件 scan で最小距離を再判定。
                     int n0 = neighbors[0];
                     var vp0 = donorVerts[n0] + donorDisp[n0];
-                    if ((vp0 - s).sqrMagnitude > maxNeighborDist * maxNeighborDist)
+                    float n0DistSq = (vp0 - s).sqrMagnitude;
+                    if (n0DistSq > maxNeighborDist * maxNeighborDist)
                     {
-                        skinOutOfRange++;
-                        continue;
+                        bool outOfRange = true;
+                        if (radiusMode)
+                        {
+                            float minDistSq = n0DistSq;
+                            for (int k = 1; k < neighbors.Count; k++)
+                            {
+                                var vpK = donorVerts[neighbors[k]] + donorDisp[neighbors[k]];
+                                float dsq = (vpK - s).sqrMagnitude;
+                                if (dsq < minDistSq) minDistSq = dsq;
+                            }
+                            outOfRange = minDistSq > maxNeighborDist * maxNeighborDist;
+                        }
+                        if (outOfRange)
+                        {
+                            skinOutOfRange++;
+                            continue;
+                        }
                     }
                 }
-                if (neighbors.Count < neighborK) skinFallback++;
+                if (!radiusMode && neighbors.Count < neighborK) skinFallback++;
 
                 {
                     Vector3 vSum = Vector3.zero, vnSum = Vector3.zero;
@@ -244,20 +319,28 @@ internal static class MeshPenetrationResolver
                     vnAvg = vnSum.sqrMagnitude > 1e-12f ? vnSum.normalized : donorNormals[neighbors[0]];
                 }
 
-                // signedD = dot(vAvg - s, vnAvg): donor 側 reference frame での skin の位置。
-                // vnAvg は stocking の外向き法線。
-                //   signedD > 0 → skin は stocking 表面 (vAvg) の -vnAvg 側 = 内側にいる（通常）
-                //   signedD = 0 → skin はちょうど stocking 表面上
-                //   signedD < 0 → skin が stocking を突き抜けて外側に出ている（食い込み）
-                float signedD = Vector3.Dot(vAvg - s, vnAvg);
+                // 押し方向 axis を選択:
+                //   useSkinNormalForPush=false (Stocking 既定): cloth 外向き法線 vnAvg を使う。
+                //     stocking のように tight な単面 cloth では skin 法線とほぼ一致するため安定。
+                //   useSkinNormalForPush=true (Tops 等): skin 外向き法線 refNormals[i] を使う。
+                //     mesh_costume の frill / sleeve / 双面ジオメトリで cloth 法線が局所反転すると
+                //     -vnAvg が外側を向き、skin が cloth 方向 (= 外側) へ押されて逆効果になるため、
+                //     skin 法線基準で押し方向を固定する。
+                Vector3 pushAxis = useSkinNormalForPush ? refNormals[i] : vnAvg;
+
+                // signedD = dot(vAvg - s, pushAxis): pushAxis 軸上での「skin から cloth surface vAvg までの符号付き距離」。
+                //   signedD > 0 → skin は cloth 表面 (vAvg) の -pushAxis 側 = 内側にいる（通常）
+                //   signedD = 0 → skin はちょうど cloth 表面上
+                //   signedD < 0 → skin が cloth を突き抜けて外側に出ている（食い込み）
+                float signedD = Vector3.Dot(vAvg - s, pushAxis);
                 if (signedD < invertGuard) { skinSkippedInverted++; continue; }
 
                 float scaledPush = skinPushAmount * skinScale[i];
                 if (scaledPush <= 0f) continue;
 
-                // まず skin を stocking 押し出し後表面 (vAvg) まで揃え、そこから更に
-                // scaledPush だけ内側 (-vnAvg 方向) に押し込む。
-                // 目標位置 = vAvg + (-vnAvg) * scaledPush
+                // まず skin を cloth 押し出し後表面 (vAvg) まで揃え、そこから更に
+                // scaledPush だけ内側 (-pushAxis 方向) に押し込む。
+                // 目標位置 = vAvg + (-pushAxis) * scaledPush
                 // 法線方向の必要変位 = scaledPush - signedD
                 //   signedD < 0 (突き抜け): scaledPush + |signedD| をフル push
                 //   0 <= signedD < scaledPush: 不足分のみ push
@@ -265,7 +348,7 @@ internal static class MeshPenetrationResolver
                 float pushDist = scaledPush - signedD;
                 if (pushDist > 0f)
                 {
-                    skinDisp[i] = -vnAvg * pushDist;
+                    skinDisp[i] = -pushAxis * pushDist;
                     skinHits++;
 
                     int band = skinScale[i] < bandBoundaryMax ? 0 : (skinScale[i] < bandMidMax ? 1 : 2);
