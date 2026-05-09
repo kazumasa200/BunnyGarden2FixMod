@@ -47,6 +47,37 @@ internal static class MagicaClothRebuilder
     private static MethodInfo s_resetClothMethod;
     private static MethodInfo s_setParameterChangeMethod;
 
+    // NullOutCachedOriginalMeshes 用 reflection cache (初回 BuildFromConfig で 1 度だけ解決)。
+    // RenderSetupData.cs:387 の override (sharedMesh=referenceInitSetupData.originalMesh) を
+    // 無効化するため、新 SerData2.initData.clothSetupDataList[*].originalMesh を null 化する経路。
+    private static bool s_originalMeshNullifyResolved;
+    private static FieldInfo s_initDataField;
+    private static FieldInfo s_clothSetupDataListField;
+    private static FieldInfo s_setupOriginalMeshField;
+
+    // DisablePreBuildIfPresent 用 reflection cache。serializeData2.preBuildData.enabled を
+    // false にして PreBuild path (RenderData.originalMesh = preBuildUniqueSerializeData.originalMesh)
+    // を回避し non-PreBuild path (originalMesh = setupData.originalMesh = SMR.sharedMesh) に倒す。
+    // 連続 donor 切替で customMesh が donor 元 baked mesh から生成され前 donor の shape が残る症状を回避。
+    private static bool s_preBuildDisableResolved;
+    private static FieldInfo s_preBuildDataField;
+    private static FieldInfo s_preBuildEnabledField;
+
+    // ForceCleanupOldClothRenderData 用 reflection cache。SafeDestroy 経由で MC_old を destroy する際、
+    // ClothProcess.DisposeInternal が `if (isBuild) return;` で早期 return して RenderManager.renderDataDict
+    // から RenderData を回収し損ねる症状の workaround。
+    //   1. oldComp.Process.renderHandleList を空にして DisposeInternal の foreach で誤 RemoveRenderer
+    //      (= 新 MC の RenderData を decrement-dispose する) を防ぐ
+    //   2. RenderManager.renderDataDict から sourceRenderers の InstanceID エントリを直接 Dispose+Remove
+    private static bool s_renderManagerResolved;
+    private static PropertyInfo s_processProp;          // MagicaCloth.Process
+    private static FieldInfo s_renderHandleListField;   // ClothProcess.renderHandleList
+    private static Type s_renderDataType;
+    private static FieldInfo s_renderDataDictField;     // RenderManager.renderDataDict
+    private static MethodInfo s_renderManagerRemoveRenderer; // RenderManager.RemoveRenderer(int)
+    private static Type s_magicaManagerType;
+    private static FieldInfo s_magicaManagerRenderField; // MagicaManager.Render (static)
+
     private static Type ResolveType()
     {
         if (s_magicaClothType != null) return s_magicaClothType;
@@ -217,6 +248,9 @@ internal static class MagicaClothRebuilder
             var skirtGo = FindGameObjectByName(character, key.SkirtGoName);
             if (skirtGo == null) continue;
             if (skirtGo.GetComponent(magicaType) != null) continue; // 既に component 有 → recovery 不要
+            // recover 経路も SafeDestroyPreservingSmrState を経由しないため、snap.SrcRenderers の SMR が
+            // renderDataDict に残留しているケースに備えて事前 clear (create 経路と同方針)。
+            ForceClearRenderDataForSmrs(snap.SrcRenderers);
             try
             {
                 if (BuildFromConfig(skirtGo, character, magicaType, snap.SerData, snap.SerData2, snap.SrcRenderers, "recover", remapColliders: false))
@@ -431,6 +465,10 @@ internal static class MagicaClothRebuilder
         newGo.transform.localRotation = Quaternion.identity;
         newGo.transform.localScale = Vector3.one;
 
+        // create 経路は SafeDestroyPreservingSmrState を経由しないため、scene 跨ぎ等で newSrcList SMR の
+        // InstanceID が renderDataDict に残留しているケースに備えて事前 clear する (rebuild/restore 経路と同形)。
+        ForceClearRenderDataForSmrs(newSrcList);
+
         bool ok = false;
         try
         {
@@ -616,7 +654,18 @@ internal static class MagicaClothRebuilder
             }
         }
 
+        // DestroyImmediate 前に oldComp.Process.renderHandleList をクリアし、後段の async build
+        // cancellation 経由 DisposeInternal が新 MC の RenderData を誤 RemoveRenderer/Dispose
+        // するのを防ぐ。fix 確定後も残す根本対策の一部。
+        ClearRenderHandleListIfPossible(oldComp);
+
         UnityEngine.Object.DestroyImmediate(oldComp);
+
+        // RenderManager.renderDataDict 内に残っている oldComp 由来の RenderData を Dispose + Remove。
+        // DisposeInternal が isBuild=true で早期 return した経路 (LUNA stock MC が初回ロード時 build 進行中
+        // に削除されたケース等) で RenderData が dict に残留し続け、新 MC の AddRenderer が REUSE して
+        // customMesh が前 mesh から固定される症状の根本対策。
+        ForceClearRenderDataForSmrs(sourceRenderers);
 
         foreach (var (smr, mesh, bones, mats, active, enabled) in saved)
         {
@@ -626,6 +675,299 @@ internal static class MagicaClothRebuilder
             if (mats != null) smr.sharedMaterials = mats;
             smr.gameObject.SetActive(active);
             smr.enabled = enabled;
+        }
+    }
+
+    /// <summary>
+    /// MagicaManager / ClothProcess / RenderData のリフレクションを 1 度だけ解決する。
+    /// 失敗時は対応する FieldInfo / MethodInfo / PropertyInfo を null のまま残し、後続呼出は no-op。
+    /// </summary>
+    private static void ResolveRenderManagerReflection()
+    {
+        if (s_renderManagerResolved) return;
+        s_renderManagerResolved = true;
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        var sf = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+
+        var magicaClothType = ResolveType();
+        if (magicaClothType == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: MagicaCloth type 未解決");
+            return;
+        }
+        s_processProp = magicaClothType.GetProperty("Process", bf);
+        if (s_processProp == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: MagicaCloth.Process property 未解決");
+            return;
+        }
+        var clothProcessType = s_processProp.PropertyType;
+        s_renderHandleListField = clothProcessType.GetField("renderHandleList", bf);
+        if (s_renderHandleListField == null)
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: ClothProcess.renderHandleList field 未解決");
+
+        // MagicaManager (static class) を assembly 走査で解決
+        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var t = asm.GetType("MagicaCloth2.MagicaManager", false);
+                if (t != null) { s_magicaManagerType = t; break; }
+            }
+            catch { /* skip dynamic asm */ }
+        }
+        if (s_magicaManagerType == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: MagicaManager type 未解決");
+            return;
+        }
+        // Render は static field or static property を試す
+        s_magicaManagerRenderField = s_magicaManagerType.GetField("Render", sf);
+        var renderProp = s_magicaManagerRenderField == null ? s_magicaManagerType.GetProperty("Render", sf) : null;
+        Type renderManagerType = null;
+        if (s_magicaManagerRenderField != null)
+            renderManagerType = s_magicaManagerRenderField.FieldType;
+        else if (renderProp != null)
+            renderManagerType = renderProp.PropertyType;
+        if (renderManagerType == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: MagicaManager.Render 未解決");
+            return;
+        }
+        s_renderDataDictField = renderManagerType.GetField("renderDataDict", bf);
+        if (s_renderDataDictField == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: RenderManager.renderDataDict field 未解決");
+            return;
+        }
+        var dictType = s_renderDataDictField.FieldType;
+        if (dictType.IsGenericType && dictType.GetGenericArguments().Length == 2)
+            s_renderDataType = dictType.GetGenericArguments()[1];
+        if (s_renderDataType == null)
+        {
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: RenderData type 未解決");
+            return;
+        }
+        // 本家 RenderManager.RemoveRenderer(int handle) を呼ぶ。refcount を decrement し 0 で Dispose+Remove。
+        // 直接 Dispose+Remove だと refcount > 0 の他参照が dangling 化するため、本家 API 経由で安全に片付ける。
+        s_renderManagerRemoveRenderer = renderManagerType.GetMethod("RemoveRenderer", new[] { typeof(int) });
+        if (s_renderManagerRemoveRenderer == null)
+            PatchLogger.LogWarning("[MagicaClothRebuilder] ResolveRenderManagerReflection: RenderManager.RemoveRenderer(int) 未解決");
+    }
+
+    /// <summary>
+    /// oldComp.Process.renderHandleList を新規空 List で置換する。後段の async build cancellation 完了時の
+    /// DisposeInternal が renderHandleList を foreach して RemoveRenderer する経路を無効化し、
+    /// 新 MC の RenderData が誤って Dispose されないようにする。
+    ///
+    /// `Clear()` ではなく `SetValue(new List<int>())` を使う理由: 本家 RuntimeBuildAsync は build 中の
+    /// `for (int i; i &lt; renderHandleList.Count; i++) renderHandleList[i]` (ClothProcess L579) で
+    /// list 末尾をインデックスアクセスする。`Clear` 中の race で IndexOutOfRange を踏む可能性がある。
+    /// 新 List への置換ならば、本家 build が以前 cache した古い list reference を foreach で安全に走破できる。
+    /// </summary>
+    private static void ClearRenderHandleListIfPossible(Component oldComp)
+    {
+        if (oldComp == null) return;
+        ResolveRenderManagerReflection();
+        if (s_processProp == null || s_renderHandleListField == null) return;
+        try
+        {
+            var process = s_processProp.GetValue(oldComp);
+            if (process == null) return;
+            if (s_renderHandleListField.GetValue(process) is IList oldList)
+            {
+                int count = oldList.Count;
+                if (count > 0)
+                {
+                    var newList = (IList)Activator.CreateInstance(s_renderHandleListField.FieldType);
+                    s_renderHandleListField.SetValue(process, newList);
+                    PatchLogger.LogDebug($"[MagicaClothRebuilder] replaced MC.Process.renderHandleList ({count} handles) with empty list before DestroyImmediate");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[MagicaClothRebuilder] ClearRenderHandleListIfPossible 失敗: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 各 sourceRenderer の InstanceID で本家 <c>RenderManager.RemoveRenderer(handle)</c> を呼び、
+    /// renderDataDict 内に残留している RenderData の refcount を decrement する (count==0 で Dispose+Remove)。
+    ///
+    /// Why: ClothProcess.DisposeInternal は <c>isBuild=true</c> で早期 return するため、async build が
+    /// 進行中の MC が DestroyImmediate されると renderDataDict 内の RenderData が回収されない。
+    /// 後続の新 MC の async BuildAndRun が `if (!renderDataDict.ContainsKey(instanceID))` の早期 return で
+    /// 旧 RenderData を REUSE し、customMesh が旧 originalMesh から Instantiate されて連続切替時に
+    /// 前 donor (or stock) の mesh shape が残る症状の根本原因。
+    ///
+    /// 本家 API (RemoveRenderer) を経由する設計理由: 直接 Dispose+Remove だと refcount > 1 (legitimate な
+    /// 他 MC からの参照が残っている) のケースで dangling 化する。本家 API は refcount==0 でのみ Dispose+Remove
+    /// するため、leak case (refcount=1) で正常動作 + 多重参照ケースでも安全 (decrement のみ)。
+    /// </summary>
+    private static void ForceClearRenderDataForSmrs(IList sourceRenderers)
+    {
+        if (sourceRenderers == null) return;
+        ResolveRenderManagerReflection();
+        if (s_magicaManagerType == null || s_renderDataDictField == null) return;
+
+        object renderManager = null;
+        if (s_magicaManagerRenderField != null)
+            renderManager = s_magicaManagerRenderField.GetValue(null);
+        else
+        {
+            var renderProp = s_magicaManagerType.GetProperty("Render", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            renderManager = renderProp?.GetValue(null);
+        }
+        if (renderManager == null) return;
+
+        if (s_renderDataDictField.GetValue(renderManager) is not IDictionary dict) return;
+        if (s_renderManagerRemoveRenderer == null) return;
+
+        int cleared = 0;
+        int stillResident = 0;
+        foreach (var item in sourceRenderers)
+        {
+            if (!(item is SkinnedMeshRenderer smr) || smr == null) continue;
+            int instanceId = smr.GetInstanceID();
+            // 本家 lock(renderDataDict) と同一 monitor を使い相互排他。
+            lock (dict)
+            {
+                if (!dict.Contains(instanceId)) continue;
+            }
+            try { s_renderManagerRemoveRenderer.Invoke(renderManager, new object[] { instanceId }); }
+            catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] RenderManager.RemoveRenderer 失敗 (smr#{instanceId}): {ex.Message}"); continue; }
+            // 検証: refcount > 1 の多重参照だった場合 dict には残る。多重 leak 検出のため log。
+            lock (dict)
+            {
+                if (dict.Contains(instanceId)) stillResident++;
+            }
+            cleared++;
+        }
+        if (cleared > 0)
+            PatchLogger.LogDebug($"[MagicaClothRebuilder] force-cleared {cleared} RenderData entries from RenderManager.renderDataDict (still-resident={stillResident})");
+    }
+
+    /// <summary>
+    /// 新 SerData2 内 <c>initData.clothSetupDataList[*].originalMesh</c> を null 化する。
+    ///
+    /// Why: <see cref="RenderSetupData"/> ctor (MagicaClothV2/RenderSetupData.cs:387) が BuildAndRun 時に
+    ///   <c>referenceInitSetupData.originalMesh != null && skinnedMeshRenderer.sharedMesh != originalMesh</c>
+    /// の条件で SMR.sharedMesh を donor の baked originalMesh に巻き戻し、bones / rootBone も上書きする。
+    /// donor の <c>serializeData2</c> を deep copy する経路では donor 由来 baked originalMesh が transfer
+    /// されるため、SwapSmr で設定した sharedMesh と differ する条件で override が発火 → 連続 donor 切替時に
+    /// 前 donor の mesh shape が残る症状になる (memory `reference_magicacloth_originalmesh_override.md`)。
+    ///
+    /// FixMod の意図は「SwapSmr で設定した mesh / bones をそのまま使う」なので、この override は無効化したい。
+    /// originalMesh = null にすれば override 条件が false になり、BuildAndRun は現 sharedMesh を素直に採取する。
+    /// SafeDestroyPreservingSmrState 経由の rebuild / restore / recover 経路は SMR.sharedMesh を直前に
+    /// 再注入しているため、null 化により target 元 mesh への巻き戻し依存が破綻することは無い。
+    /// </summary>
+    private static void NullOutCachedOriginalMeshes(object newSerData2)
+    {
+        if (newSerData2 == null) return;
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        if (!s_originalMeshNullifyResolved)
+        {
+            s_originalMeshNullifyResolved = true;
+            s_initDataField = newSerData2.GetType().GetField("initData", bf);
+            if (s_initDataField == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: initData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
+                return;
+            }
+            s_clothSetupDataListField = s_initDataField.FieldType.GetField("clothSetupDataList", bf);
+            if (s_clothSetupDataListField == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList field 未解決");
+                return;
+            }
+            var listType = s_clothSetupDataListField.FieldType;
+            var elemType = listType.IsGenericType && listType.GetGenericArguments().Length == 1
+                ? listType.GetGenericArguments()[0]
+                : null;
+            if (elemType == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList の要素型が解決できず");
+                return;
+            }
+            s_setupOriginalMeshField = elemType.GetField("originalMesh", bf);
+            if (s_setupOriginalMeshField == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: originalMesh field 未解決");
+                return;
+            }
+        }
+        if (s_initDataField == null || s_clothSetupDataListField == null || s_setupOriginalMeshField == null) return;
+
+        var initData = s_initDataField.GetValue(newSerData2);
+        if (initData == null) return;
+        if (s_clothSetupDataListField.GetValue(initData) is not IList list) return;
+
+        int nulled = 0;
+        int total = 0;
+        foreach (var item in list)
+        {
+            if (item == null) continue;
+            total++;
+            if (s_setupOriginalMeshField.GetValue(item) != null)
+            {
+                s_setupOriginalMeshField.SetValue(item, null);
+                nulled++;
+            }
+        }
+        if (nulled > 0)
+            PatchLogger.LogDebug($"[MagicaClothRebuilder] nullify clothSetupDataList originalMesh: {nulled} entries (total={total})");
+    }
+
+    /// <summary>
+    /// 新 SerData2 の <c>preBuildData.enabled = false</c> をセットして PreBuild path を回避する。
+    ///
+    /// Why: PreBuild path (<c>ClothProcess</c> L329-332) では <c>RenderData.originalMesh =
+    /// preBuildUniqueSerializeData.originalMesh</c> となり、donor の <b>baked</b> mesh asset から
+    /// customMesh が <c>Instantiate</c> される (<c>RenderData.cs</c> L72, L111)。FixMod が SwapSmr で
+    /// SMR.sharedMesh を donor の SMR mesh に切り替えても、customMesh はこの baked mesh 由来になり、
+    /// 連続 donor 切替で前 donor の shape が残る症状になる。
+    ///
+    /// PreBuild を無効化すれば non-PreBuild path に落ち、<c>RenderData.originalMesh =
+    /// setupData.originalMesh = SMR.sharedMesh</c> (RenderSetupData ctor L484) で初期化されるため、
+    /// customMesh は SwapSmr で設定した donor の現 mesh から生成される。
+    ///
+    /// 副作用: PreBuild 由来の最適化 (proxy mesh / 制約データ) が失われ初期化コストが増える可能性があるが、
+    /// 衣装切替時の一時的な処理なので許容範囲。FixMod の SwapSmr 経路では target hierarchy の bones を使うため、
+    /// donor の baked transform graph も流用できないので PreBuild path 自体が本来不適切。
+    /// </summary>
+    private static void DisablePreBuildIfPresent(object newSerData2)
+    {
+        if (newSerData2 == null) return;
+        var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+        if (!s_preBuildDisableResolved)
+        {
+            s_preBuildDisableResolved = true;
+            s_preBuildDataField = newSerData2.GetType().GetField("preBuildData", bf);
+            if (s_preBuildDataField == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
+                return;
+            }
+            s_preBuildEnabledField = s_preBuildDataField.FieldType.GetField("enabled", bf);
+            if (s_preBuildEnabledField == null)
+            {
+                PatchLogger.LogWarning("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData.enabled field 未解決");
+                return;
+            }
+        }
+        if (s_preBuildDataField == null || s_preBuildEnabledField == null) return;
+
+        var preBuildData = s_preBuildDataField.GetValue(newSerData2);
+        if (preBuildData == null) return;
+        var enabled = s_preBuildEnabledField.GetValue(preBuildData) as bool? ?? false;
+        if (enabled)
+        {
+            s_preBuildEnabledField.SetValue(preBuildData, false);
+            PatchLogger.LogInfo("[MagicaClothRebuilder] disable PreBuild path: preBuildData.enabled false 化");
         }
     }
 
@@ -668,6 +1010,17 @@ internal static class MagicaClothRebuilder
 
         var newSerData2 = s2Method.Invoke(newComp, null);
         CopyFields(srcSerData2, newSerData2, deep: true);
+
+        // RenderSetupData ctor (MagicaClothV2:387) の sharedMesh 巻き戻し override を無効化。
+        // donor 由来の baked originalMesh が残ると BuildAndRun が SwapSmr 後の sharedMesh を donor 元に
+        // 戻してしまい、連続 donor 切替時に前 donor の mesh shape が残る (memory: originalMesh-override)。
+        NullOutCachedOriginalMeshes(newSerData2);
+
+        // PreBuild path を無効化して RenderData.originalMesh = SMR.sharedMesh (= SwapSmr 設定値) にする。
+        // PreBuild path だと customMesh が donor の baked mesh asset から Instantiate されて連続切替で
+        // 前 donor の shape が残る症状の根本原因 (donor 切替で SMR.sharedMesh は変わるが customMesh は
+        // baked mesh 経由で生成されるため visual に反映されない)。
+        DisablePreBuildIfPresent(newSerData2);
 
         // donor 由来の colliderList / collisionBones は donor body の ColliderComponent / Transform を
         // 参照しているため、target の同名 GameObject に attached された同型 component / Transform に

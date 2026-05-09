@@ -404,10 +404,9 @@
       type: bool
       default: true
       description: |
-        Wardrobe で変更した衣装・パンツ・ストッキング・下衣移植の状態を MOD サイドカー (.exmod) に保存し、
-        ゲーム再起動後も復元します。保存先は `BepInEx/data/net.noeleve.BunnyGarden2FixMod/`（Steam Cloud 対象外）。
-        false の間に変更した内容は永続化されません。既に保存済の override 値は ExSave に残るため、
-        true に戻すと過去保存分が復元されます。
+        Wardrobe で変更した衣装の状態を保存し、ゲーム再起動後も復元します。
+        OFF にすると以降の変更は保存されません（既存の保存内容は残るため、ON に戻すと復元されます）。
+        Steam Cloud 対象外。
       ui:
         kind: toggle
 
@@ -425,53 +424,48 @@
       default: 0
       range: [0, 0.01]
       description: |
-        水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。
-        押し出すと水着の食い込み（タイトな演出）が再現できますが、stocking が水着を貫通します。
-        0 で無効化。
+        水着+ストッキング適用時、ストッキングを肌よりどれだけ外側に出すかを指定します（メートル）。
+        値を増やすと水着の食い込みが再現できますが、ストッキングが水着を貫通します。0 で無効。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingSkinShrink
-      label: 肌 押込み量 (m)
+      label: ストッキング 肌押込み量 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に
-        保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を
-        stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
-        押し込むと肌の貫通はなくなりますが、水着の食い込み（タイトな演出）が再現できません。
-        0 で無効化。
+        水着+ストッキング適用時、肌をストッキングよりどれだけ内側に押し込むかを指定します（メートル）。
+        肌のチラつき（肌とストッキングの干渉）が見える場合に大きくしてください。
+        ただし水着の食い込み演出は弱まります。0 で無効。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingSkinFalloffRadius
-      label: 肌押込み フェード半径 (m)
+      label: ストッキング 肌押込み フェード半径 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
-        距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぎます。0 で無効化（一様押し込み）。
+        肌の押し込みを、上半身などとの境界で滑らかにフェードさせる距離です（メートル）。
+        境界に段差が見える場合に大きくしてください。0 で無効（境界無視で一様に押し込む）。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingShapeFalloffRadius
-      label: BlendShape フェード半径 (m)
+      label: ストッキング 肌形状フェード半径 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、
-        隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
-        距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消します。
-        0 で無効化（blendShape 効果は全頂点 100%）。
+        ストッキング由来の肌形状補正を、ウエストなどの境界で滑らかにフェードさせる距離です（メートル）。
+        境界の段差が気になる場合に大きくしてください。0 で無効（補正は全身一様）。
       ui:
         kind: slider
         step: 0.0001
@@ -483,11 +477,9 @@
       default: 0.100
       range: [0.010, 0.500]
       description: |
-        上衣移植時の per-vert 距離保存 (distance preservation) で、donor 服頂点から
-        Babydoll skin (upper + lower) への最近傍探索の最大距離（メートル）。
-        この距離より遠い頂点は補正対象外（outOfRange）として元位置のまま残ります。
-        小さすぎるとワンピース型衣装の下半身などが補正対象から外れ、大きすぎると
-        服から離れた位置の頂点が無理に skin に揃えられて不自然になります。
+        別キャラ上衣を当てたときの体型補正の有効範囲です（メートル）。
+        小さくするとワンピース型衣装の下半身が補正されず、大きくしすぎると
+        服から遠い箇所まで体に張り付いて不自然になります。
       ui:
         kind: slider
         step: 0.010
@@ -499,13 +491,9 @@
       default: 0.005
       range: [0.0, 0.010]
       description: |
-        donor 服が donor 側 Babydoll 肌にめり込んでいる箇所を解決するための safety margin（メートル）。
-        donor 服頂点 v_i の signedD(v_i, donor_skin) < TopsSkinMinOffset なら、近傍 donor skin 頂点を
-        逆距離² 重み平均で内側へ凹ませ、d_donor を最低この値まで持ち上げます。その後で標準の距離保存
-        (target skin との差分を target 法線方向に push) を適用します。
-        donor 服頂点自体は触らず、reference skin だけを部分的に凹ませる方式のため、頂点間の push 量分散
-        による裏面 flip が原理的に起きません。
-        0 で無効（純粋な距離保存のみ＝めり込みは未補正で持ち越し）。
+        元キャラ側で衣装が肌にめり込んでいる箇所を補正する安全マージンです（メートル）。
+        当てた服の一部が肌にめり込んで見える場合に大きくしてください。
+        0 で無効（めり込みは未補正のまま反映されます）。
       ui:
         kind: slider
         step: 0.0001
@@ -517,11 +505,9 @@
       default: 0.03
       range: [0.0, 0.100]
       description: |
-        上衣移植の距離保存で、donor 頂点が参照する skin の最近傍点を「半径内の全 skin 頂点」
-        の距離重み平均で求めるようにします。0 で K=3 固定、>0 で指定半径内の全頂点を
-        使った滑らかな表面推定になります。半径内に頂点が無い場合は K=3 にフォールバック。
-        skin の細かいトポロジ凹凸 (鎖骨・肩甲骨・肩関節等) で d_donor / d_target が
-        不安定にばらつく場合に有効です。
+        体型補正で参照する肌のサンプリング半径です（メートル）。
+        鎖骨・肩甲骨など凹凸の多い箇所で補正がばらつく場合に大きくしてください。
+        0 で最小近傍 3 点を使用。
       ui:
         kind: slider
         step: 0.001
@@ -533,13 +519,10 @@
       default: 0.02
       range: [0.0, 0.050]
       description: |
-        donor cloth が target body の関節 (肩・肘等) を曲げたとき、肌から剥離・突き抜けるのを
-        防ぐため、cloth の boneWeight を skin 由来の weight と blend します。
-        各 cloth vert で t = saturate(d_donor_eff / TopsSkinWeightFalloff) として
-        (1-t) * skin 由来 weight + t * donor 元 weight を線形 blend し、距離が小さい (skin 密着)
-        頂点ほど skin と同じ deformation で動くようにします。
-        0 で機能 disable (donor 元の weight をそのまま使用、従来挙動)。
-        推奨開始値: 0.020 (20mm) で「skin 密着部のみ skin 化」の控えめ有効化。
+        関節を曲げたときに肌密着部の服が肌から剥離・突き抜けないよう、
+        肌の動きに追随させる範囲です（メートル）。
+        肩・肘などで服が肌から浮いて見える場合に大きくしてください。
+        0 で無効。推奨初期値: 0.020 m。
       ui:
         kind: slider
         step: 0.001
@@ -551,16 +534,8 @@
       default: 0.005
       range: [0, 0.01]
       description: |
-        上衣移植時、target の mesh_skin_upper / mesh_skin_lower の頂点を
-        「donor tops 表面より内側」に保つ目標距離（メートル）。tops と肌が z-fighting
-        している箇所では、まず肌を tops 表面まで引っ込めてから、さらにこの距離だけ
-        内側に押し込みます。
-        skin_upper のみでは waist 縫い目が外側に残るため、ワンピース型 donor (長め
-        Babydoll 等) で tops が腰下に達するケース向けに skin_lower にも同じ tops
-        から push 寄与を分配して上下を連続化します。
-        StockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と
-        補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。
-        0 で無効化。
+        別キャラ上衣を当てたとき、肌が服を貫通する箇所を内側に押し込む距離です（メートル）。
+        肌のチラつき（肌と服の干渉）が見える場合に大きくしてください。0 で無効。
       ui:
         kind: slider
         step: 0.0001
@@ -572,10 +547,9 @@
       default: 0.001
       range: [0, 0.01]
       description: |
-        肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる
-        半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが
-        顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。
-        face/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。
+        肌の押し込みを、顔・首回りで滑らかにフェードさせる距離です（メートル）。
+        首元で押し込みが顔まで波及する場合に大きくしてください。
+        0 で無効（顔境界無視で一様に押し込む）。
       ui:
         kind: slider
         step: 0.0001
@@ -587,12 +561,9 @@
       default: 0.0
       range: [0, 0.1]
       description: |
-        肌押込み (TopsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、半径内の
-        全 cloth 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。
-        0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。
-        半径を広く取るほど、複数 cloth 頂点の寄与が混ざって push 方向が滑らかになり、
-        SMR 境界 (waist 縫い目等) でも上下で同じ cloth 集合を共有して push 量が連続化します。
-        mesh_costume の frill / sleeve / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。
+        肌押込みの参照範囲です（メートル）。
+        フリル・袖などで押し込みがガタつく場合や、ウエストの縫い目で段差が見える場合に
+        大きくしてください。0 で 10mm 固定（狭い既定）。
       ui:
         kind: slider
         step: 0.001
@@ -604,17 +575,9 @@
       default: 0.005
       range: [0, 0.01]
       description: |
-        下衣移植 (Bottoms override) 時、target の mesh_skin_lower / mesh_skin_upper の頂点を
-        「donor skirt 表面より内側」に保つ目標距離（メートル）。
-        skirt は donor 元の体型基準で作られているため、cross-char 適用時に
-        target の腰・腿・膝下が skirt から外に飛び出す（skin 突き抜け）箇所が
-        生じます。本機能は skin 側のみを内側に push して解消し、
-        skirt mesh / MagicaCloth 物理は一切触りません。
-        skin_lower のみでは waist 縫い目が外側に残るため、skin_upper の腰部分にも
-        同じ skirt から push 寄与を分配して上下を連続化します。
-        StockingSkinShrink / TopsSkinShrink の下衣版。0 で無効化。
-        範囲は max 1cm に制限（足の太さに対して過大な push で skin 頂点が
-        body 内部に collapse して脚が消える事故を防ぐため）。
+        別キャラ下衣（スカート等）を当てたとき、肌がスカートを貫通する箇所を内側に押し込む距離です（メートル）。
+        腰・腿・膝下のチラつきが見える場合に大きくしてください。
+        0 で無効。最大 1cm 制限（過大値で脚が消える事故を防ぐため）。
       ui:
         kind: slider
         step: 0.0001
@@ -626,12 +589,9 @@
       default: 0.001
       range: [0, 0.01]
       description: |
-        肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる
-        半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが
-        顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。
-        skin_upper / skin_lower 両 SMR が同じ顔 anchor を共有するため、waist 縫い目では
-        face から十分離れて両側とも 100% push になり連続化します。
-        face/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。
+        肌の押し込みを、顔・首回りで滑らかにフェードさせる距離です（メートル）。
+        首元で押し込みが顔まで波及する場合に大きくしてください。
+        0 で無効（顔境界無視で一様に押し込む）。
       ui:
         kind: slider
         step: 0.0001
@@ -643,13 +603,9 @@
       default: 0.05
       range: [0, 0.1]
       description: |
-        肌押込み (BottomsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、
-        半径内の全 skirt 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。
-        0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。
-        半径を広く取るほど、複数 skirt 頂点の寄与が混ざって push 方向が滑らかになり、
-        SMR 境界 (waist 縫い目) でも skin_upper / skin_lower が同じ skirt 集合から
-        類似 push 寄与を得て上下が連続化します。
-        skirt の frill / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。
+        肌押込みの参照範囲です（メートル）。
+        スカートのフリルなどで押し込みがガタつく場合や、ウエストの縫い目で段差が見える場合に
+        大きくしてください。0 で 10mm 固定（狭い既定）。
       ui:
         kind: slider
         step: 0.001
@@ -660,8 +616,8 @@
       type: bool
       default: true
       description: |
-        ゲーム本体は通常衣装専用の panties slot にしか反応しないため、Mod 側で水着/バニー用スロットもフォールバック検出します。
-        差し替え後の Material は通常衣装用テクスチャなので、UV 不一致で見た目が崩れる場合は OFF にしてください。
+        水着・バニー衣装でもパンツが表示されるようにします（通常はゲーム側の制限で非表示）。
+        テクスチャは通常衣装用のため、UV 不一致で見た目が崩れる場合は OFF にしてください。
       ui:
         kind: toggle
 
@@ -670,8 +626,8 @@
       type: bool
       default: true
       description: |
-        ON  : Mod で下着を明示選択したキャストのみフォールバックを適用。他キャストはバニラ挙動（水着/バニーで肌色）。
-        OFF : 常時全キャストに適用。ゲーム本体由来の ReloadPanties でも水着/バニーに通常下着が出ます。
+        ON  : Mod で下着を選択したキャストのみ適用（他キャストは水着/バニー時に通常通り肌色）。
+        OFF : 全キャストに常時適用（水着/バニーでも通常下着が出ます）。
         PantiesAltSlotMatch=OFF のときはこの設定は無視されます。
       ui:
         kind: toggle

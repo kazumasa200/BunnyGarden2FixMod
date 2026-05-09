@@ -77,7 +77,11 @@ public class BottomsLoader : MonoBehaviour
     }
 
     private static readonly Dictionary<(CharID Donor, CostumeType Costume), DonorEntry> s_donors = new();
-    private static readonly Dictionary<(int InstanceId, string Kind), TargetKindSnapshot> s_targetSnapshots = new();
+    // key の IsInjected は additive モードで target 既存 SMR と inject SMR が同名で並ぶケースの識別用
+    // (例: target LUNA SwimWear の mesh_costume_frill + donor inject の mesh_costume_frill)。
+    // 通常モードでも swap (IsInjected=false) と inject (IsInjected=true) は元々 kind 集合 disjoint だが、
+    // additive 導入で同名衝突が起きうるため型に組み込む (TopsLoader と同形)。
+    private static readonly Dictionary<(int InstanceId, string Kind, bool IsInjected), TargetKindSnapshot> s_targetSnapshots = new();
 
     // 進行中の preload タスクをキーごとに共有することで、同一 (donor, costume) への
     // 重複呼出が二重 GameObject 生成や CharacterHandle.Preload 多重発火を起こさないようにする。
@@ -372,27 +376,34 @@ public class BottomsLoader : MonoBehaviour
 
     /// <summary>
     /// Wardrobe (F7) Bottoms タブ確定時に呼ぶ。reload 経由は同 costume で no-op になるためこちらを使う。
-    /// 連続 donor 切替でも CaptureSnapshotIfFirst の ContainsKey ガードで snapshot は素状態を保持し、
-    /// donor A → B → Restore でも一貫して素状態へ戻る（中間状態が漏れない）。
+    /// 連続 donor 切替で前回 inject SMR を確実に清掃するため <see cref="RestoreFor"/> で素状態へ戻してから
+    /// Apply する (TopsLoader.ApplyDirectly と同方針)。additive モード導入で snapshot key 集合が
+    /// donor / target 状態依存で変動するため (例: Babydoll donor で inject した frill snapshot が
+    /// Casual donor 切替時に残る)、素状態リセットが必須。
+    /// RestoreFor 内で <c>s_applied.Remove</c> と <see cref="BoneGrafter.DestroyGrafted"/> も実行されるため
+    /// 重複処理不要。
     /// </summary>
     public static void ApplyDirectly(GameObject character, CharID donorChar, CostumeType donorCostume)
     {
         if (character == null) return;
-        // Tops と異なり RestoreFor は呼ばない: snapshot は CaptureSnapshotIfFirst の
-        // ContainsKey ガードで素状態固定。BottomsSkinShrink の累積も
-        // SkinShrinkCoordinator の Refresh が rewind 起点で再 push するため防がれる。
-        s_applied.Remove(character.GetInstanceID());
-        // donor 切替で Bottoms 由来の grafted clone subtree が孤児として残るのを防ぐ。
-        // snapshot は素状態を保持し続けるが、grafted bone は補助構造で snapshot 独立のため
-        // 都度 destroy → 再 graft して整合を取る。
-        // owner = "BottomsLoader" でフィルタし Tops の graft は触らない (per-loader isolation)。
-        BoneGrafter.DestroyGrafted(character, "BottomsLoader");
+        RestoreFor(character);
         Apply(character, donorChar, donorCostume);
     }
 
     public static void Apply(GameObject character, CharID donorChar, CostumeType donorCostume)
     {
         if (character == null) return;
+
+        // base-aware additive モード (TopsLoader.Apply と対称設計):
+        //   target が SwimWear / Bunnygirl のときは target の Bottoms 候補 SMR をそのまま温存し、
+        //   donor の Bottoms SMR を inject 経路で重ねる。target の元 frill 等を維持できる。
+        //   donor=SwimWear (Bottoms に SwimWear donor を当てるレアケース) は従来 (a)(b)(c) で処理。
+        // m_lastLoadArg が race 等で null の場合は additive=false (= 既存通常モード) にフォールバック。
+        var targetHandle = ResolveTargetHandle(character);
+        var targetCostume = targetHandle?.m_lastLoadArg?.Costume;
+        bool additiveMode = (targetCostume == CostumeType.SwimWear || targetCostume == CostumeType.Bunnygirl)
+                            && donorCostume != CostumeType.SwimWear;
+
         if (!s_donors.TryGetValue((donorChar, donorCostume), out var donor))
         {
             // preload 未完了 vs 本当に donor 未登録（再起動が必要）を区別してログを出す。
@@ -467,43 +478,86 @@ public class BottomsLoader : MonoBehaviour
             }
         }
 
+        if (PatchLogger.IsDebugEnabled)
+        {
+            PatchLogger.LogDebug($"[BottomsLoader] target={character.name} mode={(additiveMode ? "additive" : "swap")} bottoms candidates: {(targetByName.Count == 0 ? "(none)" : string.Join(", ", targetByName.Keys))}");
+            if (additiveMode)
+            {
+                // additive 経路では target/donor 同名でも target を温存し donor 側を inject 経路で追加する。
+                // common 集合は「target 既存と並ぶ overlay」として表示。swap/hide は走らないので独立列挙はしない。
+                var donorAll = donorByName.Keys.OrderBy(s => s).ToList();
+                var overlapping = donorByName.Keys.Intersect(targetByName.Keys).OrderBy(s => s).ToList();
+                PatchLogger.LogDebug($"[BottomsLoader] inject (all donor, additive): {(donorAll.Count == 0 ? "(none)" : string.Join(", ", donorAll))}");
+                PatchLogger.LogDebug($"[BottomsLoader] overlap with target (kept as-is): {(overlapping.Count == 0 ? "(none)" : string.Join(", ", overlapping))}");
+            }
+            else
+            {
+                var common = donorByName.Keys.Intersect(targetByName.Keys).OrderBy(s => s).ToList();
+                var donorOnly = donorByName.Keys.Except(targetByName.Keys).OrderBy(s => s).ToList();
+                var targetOnly = targetByName.Keys.Except(donorByName.Keys).OrderBy(s => s).ToList();
+                PatchLogger.LogDebug($"[BottomsLoader] swap (common): {(common.Count == 0 ? "(none)" : string.Join(", ", common))}");
+                PatchLogger.LogDebug($"[BottomsLoader] inject (donor-only): {(donorOnly.Count == 0 ? "(none)" : string.Join(", ", donorOnly))}");
+                PatchLogger.LogDebug($"[BottomsLoader] hide (target-only): {(targetOnly.Count == 0 ? "(none)" : string.Join(", ", targetOnly))}");
+            }
+        }
+
         bool didSomething = false;
-        // BottomsSkinShrink 用に (a)(b) で swap した skirt SMR ペアを捕捉する。
+        // BottomsSkinShrink 用に swap した skirt SMR ペアを捕捉する。
+        // 通常モードは (a) 既存 swap + (b) inject swap の両方が含まれ、additive モードは (b) inject のみ。
         // (target SMR, donor 元 SMR) のペアを後段で skin shrink に渡す。
         var swappedBottomsPairs = new List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer Donor)>();
 
-        // (a) 共通: target 既存 SMR に donor の sharedMesh / bones / materials を swap
-        foreach (var kv in donorByName)
+        if (additiveMode)
         {
-            if (!targetByName.TryGetValue(kv.Key, out var targetSmr)) continue;
-            CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: targetSmr, injectedGo: null);
-            SwapSmr(targetSmr, kv.Value, character, kv.Key);
-            swappedBottomsPairs.Add((targetSmr, kv.Value));
-            didSomething = true;
+            // additive: target の Bottoms SMR は全て温存し、donor の Bottoms SMR を全て inject 経路で追加する。
+            // 同名 SMR が並ぶケース (target.mesh_costume_frill と donor.mesh_costume_frill) でも snapshot key の
+            // IsInjected=true で識別され、Restore は InjectedGo 参照で Destroy するため名前衝突しない。
+            // (a) swap / (c) hide はスキップ。target frill 等を「元 SwimWear のまま温存する」のが本モードの目的。
+            foreach (var kv in donorByName)
+            {
+                var injected = InjectSmrLogged(character, kv.Key, renderers);
+                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
+                SwapSmr(injected, kv.Value, character, kv.Key + "(injected,additive)");
+                swappedBottomsPairs.Add((injected, kv.Value));
+                didSomething = true;
+            }
         }
-
-        // (b) donor のみ持つ: target に新規 SMR を注入して swap
-        foreach (var kv in donorByName)
+        else
         {
-            if (targetByName.ContainsKey(kv.Key)) continue;
-            var injected = InjectSmrLogged(character, kv.Key, renderers);
-            CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
-            SwapSmr(injected, kv.Value, character, kv.Key + "(injected)");
-            swappedBottomsPairs.Add((injected, kv.Value));
-            didSomething = true;
-        }
+            // (a) 共通: target 既存 SMR に donor の sharedMesh / bones / materials を swap
+            foreach (var kv in donorByName)
+            {
+                if (!targetByName.TryGetValue(kv.Key, out var targetSmr)) continue;
+                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: targetSmr, injectedGo: null);
+                SwapSmr(targetSmr, kv.Value, character, kv.Key);
+                swappedBottomsPairs.Add((targetSmr, kv.Value));
+                didSomething = true;
+            }
 
-        // (c) target のみ持つ: donor の Bottoms 構成に整合させるため hide
-        // donor.BottomsSmrs が空のケースもこの経路で全 hide される（一体型 donor 用途）。
-        foreach (var kv in targetByName)
-        {
-            if (donorByName.ContainsKey(kv.Key)) continue;
-            // 既に inactive ならログ抑制（冪等）
-            if (!kv.Value.gameObject.activeSelf) continue;
-            CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
-            kv.Value.gameObject.SetActive(false);
-            PatchLogger.LogInfo($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
-            didSomething = true;
+            // (b) donor のみ持つ: target に新規 SMR を注入して swap
+            foreach (var kv in donorByName)
+            {
+                if (targetByName.ContainsKey(kv.Key)) continue;
+                var injected = InjectSmrLogged(character, kv.Key, renderers);
+                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
+                SwapSmr(injected, kv.Value, character, kv.Key + "(injected)");
+                swappedBottomsPairs.Add((injected, kv.Value));
+                didSomething = true;
+            }
+
+            // (c) target のみ持つ: donor の Bottoms 構成に整合させるため hide
+            // donor.BottomsSmrs が空のケースもこの経路で全 hide される（一体型 donor 用途）。
+            // 注: additive モードでは (c) を skip して target frill 等を温存する (上記 if 分岐参照)。
+            foreach (var kv in targetByName)
+            {
+                if (donorByName.ContainsKey(kv.Key)) continue;
+                // 既に inactive ならログ抑制（冪等）
+                if (!kv.Value.gameObject.activeSelf) continue;
+                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
+                kv.Value.gameObject.SetActive(false);
+                PatchLogger.LogInfo($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
+                didSomething = true;
+            }
         }
 
         // (e) BottomsSkinShrink: target の mesh_skin_lower / mesh_skin_upper を skirt より内側へ push して skin 突き抜けを解消。
@@ -578,13 +632,16 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// 同 (instanceId, kind) で既にスナップショットがあれば何もしない。
+    /// 同 (instanceId, kind, wasInjected) で既にスナップショットがあれば何もしない。
     /// 初回 Apply 時のみ target SMR の元状態を保存し、後続 Restore で素状態へ戻せるようにする。
+    /// 呼び出し側は <c>baseKey = (InstanceId, Kind)</c> のみを渡し、内部で <c>wasInjected</c> を
+    /// 3 要素目に組み込んで保存する (TopsLoader と同形)。
     /// </summary>
     private static void CaptureSnapshotIfFirst(
-        (int InstanceId, string Kind) key, bool wasInjected,
+        (int InstanceId, string Kind) baseKey, bool wasInjected,
         SkinnedMeshRenderer smr, GameObject injectedGo)
     {
+        var key = (baseKey.InstanceId, baseKey.Kind, wasInjected);
         if (s_targetSnapshots.ContainsKey(key)) return;
         var snap = new TargetKindSnapshot
         {
@@ -766,5 +823,17 @@ public class BottomsLoader : MonoBehaviour
         // ここに到達した場合の防御として、bones 設定後に rootBone null を fallback で埋める。
         // 既存 SMR の swap (rootBone 既設) では fallback と一致しないため上書きせず A1 互換。
         if (target.rootBone == null) target.rootBone = fallback;
+    }
+
+    /// <summary>
+    /// env scene から character の <see cref="CharacterHandle"/> を逆引き解決する。失敗時は null。
+    /// additive モード判定 (<see cref="Apply"/> 内 targetCostume 取得) に使用。
+    /// TODO: <see cref="TopsLoader"/> 側にも env 走査ロジックがあるため、共有 helper (CharaResolver 等) に
+    /// 統合する。重複はこの 1 件以内に留め、2 件目を入れる前に抽出リファクタを実施する。
+    /// </summary>
+    private static CharacterHandle ResolveTargetHandle(GameObject character)
+    {
+        var env = GBSystem.Instance?.GetActiveEnvScene();
+        return env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
     }
 }
