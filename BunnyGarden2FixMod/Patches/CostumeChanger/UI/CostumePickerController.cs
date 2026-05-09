@@ -51,9 +51,9 @@ public class CostumePickerController : MonoBehaviour
 
     private List<(int Type, int Color, bool Locked)> m_pantiesItems = new();
     private List<(int Type, bool Locked)> m_stockingItems = new();
-    // Bottoms タブは閲覧履歴の概念がないため Locked は常に false。RenderData の整合性のため保持する。
+    // Locked は donor キャラ × 衣装 の閲覧履歴 (CostumeViewHistory.IsViewed) で判定。
+    // 既存 override の (donor, costume) は履歴未蓄積でも grandfather する（解除・再適用を可能にする）。
     private List<(CharID Donor, CostumeType Costume, bool Locked)> m_bottomsItems = new();
-    // Tops タブも同様。Locked は常に false。
     private List<(CharID Donor, CostumeType Costume, bool Locked)> m_topsItems = new();
 
     public static CostumePickerController Instance { get; private set; }
@@ -343,7 +343,9 @@ public class CostumePickerController : MonoBehaviour
         int cUnlock = m_costumeItems.Count(x => !x.Locked);
         int pUnlock = m_pantiesItems.Count(x => !x.Locked);
         int sUnlock = m_stockingItems.Count(x => !x.Locked);
-        PatchLogger.LogInfo($"[CostumePicker] オープン: {charId} / 衣装{cUnlock}/{m_costumeItems.Count} / パンツ{pUnlock}/{m_pantiesItems.Count} / ストッキング{sUnlock}/{m_stockingItems.Count}");
+        int bUnlock = m_bottomsItems.Count(x => !x.Locked);
+        int tUnlock = m_topsItems.Count(x => !x.Locked);
+        PatchLogger.LogInfo($"[CostumePicker] オープン: {charId} / 衣装{cUnlock}/{m_costumeItems.Count} / パンツ{pUnlock}/{m_pantiesItems.Count} / ストッキング{sUnlock}/{m_stockingItems.Count} / ボトム{bUnlock}/{m_bottomsItems.Count} / トップス{tUnlock}/{m_topsItems.Count}");
         EnsurePrefetchDlcNamesAsync().Forget();
     }
 
@@ -392,6 +394,7 @@ public class CostumePickerController : MonoBehaviour
         // - Shirt: 下半身に実体的な差分なし（Tops と対称）。
         // donor == target も許可（自身の他コスチューム由来の bottoms を素体に移植可能）。
         m_bottomsItems = new List<(CharID, CostumeType, bool)>();
+        bool hasBottomsOverride = BottomsOverrideStore.TryGet(charId, out var curBottoms);
         for (int d = (int)CharID.KANA; d < (int)CharID.NUM; d++)
         {
             var donor = (CharID)d;
@@ -402,7 +405,13 @@ public class CostumePickerController : MonoBehaviour
                 if (costume == CostumeType.Shirt) continue;
                 if (costume == CostumeType.SwimWear) continue;
                 if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
-                m_bottomsItems.Add((donor, costume, false));
+                bool bLocked = !CostumeViewHistory.IsViewed(donor, costume);
+                if (bLocked && hasBottomsOverride
+                    && curBottoms.DonorChar == donor && curBottoms.DonorCostume == costume)
+                {
+                    bLocked = false;
+                }
+                m_bottomsItems.Add((donor, costume, bLocked));
             }
         }
 
@@ -410,6 +419,7 @@ public class CostumePickerController : MonoBehaviour
         // Shirt は mesh_costume_sleeve のみ実体的な Tops 差分で見栄えが薄いため UI から外す。
         // donor == target も許可（自身の他コスチューム由来の tops を素体に移植可能）。
         m_topsItems = new List<(CharID, CostumeType, bool)>();
+        bool hasTopsOverride = TopsOverrideStore.TryGet(charId, out var curTops);
         for (int d = (int)CharID.KANA; d < (int)CharID.NUM; d++)
         {
             var donor = (CharID)d;
@@ -419,7 +429,13 @@ public class CostumePickerController : MonoBehaviour
                 if (costume == CostumeType.Bunnygirl) continue;
                 if (costume == CostumeType.Shirt) continue;
                 if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
-                m_topsItems.Add((donor, costume, false));
+                bool tLocked = !CostumeViewHistory.IsViewed(donor, costume);
+                if (tLocked && hasTopsOverride
+                    && curTops.DonorChar == donor && curTops.DonorCostume == costume)
+                {
+                    tLocked = false;
+                }
+                m_topsItems.Add((donor, costume, tLocked));
             }
         }
 
@@ -607,8 +623,12 @@ public class CostumePickerController : MonoBehaviour
             CostumeLabels = m_costumeItems.Select(x => x.Locked ? "???" : ResolveCostumeName(x.Costume)).ToList(),
             PantiesLabels = m_pantiesItems.Select(x => x.Locked ? "???" : ResolvePantiesName(m_activeChar, x.Type, x.Color)).ToList(),
             StockingLabels = m_stockingItems.Select(x => x.Locked ? "???" : ResolveStockingName(x.Type)).ToList(),
-            BottomsLabels = m_bottomsItems.Select(x => $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
-            TopsLabels = m_topsItems.Select(x => $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
+            BottomsLabels = m_bottomsItems.Select(x => x.Locked
+                ? $"{ResolveCharName(x.Donor)}/???"
+                : $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
+            TopsLabels = m_topsItems.Select(x => x.Locked
+                ? $"{ResolveCharName(x.Donor)}/???"
+                : $"{ResolveCharName(x.Donor)}/{ResolveCostumeName(x.Costume)}").ToList(),
             CostumeLocks = m_costumeItems.Select(x => x.Locked).ToList(),
             PantiesLocks = m_pantiesItems.Select(x => x.Locked).ToList(),
             StockingLocks = m_stockingItems.Select(x => x.Locked).ToList(),
