@@ -133,12 +133,25 @@ public class BottomsLoader : MonoBehaviour
         s_loaderHostRoot.transform.SetParent(loader.transform, false);
         s_loaderHostRoot.SetActive(false);
         SceneManager.sceneUnloaded += OnSceneUnloaded;
+        // BottomsSkinShrink 系は live tune (F9 設定パネル等) で値が変わると即時反映する。
+        if (Configs.BottomsSkinShrink != null)
+            Configs.BottomsSkinShrink.SettingChanged += OnBottomsSkinShrinkParamChanged;
+        if (Configs.BottomsSkinShrinkFalloffRadius != null)
+            Configs.BottomsSkinShrinkFalloffRadius.SettingChanged += OnBottomsSkinShrinkParamChanged;
+        if (Configs.BottomsSkinShrinkSampleRadius != null)
+            Configs.BottomsSkinShrinkSampleRadius.SettingChanged += OnBottomsSkinShrinkParamChanged;
         PatchLogger.LogInfo("[BottomsLoader] Initialized (lazy preload mode)");
     }
 
     private void OnDestroy()
     {
         SceneManager.sceneUnloaded -= OnSceneUnloaded;
+        if (Configs.BottomsSkinShrink != null)
+            Configs.BottomsSkinShrink.SettingChanged -= OnBottomsSkinShrinkParamChanged;
+        if (Configs.BottomsSkinShrinkFalloffRadius != null)
+            Configs.BottomsSkinShrinkFalloffRadius.SettingChanged -= OnBottomsSkinShrinkParamChanged;
+        if (Configs.BottomsSkinShrinkSampleRadius != null)
+            Configs.BottomsSkinShrinkSampleRadius.SettingChanged -= OnBottomsSkinShrinkParamChanged;
     }
 
     /// <summary>
@@ -234,18 +247,63 @@ public class BottomsLoader : MonoBehaviour
         }
     }
 
-    // シーン遷移で target GameObject が破棄されると次シーンで InstanceID が再採番されるため、
-    // Applied フラグを Clear して新シーンの target に対して Apply が再発火するようにする。
-    // donor 側の s_donors はキャッシュ保持（KneeSocksLoader と同じ）。
+    // 全 state を scene 跨ぎで保持する (TopsLoader.OnSceneUnloaded と同方針)。
+    // m_holeScene の char は env scene 切替で preserve されるため同 InstanceID で Apply trigger
+    // (BottomsSetupPatch) が再発火する。s_targetSnapshots を Clear すると、scene 2 での再 Apply 時に
+    // CaptureSnapshotIfFirst が現在 (= donor 補正済み) の SMR.sharedMesh を OriginalMesh として
+    // 誤記録し、Wardrobe Restore が donor mesh に戻す壊れた挙動になる。s_applied / MagicaCloth
+    // snapshot も同理由で保持。session 内では Unity の InstanceID は再利用されないため、旧シーンの
+    // 破棄済み target に紐づく stale entry は harmless に残るのみで誤検知しない。
+    // s_inFlight は意図的に保持: donorParent は DontDestroyOnLoad 配下なので scene 跨ぎでも安全。
+    // SkinShrinkCoordinator.s_entries は ClearScene で破棄するが、後続 Apply で Register* が再構築する。
     private static void OnSceneUnloaded(Scene scene)
     {
-        s_applied.Clear();
-        // 新シーンでは target GameObject の InstanceID が再採番されるためスナップショットも無効化。
-        // 注入された SMR は target GameObject の破棄に追随して破棄されるので追加処理不要。
-        s_targetSnapshots.Clear();
-        MagicaClothRebuilder.ClearAllSnapshots();
-        // s_inFlight は意図的に保持: donorParent は DontDestroyOnLoad 配下なので scene 跨ぎでも安全。
-        // in-flight の task を Clear すると完了後に s_donors へ登録されず次 Apply で再 preload が走る。
+        SkinShrinkCoordinator.ClearScene();
+    }
+
+    /// <summary>
+    /// BottomsSkinShrink 系 Configs (<see cref="Configs.BottomsSkinShrink"/> /
+    /// <see cref="Configs.BottomsSkinShrinkFalloffRadius"/> / <see cref="Configs.BottomsSkinShrinkSampleRadius"/>)
+    /// 変更時にキャッシュを破棄して登録済み全 target を再適用する。
+    /// picker (F7) が閉じている状態でも F9 設定パネル等から値変更があれば即時反映される。
+    /// Tops は distance preserve 機構と handler 共有 (OnDistancePreserveParamChanged) だが、
+    /// Bottoms は distance preserve を持たないため SkinShrink 専用 handler。
+    /// </summary>
+    private static void OnBottomsSkinShrinkParamChanged(object sender, System.EventArgs e)
+    {
+        SkinShrinkCoordinator.InvalidateCache();
+
+        var env = GBSystem.Instance?.GetActiveEnvScene();
+        if (env == null) return;
+
+        // 列挙中の操作で例外が出ないよう ToList でスナップショット
+        var snapshot = BottomsOverrideStore.EnumerateOverrides().ToList();
+        if (snapshot.Count == 0) return;
+
+        int reapplied = 0;
+        foreach (var kv in snapshot)
+        {
+            var target = kv.Key;
+            var entry = kv.Value;
+            var charObj = env.FindCharacter(target);
+            if (charObj == null) continue;
+            try
+            {
+                // ApplyDirectly が Apply → SkinShrinkCoordinator.RegisterBottoms を呼ぶ。Coordinator が
+                // 内部で skin SMR を素 mesh に rewind してから新 param で push し直すため累積補正は防がれる。
+                ApplyDirectly(charObj, entry.DonorChar, entry.DonorCostume);
+                reapplied++;
+            }
+            catch (System.Exception ex)
+            {
+                PatchLogger.LogWarning($"[BottomsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
+            }
+        }
+        // Bottoms が register されていない (Tops 単独) target の cache を InvalidateCache で消したまま
+        // にしないため、全 entry を refresh して整合を取る。Bottoms 側 ApplyDirectly で touch 済 entry も
+        // 重ねて refresh されるが cache hit で軽量。
+        SkinShrinkCoordinator.RefreshAllByConfig();
+        PatchLogger.LogInfo($"[BottomsLoader] BottomsSkinShrink param 変更 → {reapplied}/{snapshot.Count} target に再適用 (push={Configs.BottomsSkinShrink.Value:F4}m, fade={Configs.BottomsSkinShrinkFalloffRadius.Value:F4}m, sampleR={Configs.BottomsSkinShrinkSampleRadius.Value:F3}m)");
     }
 
     /// <summary>
@@ -307,6 +365,9 @@ public class BottomsLoader : MonoBehaviour
     public static void ApplyDirectly(GameObject character, CharID donorChar, CostumeType donorCostume)
     {
         if (character == null) return;
+        // Tops と異なり RestoreFor は呼ばない: snapshot は CaptureSnapshotIfFirst の
+        // ContainsKey ガードで素状態固定。BottomsSkinShrink の累積も
+        // SkinShrinkCoordinator の Refresh が rewind 起点で再 push するため防がれる。
         s_applied.Remove(character.GetInstanceID());
         // donor 切替で Bottoms 由来の grafted clone subtree が孤児として残るのを防ぐ。
         // snapshot は素状態を保持し続けるが、grafted bone は補助構造で snapshot 独立のため
@@ -381,6 +442,9 @@ public class BottomsLoader : MonoBehaviour
         }
 
         bool didSomething = false;
+        // BottomsSkinShrink 用に (a)(b) で swap した skirt SMR ペアを捕捉する。
+        // (target SMR, donor 元 SMR) のペアを後段で skin shrink に渡す。
+        var swappedBottomsPairs = new List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer Donor)>();
 
         // (a) 共通: target 既存 SMR に donor の sharedMesh / bones / materials を swap
         foreach (var kv in donorByName)
@@ -388,6 +452,7 @@ public class BottomsLoader : MonoBehaviour
             if (!targetByName.TryGetValue(kv.Key, out var targetSmr)) continue;
             CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: targetSmr, injectedGo: null);
             SwapSmr(targetSmr, kv.Value, character, kv.Key);
+            swappedBottomsPairs.Add((targetSmr, kv.Value));
             didSomething = true;
         }
 
@@ -398,6 +463,7 @@ public class BottomsLoader : MonoBehaviour
             var injected = InjectSmrLogged(character, kv.Key, renderers);
             CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
             SwapSmr(injected, kv.Value, character, kv.Key + "(injected)");
+            swappedBottomsPairs.Add((injected, kv.Value));
             didSomething = true;
         }
 
@@ -412,6 +478,26 @@ public class BottomsLoader : MonoBehaviour
             kv.Value.gameObject.SetActive(false);
             PatchLogger.LogInfo($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
             didSomething = true;
+        }
+
+        // (e) BottomsSkinShrink: target の mesh_skin_lower / mesh_skin_upper を skirt より内側へ push して skin 突き抜けを解消。
+        // SkinShrinkCoordinator が Tops contribution と統合管理し、両 SMR を素 mesh に rewind してから
+        // 両 contribution を順次 push するため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
+        // skirt mesh / MagicaCloth 物理は touch しないため RebindMagicaClothIfActive との順序は問わない。
+        if (didSomething && swappedBottomsPairs.Count > 0)
+        {
+            SkinShrinkCoordinator.RegisterBottoms(
+                character,
+                swappedBottomsPairs.Select(p => p.Target),
+                Configs.BottomsSkinShrink?.Value ?? 0f,
+                Configs.BottomsSkinShrinkFalloffRadius?.Value ?? 0f,
+                Configs.BottomsSkinShrinkSampleRadius?.Value ?? 0f);
+        }
+        else
+        {
+            // (c) の hide のみ (donor が bottoms 持たない RIN/MIUKA SwimWear) → 古い Bottoms contribution が
+            // あれば削除し、Tops も無ければ skin SMR を素 mesh に戻す。
+            SkinShrinkCoordinator.UnregisterBottoms(character);
         }
 
         // didSomething に関わらず Applied 登録（冪等性確保、毎フレーム再走査回避）。
@@ -546,6 +632,13 @@ public class BottomsLoader : MonoBehaviour
             }
             s_targetSnapshots.Remove(key);
         }
+
+        // BottomsSkinShrink で書き換えた mesh_skin_lower / mesh_skin_upper を SkinShrinkCoordinator に
+        // 通知する。Coordinator が contribution を削除し、Tops も無ければ素 mesh に戻す。Tops 残存なら
+        // Tops contribution だけで refresh される。MagicaCloth rebuild は cloth 側のみで skin 状態に
+        // 依存しないので順序は弱依存だが、慣習として「SMR 復旧 → Coordinator 同期 → cloth rebuild」の順。
+        SkinShrinkCoordinator.UnregisterBottoms(character);
+
         s_applied.Remove(instanceId);
         if (restoredAny)
         {

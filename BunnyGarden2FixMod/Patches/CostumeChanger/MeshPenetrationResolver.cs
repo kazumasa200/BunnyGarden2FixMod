@@ -46,13 +46,22 @@ internal static class MeshPenetrationResolver
     /// 無ければ K=3 にフォールバック。MeshDistancePreserver.skinSampleRadius と同方針。
     /// pass 1 (cloth push) は対象外: Stocking 経路は K=3 のまま。Tops では minOffset=0 で pass 1 走らない。</param>
     /// <returns>(adjusted donor, adjusted skin)。それぞれ null なら no-op（差し替え不要）。</returns>
+    /// <param name="useScatterPush">true で skin push pass を「scatter from cloth」モードに切り替える。
+    /// 既存 gather mode (各 skin 頂点が radius 内の cloth から 1 つの surface 推定 vAvg / vnAvg を作って
+    /// pushDist = scaledPush - signedD で push) と異なり、scatter mode では「各 cloth 頂点ごとに
+    /// pushNeeded = scaledPush - signedD を計算 → kernel 重み付き平均 displacement」を取る。
+    /// 効果: 同 cloth 周辺にある複数 skin 頂点 (例: waist 縫い目で接する mesh_skin_upper / mesh_skin_lower)
+    /// が同じ cloth 集合から類似の displacement を得て、SMR 境界でも push 量が滑らかに連続化する。
+    /// kernel: w = (1 - dsq/R²) (sqrt 不要)、R = clothSampleRadius (>0 必須)。
+    /// 既定 false で gather mode (Stocking 等の既存呼出は影響なし)。</param>
     internal static (Mesh donor, Mesh skin) Resolve(
         Mesh donorMesh, Mesh referenceMesh, string referenceShape,
         float minOffset, float skinPushAmount,
         Vector3[] skinAnchorVerts, float skinFalloffRadius,
         string logTag,
         bool useSkinNormalForPush = false,
-        float clothSampleRadius = 0f)
+        float clothSampleRadius = 0f,
+        bool useScatterPush = false)
     {
         if (donorMesh == null || referenceMesh == null) return (null, null);
         if (minOffset <= 0f && skinPushAmount <= 0f) return (null, null);
@@ -106,12 +115,39 @@ internal static class MeshPenetrationResolver
         if (needFalloffBase)
         {
             long aStart = sw.ElapsedMilliseconds;
+
+            // anchor AABB を計算して、(AABB + falloffRadius) 外の query 頂点は nearest 距離が
+            // falloffRadius を超えることが確定 → skinScale=1 (フェード無し) で grid 探索 skip。
+            // anchor が compact (face/eye 等) で query 頂点 (skin) が遠方に分散するパターンで
+            // SpatialGridIndex.FindNearest が degenerate cellSize で 60 秒級の shell scan に陥る
+            // 問題を回避する。
+            Vector3 anchorMin = skinAnchorVerts[0], anchorMax = skinAnchorVerts[0];
+            for (int i = 1; i < skinAnchorVerts.Length; i++)
+            {
+                var p = skinAnchorVerts[i];
+                if (p.x < anchorMin.x) anchorMin.x = p.x; else if (p.x > anchorMax.x) anchorMax.x = p.x;
+                if (p.y < anchorMin.y) anchorMin.y = p.y; else if (p.y > anchorMax.y) anchorMax.y = p.y;
+                if (p.z < anchorMin.z) anchorMin.z = p.z; else if (p.z > anchorMax.z) anchorMax.z = p.z;
+            }
+            float fr = skinFalloffRadius;
+            float exMinX = anchorMin.x - fr, exMaxX = anchorMax.x + fr;
+            float exMinY = anchorMin.y - fr, exMaxY = anchorMax.y + fr;
+            float exMinZ = anchorMin.z - fr, exMaxZ = anchorMax.z + fr;
+
             var anchorGrid = new SpatialGridIndex(skinAnchorVerts);
             for (int i = 0; i < refVerts.Length; i++)
             {
-                int j = anchorGrid.FindNearest(refVertsBase[i]);
+                var v = refVertsBase[i];
+                if (v.x < exMinX || v.x > exMaxX ||
+                    v.y < exMinY || v.y > exMaxY ||
+                    v.z < exMinZ || v.z > exMaxZ)
+                {
+                    skinScale[i] = 1f;
+                    continue;
+                }
+                int j = anchorGrid.FindNearest(v);
                 if (j < 0) { skinScale[i] = 1f; continue; }
-                float d = (refVertsBase[i] - skinAnchorVerts[j]).magnitude;
+                float d = (v - skinAnchorVerts[j]).magnitude;
                 skinScale[i] = Mathf.Clamp01(d / skinFalloffRadius);
             }
             anchorMs = sw.ElapsedMilliseconds - aStart;
@@ -238,8 +274,103 @@ internal static class MeshPenetrationResolver
             cullMin.x -= cullExpand; cullMin.y -= cullExpand; cullMin.z -= cullExpand;
             cullMax.x += cullExpand; cullMax.y += cullExpand; cullMax.z += cullExpand;
         }
-        if (skinPushAmount > 0f && donorGrid != null && hasDonorNormals)
+        if (skinPushAmount > 0f && donorGrid != null && hasDonorNormals && useScatterPush)
         {
+            // ===== scatter from cloth mode =====
+            // 各 skin 頂点 V について、半径 R 内の全 cloth 頂点を集めて kernel 重み付き
+            // displacement 平均を計算する。同 cloth 周辺にいる複数 skin 頂点 (waist 縫い目で
+            // 接する upper/lower 等) が同じ cloth 集合から類似の displacement を得て連続化。
+            // R = clothSampleRadius (>0)、kernel = 1 - dsq/R² (sqrt 不要)。
+            float scatterRadius = clothSampleRadius > 0f ? clothSampleRadius : maxNeighborDist;
+            float scatterRadiusSq = scatterRadius * scatterRadius;
+            float invertGuardLocal = invertGuard;
+
+            long pStart = sw.ElapsedMilliseconds;
+            for (int i = 0; i < refVerts.Length; i++)
+            {
+                var s = refVerts[i];
+
+                if (s.x < cullMin.x || s.x > cullMax.x ||
+                    s.y < cullMin.y || s.y > cullMax.y ||
+                    s.z < cullMin.z || s.z > cullMax.z)
+                {
+                    skinOutOfRange++;
+                    continue;
+                }
+
+                neighbors.Clear();
+                donorGrid.FindWithinRadius(s, scatterRadius, neighbors);
+                if (neighbors.Count == 0) continue;
+
+                float scaledPush = skinPushAmount * skinScale[i];
+                if (scaledPush <= 0f) continue;
+
+                Vector3 dispSum = Vector3.zero;
+                float wSum = 0f;
+                int contribs = 0;
+
+                for (int k = 0; k < neighbors.Count; k++)
+                {
+                    int nj = neighbors[k];
+                    var vp = donorVerts[nj] + donorDisp[nj];
+                    float dsq = (vp - s).sqrMagnitude;
+                    if (dsq > scatterRadiusSq) continue;
+                    float w = 1f - dsq / scatterRadiusSq;
+                    if (w <= 1e-6f) continue;
+
+                    var vn = donorNormals[nj];
+                    Vector3 pushAxis = useSkinNormalForPush ? refNormals[i] : vn;
+
+                    // gather mode と同じ符号定義を維持: signedD = Vector3.Dot(vp - s, pushAxis)。
+                    //   signedD > 0 → s は cloth (vp) の -pushAxis 側 = 内側
+                    //   signedD < 0 → s が cloth を突き抜けて外側
+                    //   signedD < invertGuard (大きく負) → 反転ガード (cloth 法線逆向き)
+                    float signedD = Vector3.Dot(vp - s, pushAxis);
+                    if (signedD < invertGuardLocal) { skinSkippedInverted++; continue; }
+
+                    // この cloth 頂点 vp に対して「s を scaledPush 内側まで押すなら」の必要 push 量
+                    // pushNeeded = scaledPush - signedD
+                    //   signedD = 0 (s 表面): scaledPush
+                    //   signedD > 0 (内側): 不足分のみ
+                    //   signedD < 0 (突き抜け): scaledPush + |signedD|
+                    //   signedD ≥ scaledPush: 既に十分内側 → 0 寄与
+                    float pushNeeded = scaledPush - signedD;
+                    if (pushNeeded <= 0f)
+                    {
+                        // 寄与は 0 だが kernel 重みは加算する (周辺 cloth が「もう押す必要なし」と
+                        // 判断しているなら平均 displacement も小さくなるべき)。
+                        wSum += w;
+                        continue;
+                    }
+                    dispSum += -pushAxis * (pushNeeded * w);
+                    wSum += w;
+                    contribs++;
+                }
+
+                if (wSum <= 0f || contribs == 0) continue;
+
+                Vector3 disp = dispSum / wSum;
+                float dispMag = disp.magnitude;
+                if (dispMag <= 0f) continue;
+                // dispMag は kernel 平均で scaledPush を超えないが、丸め誤差で僅かに超えうるので cap。
+                if (dispMag > scaledPush)
+                {
+                    disp *= scaledPush / dispMag;
+                    dispMag = scaledPush;
+                }
+                skinDisp[i] = disp;
+                skinHits++;
+
+                int band = skinScale[i] < bandBoundaryMax ? 0 : (skinScale[i] < bandMidMax ? 1 : 2);
+                bandCount[band]++;
+                bandSum[band] += dispMag;
+                if (dispMag > bandMax[band]) bandMax[band] = dispMag;
+            }
+            skinDetectMs = sw.ElapsedMilliseconds - pStart;
+        }
+        else if (skinPushAmount > 0f && donorGrid != null && hasDonorNormals)
+        {
+            // ===== gather mode (既存) =====
             long pStart = sw.ElapsedMilliseconds;
             for (int i = 0; i < refVerts.Length; i++)
             {

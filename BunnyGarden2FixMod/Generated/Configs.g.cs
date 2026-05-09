@@ -101,6 +101,12 @@ public static class Configs
     public static ConfigEntry<float> TopsSkinShrinkFalloffRadius;
     /// <summary>上衣 肌押込み cloth サンプル半径 (m)</summary>
     public static ConfigEntry<float> TopsSkinShrinkSampleRadius;
+    /// <summary>下衣 肌押込み量 (m)</summary>
+    public static ConfigEntry<float> BottomsSkinShrink;
+    /// <summary>下衣 肌押込み フェード半径 (m)</summary>
+    public static ConfigEntry<float> BottomsSkinShrinkFalloffRadius;
+    /// <summary>下衣 肌押込み skirt サンプル半径 (m)</summary>
+    public static ConfigEntry<float> BottomsSkinShrinkSampleRadius;
     /// <summary>水着・バニーガール衣装でも下着を表示</summary>
     public static ConfigEntry<bool> PantiesAltSlotMatch;
     /// <summary>Mod で下着を指定したキャストのみ適用 (OFF で全員)</summary>
@@ -438,9 +444,13 @@ donor cloth が target body の関節 (肩・肘等) を曲げたとき、肌か
             0.005f,
             new ConfigDescription(
                 @"上衣 肌押込み量 (m)
-上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に
-保つ目標距離（メートル）。tops と肌が z-fighting している箇所では、まず肌を
-tops 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
+上衣移植時、target の mesh_skin_upper / mesh_skin_lower の頂点を
+「donor tops 表面より内側」に保つ目標距離（メートル）。tops と肌が z-fighting
+している箇所では、まず肌を tops 表面まで引っ込めてから、さらにこの距離だけ
+内側に押し込みます。
+skin_upper のみでは waist 縫い目が外側に残るため、ワンピース型 donor (長め
+Babydoll 等) で tops が腰下に達するケース向けに skin_lower にも同じ tops
+から push 寄与を分配して上下を連続化します。
 StockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と
 補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。
 0 で無効化。",
@@ -450,18 +460,64 @@ StockingSkinShrink の上半身版。distance preservation (donor cloth 補正) 
             0.001f,
             new ConfigDescription(
                 @"上衣 肌押込み フェード半径 (m)
-肌の押し込み量を、隣接 mesh（mesh_skin_lower 等）からの距離で線形フェードさせる半径（メートル）。
-距離 0 で押し込み 0、半径以上で 100%。境界（首・ウエスト等）での段差を防ぎます。0 で無効化（一様押し込み）。",
+肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる
+半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが
+顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。
+face/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。",
                 new AcceptableValueRange<float>(0.0f, 0.01f)));
 
         TopsSkinShrinkSampleRadius = cfg.Bind("CostumeChanger", "TopsSkinShrinkSampleRadius",
             0.05f,
             new ConfigDescription(
                 @"上衣 肌押込み cloth サンプル半径 (m)
-肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」
-の距離重み平均で求めます。0 で K=3 固定（既定）、>0 で指定半径内の全頂点を使った滑らかな表面推定に
-なります。半径内に頂点が無い場合は K=3 にフォールバック。
-mesh_costume の frill / sleeve / 双面ジオメトリで signedD が頂点単位で揺れて push 量が不安定な場合に有効。",
+肌押込み (TopsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、半径内の
+全 cloth 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。
+0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。
+半径を広く取るほど、複数 cloth 頂点の寄与が混ざって push 方向が滑らかになり、
+SMR 境界 (waist 縫い目等) でも上下で同じ cloth 集合を共有して push 量が連続化します。
+mesh_costume の frill / sleeve / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。",
+                new AcceptableValueRange<float>(0.0f, 0.1f)));
+
+        BottomsSkinShrink = cfg.Bind("CostumeChanger", "BottomsSkinShrink",
+            0.0f,
+            new ConfigDescription(
+                @"下衣 肌押込み量 (m)
+下衣移植 (Bottoms override) 時、target の mesh_skin_lower / mesh_skin_upper の頂点を
+「donor skirt 表面より内側」に保つ目標距離（メートル）。
+skirt は donor 元の体型基準で作られているため、cross-char 適用時に
+target の腰・腿・膝下が skirt から外に飛び出す（skin 突き抜け）箇所が
+生じます。本機能は skin 側のみを内側に push して解消し、
+skirt mesh / MagicaCloth 物理は一切触りません。
+skin_lower のみでは waist 縫い目が外側に残るため、skin_upper の腰部分にも
+同じ skirt から push 寄与を分配して上下を連続化します。
+StockingSkinShrink / TopsSkinShrink の下衣版。0 で無効化。
+範囲は max 1cm に制限（足の太さに対して過大な push で skin 頂点が
+body 内部に collapse して脚が消える事故を防ぐため）。",
+                new AcceptableValueRange<float>(0.0f, 0.01f)));
+
+        BottomsSkinShrinkFalloffRadius = cfg.Bind("CostumeChanger", "BottomsSkinShrinkFalloffRadius",
+            0.001f,
+            new ConfigDescription(
+                @"下衣 肌押込み フェード半径 (m)
+肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる
+半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが
+顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。
+skin_upper / skin_lower 両 SMR が同じ顔 anchor を共有するため、waist 縫い目では
+face から十分離れて両側とも 100% push になり連続化します。
+face/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。",
+                new AcceptableValueRange<float>(0.0f, 0.01f)));
+
+        BottomsSkinShrinkSampleRadius = cfg.Bind("CostumeChanger", "BottomsSkinShrinkSampleRadius",
+            0.05f,
+            new ConfigDescription(
+                @"下衣 肌押込み skirt サンプル半径 (m)
+肌押込み (BottomsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、
+半径内の全 skirt 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。
+0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。
+半径を広く取るほど、複数 skirt 頂点の寄与が混ざって push 方向が滑らかになり、
+SMR 境界 (waist 縫い目) でも skin_upper / skin_lower が同じ skirt 集合から
+類似 push 寄与を得て上下が連続化します。
+skirt の frill / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。",
                 new AcceptableValueRange<float>(0.0f, 0.1f)));
 
         PantiesAltSlotMatch = cfg.Bind("CostumeChanger", "PantiesAltSlotMatch",
@@ -962,7 +1018,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         {
             Category = "CostumeChanger",
             Label    = "上衣 肌押込み量 (m)",
-            Desc     = "上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に\n保つ目標距離（メートル）。tops と肌が z-fighting している箇所では、まず肌を\ntops 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。\nStockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と\n補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。\n0 で無効化。\n",
+            Desc     = "上衣移植時、target の mesh_skin_upper / mesh_skin_lower の頂点を\n「donor tops 表面より内側」に保つ目標距離（メートル）。tops と肌が z-fighting\nしている箇所では、まず肌を tops 表面まで引っ込めてから、さらにこの距離だけ\n内側に押し込みます。\nskin_upper のみでは waist 縫い目が外側に残るため、ワンピース型 donor (長め\nBabydoll 等) で tops が腰下に達するケース向けに skin_lower にも同じ tops\nから push 寄与を分配して上下を連続化します。\nStockingSkinShrink の上半身版。distance preservation (donor cloth 補正) と\n補正対象が disjoint (cloth vs skin) なので併用可能、機能重複しません。\n0 で無効化。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
             SliderMin  = 0f,
             SliderMax  = 0.01f,
@@ -974,7 +1030,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         {
             Category = "CostumeChanger",
             Label    = "上衣 肌押込み フェード半径 (m)",
-            Desc     = "肌の押し込み量を、隣接 mesh（mesh_skin_lower 等）からの距離で線形フェードさせる半径（メートル）。\n距離 0 で押し込み 0、半径以上で 100%。境界（首・ウエスト等）での段差を防ぎます。0 で無効化（一様押し込み）。\n",
+            Desc     = "肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる\n半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが\n顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。\nface/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
             SliderMin  = 0f,
             SliderMax  = 0.01f,
@@ -986,13 +1042,49 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         {
             Category = "CostumeChanger",
             Label    = "上衣 肌押込み cloth サンプル半径 (m)",
-            Desc     = "肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」\nの距離重み平均で求めます。0 で K=3 固定（既定）、>0 で指定半径内の全頂点を使った滑らかな表面推定に\nなります。半径内に頂点が無い場合は K=3 にフォールバック。\nmesh_costume の frill / sleeve / 双面ジオメトリで signedD が頂点単位で揺れて push 量が不安定な場合に有効。\n",
+            Desc     = "肌押込み (TopsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、半径内の\n全 cloth 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。\n0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。\n半径を広く取るほど、複数 cloth 頂点の寄与が混ざって push 方向が滑らかになり、\nSMR 境界 (waist 縫い目等) でも上下で同じ cloth 集合を共有して push 量が連続化します。\nmesh_costume の frill / sleeve / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。\n",
             Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
             SliderMin  = 0f,
             SliderMax  = 0.1f,
             SliderStep = 0.001f,
             Format     = "{0:F3}",
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => TopsSkinShrinkSampleRadius, 0.001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "下衣 肌押込み量 (m)",
+            Desc     = "下衣移植 (Bottoms override) 時、target の mesh_skin_lower / mesh_skin_upper の頂点を\n「donor skirt 表面より内側」に保つ目標距離（メートル）。\nskirt は donor 元の体型基準で作られているため、cross-char 適用時に\ntarget の腰・腿・膝下が skirt から外に飛び出す（skin 突き抜け）箇所が\n生じます。本機能は skin 側のみを内側に push して解消し、\nskirt mesh / MagicaCloth 物理は一切触りません。\nskin_lower のみでは waist 縫い目が外側に残るため、skin_upper の腰部分にも\n同じ skirt から push 寄与を分配して上下を連続化します。\nStockingSkinShrink / TopsSkinShrink の下衣版。0 で無効化。\n範囲は max 1cm に制限（足の太さに対して過大な push で skin 頂点が\nbody 内部に collapse して脚が消える事故を防ぐため）。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.01f,
+            SliderStep = 0.0001f,
+            Format     = "{0:F4}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => BottomsSkinShrink, 0.0001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "下衣 肌押込み フェード半径 (m)",
+            Desc     = "肌の押し込み量を、顔・目周辺 (mesh_face / mesh_eye 等) からの距離で線形フェードさせる\n半径（メートル）。距離 0 で押し込み 0、半径以上で 100%。顔境界 (首元) で押し込みが\n顔へ侵食するのを防ぎます。0 で無効化（一様押し込み）。\nskin_upper / skin_lower 両 SMR が同じ顔 anchor を共有するため、waist 縫い目では\nface から十分離れて両側とも 100% push になり連続化します。\nface/eye SMR 不在のキャラでは隣接 skin SMR を anchor に fallback。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.01f,
+            SliderStep = 0.0001f,
+            Format     = "{0:F4}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => BottomsSkinShrinkFalloffRadius, 0.0001f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "CostumeChanger",
+            Label    = "下衣 肌押込み skirt サンプル半径 (m)",
+            Desc     = "肌押込み (BottomsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、\n半径内の全 skirt 頂点から `w = 1 - d²/R²` の重みで push 寄与を集約します（scatter mode）。\n0 で 10mm 固定（狭い）、>0 で指定半径まで広がります。\n半径を広く取るほど、複数 skirt 頂点の寄与が混ざって push 方向が滑らかになり、\nSMR 境界 (waist 縫い目) でも skin_upper / skin_lower が同じ skirt 集合から\n類似 push 寄与を得て上下が連続化します。\nskirt の frill / 双面ジオメトリで push 量が不安定な場合に大きめ推奨。\n",
+            Kind       = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Slider,
+            SliderMin  = 0f,
+            SliderMax  = 0.1f,
+            SliderStep = 0.001f,
+            Format     = "{0:F3}",
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => BottomsSkinShrinkSampleRadius, 0.001f),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {

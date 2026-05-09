@@ -95,14 +95,6 @@ public class TopsLoader : MonoBehaviour
     private static readonly Dictionary<(int donorMeshId, int dSkinUpId, int dSkinLoId, int tSkinUpId, int tSkinLoId), Mesh> s_resolvedCache = new();
     private static readonly HashSet<int> s_resolvedAppliedIds = new();
 
-    // Tops SkinShrink (target.mesh_skin_upper を tops より内側へ push) の出力キャッシュ。
-    // 複数 Tops SMR に対して順次 Resolve するため、各ステップで前の出力 skin を入力として再 Resolve する。
-    // キー: (push 前 skin mesh ID, donor Tops mesh ID, push 量量子化, falloff radius 量子化, sample radius 量子化)
-    // 値: Resolve が返した push 済み skin mesh (1 step 分)
-    // Object.Instantiate 由来 Mesh のため OnSceneUnloaded で明示 Destroy が必要。
-    private static readonly Dictionary<(int prevSkinId, int donorTopId, int yQ, int fQ, int srQ), Mesh> s_skinShrinkCache = new();
-    private static readonly HashSet<string> s_skinShrinkAnchorExclude = new() { "mesh_skin_upper" };
-
     /// <summary>Initialize 完了 (= s_loaderHostRoot 生成済み)。Apply 側の警告分岐に使用。</summary>
     public static bool IsLoaded => s_loaderHostRoot != null;
 
@@ -174,6 +166,11 @@ public class TopsLoader : MonoBehaviour
     private static void OnDistancePreserveParamChanged(object sender, System.EventArgs e)
     {
         InvalidateDistancePreserveCache();
+        // SkinShrink 系 Configs (TopsSkinShrink / Falloff / SampleR) も同 handler に subscribe している。
+        // SkinShrinkCoordinator の cache を破棄して、後続 ApplyDirectly → Apply → RegisterTops で再 push される。
+        // Bottoms-only の target (この loop で touch しない) を孤児化させないため、loop 後に
+        // RefreshAllByConfig で全 entry を refresh する。
+        SkinShrinkCoordinator.InvalidateCache();
 
         var env = GBSystem.Instance?.GetActiveEnvScene();
         if (env == null) return;
@@ -202,6 +199,10 @@ public class TopsLoader : MonoBehaviour
                 PatchLogger.LogWarning($"[TopsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
             }
         }
+        // Tops が register されていない (Bottoms 単独) target の cache を InvalidateCache で消したまま
+        // にしないため、全 entry を refresh して整合を取る。Tops 側 ApplyDirectly で touch 済 entry も
+        // 重ねて refresh されるが cache hit で軽量。
+        SkinShrinkCoordinator.RefreshAllByConfig();
         PatchLogger.LogInfo($"[TopsLoader] distance preserve param 変更 → {reapplied}/{snapshot.Count} target に再適用 (range={Configs.TopsDistancePreserveRange.Value:F4}m, minOffset={Configs.TopsSkinMinOffset.Value:F4}m, skinSampleR={Configs.TopsSkinSampleRadius.Value:F4}m, weightFalloff={Configs.TopsSkinWeightFalloff.Value:F4}m)");
     }
 
@@ -315,12 +316,6 @@ public class TopsLoader : MonoBehaviour
         }
         s_resolvedCache.Clear();
         s_resolvedAppliedIds.Clear();
-        // SkinShrink キャッシュも param 変更時に invalidate (TopsSkinShrink / Falloff も同 handler 経由で本関数を呼ぶ)。
-        foreach (var m in s_skinShrinkCache.Values)
-        {
-            if (m != null) UnityEngine.Object.Destroy(m);
-        }
-        s_skinShrinkCache.Clear();
     }
 
     private static void OnSceneUnloaded(Scene scene)
@@ -328,7 +323,7 @@ public class TopsLoader : MonoBehaviour
         // 全 state を scene 跨ぎで保持する。session 内では Unity の InstanceID は再利用されないため、
         // 旧シーンの破棄済み target に紐づく stale entry は harmless に残るのみで誤検知しない。
         //
-        // 1. s_resolvedCache / s_skinShrinkCache (補正済み Mesh):
+        // 1. s_resolvedCache (distance preserve 補正済み Mesh):
         //    加算読込のサブシーン (FittingRoom / Talk2D / 同伴 event 等) の sceneUnloaded は別シーン
         //    (Bar 等) で適用中の target SMR が cache の Mesh を sharedMesh で参照中に発火する。
         //    ここで Destroy すると表示中の Tops mesh が「Unity null」化し画面から消える。
@@ -355,6 +350,9 @@ public class TopsLoader : MonoBehaviour
         //
         // GPU メモリの cleanup は config 変更時の InvalidateDistancePreserveCache() に集約し、平常時は
         // プロセス終了まで保持する (s_donors と同寿命ポリシー)。
+        //
+        // SkinShrinkCoordinator.ClearScene は BottomsLoader.OnSceneUnloaded から呼ばれる
+        // (両 Loader から重複で呼ぶと s_entries を 2 回 Clear するだけで実害は無いが慣習として 1 回に集約)。
     }
 
     /// <summary>
@@ -496,6 +494,8 @@ public class TopsLoader : MonoBehaviour
         // 注意: ApplyTopsAsync は !donorOk で UI 経路を弾くため通常は到達しない。
         if (donor.TopsSmrs == null || donor.TopsSmrs.Count == 0)
         {
+            // donor が Tops を持たない = Tops contribution 不在。古い contribution が残っていれば削除。
+            SkinShrinkCoordinator.UnregisterTops(character);
             s_applied.Add(instanceId);
             return;
         }
@@ -781,11 +781,22 @@ public class TopsLoader : MonoBehaviour
         }
 
         // (f) Tops SkinShrink: target.mesh_skin_upper を tops より内側へ push して z-fighting / 貫通を解消。
-        //     swap 経路 (通常モードの (a)(b)) で transplant した tops に対してのみ意味があるため additive モードでは skip。
-        //     distance preservation (donor cloth 補正) と補正対象が disjoint (cloth vs skin) なので併用安全。
+        //     SkinShrinkCoordinator が Bottoms contribution と統合管理し、両 contribution を素 mesh から
+        //     順次 push し直すため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
+        //     additive モード / swap 無し / Bottoms only donor 経路は contribution 不在 → UnregisterTops。
         if (!additiveMode && swappedTopsPairs.Count > 0)
         {
-            ApplyTopsSkinShrinkForTarget(character, renderers, swappedTopsPairs);
+            SkinShrinkCoordinator.RegisterTops(
+                character,
+                swappedTopsPairs.Where(p => IsTopsCandidate(p.Target)).Select(p => p.Target),
+                Configs.TopsSkinShrink?.Value ?? 0f,
+                Configs.TopsSkinShrinkFalloffRadius?.Value ?? 0f,
+                Configs.TopsSkinShrinkSampleRadius?.Value ?? 0f);
+        }
+        else
+        {
+            // 古い Tops contribution が残っていれば削除。Bottoms 残存なら Bottoms 単独で refresh される。
+            SkinShrinkCoordinator.UnregisterTops(character);
         }
 
         // didSomething に関わらず Applied 登録（冪等性確保、毎フレーム再走査回避）。
@@ -796,111 +807,22 @@ public class TopsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// target の mesh_skin_upper を tops mesh より内側に push して z-fighting / 貫通を解消する
-    /// (StockingSkinShrink の Tops 版)。
-    /// 補正対象は target skin 側 (cloth は touch しない) なので distance preservation と併存可能。
-    /// 複数 Tops SMR (mesh_costume + mesh_costume_ribbon 等) は順次 Resolve し、各 step で
-    /// 前 step の出力 skin を次 step の入力 skin として使う。
-    /// 補正済み skin mesh は <see cref="s_skinShrinkCache"/> にキャッシュ。
-    /// 同 Apply 内の二重補正防止はメソッドローカルの seen set で行う (static で持つと再 Apply で
-    /// 残留した ID が次回呼出を skip させてしまうため)。
+    /// shrink 対象 SMR (引数 <paramref name="excludeNames"/>) を除く skin 系 SMR の頂点を集める。
+    /// MeshPenetrationResolver の skin push の falloff anchor として使う (隣接 skin との境界で
+    /// push 量を 0 にフェードさせるため)。
+    /// SwimWearStockingPatch.CollectShrinkAnchorVerts / TopsSkinShrink / BottomsSkinShrink 共通。
     /// </summary>
-    private static void ApplyTopsSkinShrinkForTarget(
-        GameObject character, SkinnedMeshRenderer[] renderers,
-        List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer DonorPreload)> swappedTopsPairs)
-    {
-        float skinPush = Configs.TopsSkinShrink?.Value ?? 0f;
-        if (skinPush <= 0f) return;
-        float falloffR = Configs.TopsSkinShrinkFalloffRadius?.Value ?? 0f;
-        float sampleR = Configs.TopsSkinShrinkSampleRadius?.Value ?? 0f;
-
-        var skinUpper = renderers.FirstOrDefault(s => s != null && s.name == "mesh_skin_upper");
-        if (skinUpper == null || skinUpper.sharedMesh == null)
-        {
-            PatchLogger.LogDebug($"[TopsLoader] SkinShrink skip: mesh_skin_upper 不在 ({character.name})");
-            return;
-        }
-
-        // anchor: shrink 対象 (mesh_skin_upper) 以外の skin 系 SMR の頂点を境界基準として収集。
-        // 首境界 (mesh_skin_lower) / 顔境界 (mesh_face / mesh_eye 等) でフェードを効かせる。
-        var anchorVerts = CollectSkinShrinkAnchorVerts(renderers);
-
-        // 量子化キー: 0.1mm precision。SwimWearStockingPatch.ApplyPenetrationResolve と同方針。
-        // sampleR は 1mm precision (range 0-100mm でレンジ広いため)。
-        int yQ = Mathf.RoundToInt(skinPush * 10_000f);
-        int fQ = Mathf.RoundToInt(falloffR * 10_000f);
-        int srQ = Mathf.RoundToInt(sampleR * 1_000f);
-
-        // 同 Apply 内で同一 donor mesh を複数回処理しないためのローカルガード。
-        // static にすると ApplyDirectly 経由の再 Apply で残留した ID により skin push が無効化される。
-        var seenInThisCall = new HashSet<int>();
-        int stepsApplied = 0;
-        int skipNonTops = 0;
-        foreach (var pair in swappedTopsPairs)
-        {
-            var topSmr = pair.Target;
-            if (topSmr == null || topSmr.sharedMesh == null) continue;
-
-            // (c2) SwimWear donor 経路では Bottoms 候補 SMR (skirt / pants / frill 等) も swappedTopsPairs に
-            // 含まれる。skin_upper を push する処理なので Tops 候補のみに絞る (Bottoms は upper skin から離れた
-            // 位置にあり、近傍頂点が引っかかると意図せず upper skin が凹む)。
-            if (!IsTopsCandidate(topSmr))
-            {
-                skipNonTops++;
-                continue;
-            }
-
-            var donorTop = topSmr.sharedMesh;
-            if (!seenInThisCall.Add(donorTop.GetInstanceID())) continue;
-
-            var currentSkin = skinUpper.sharedMesh;
-            var key = (currentSkin.GetInstanceID(), donorTop.GetInstanceID(), yQ, fQ, srQ);
-
-            // cache hit でも entry が Destroy 済みの場合は recompute する (Unity null check で検出)。
-            // 下の indexer 上書きで stale entry が置換される。
-            if (!s_skinShrinkCache.TryGetValue(key, out var pushedSkin) || pushedSkin == null)
-            {
-                // referenceShape=null: 上半身 skin には skin_stocking 相当の前置 blendShape が無いため省略。
-                // minOffset=0: cloth 側 push は distance preservation で済んでいる前提、ここでは skin 側のみ push。
-                // useSkinNormalForPush=true: mesh_costume の frill / sleeve / 双面ジオメトリで cloth 法線が
-                //   局所反転すると skin が外側に押されて逆効果になるため、skin 法線基準で押し方向を固定する。
-                // clothSampleRadius=sampleR: TopsSkinShrinkSampleRadius が 0 でない場合、半径内の全 cloth 頂点を
-                //   逆距離² 重み平均で skin 表面推定。frill / sleeve のトポロジ凸凹で signedD が頂点単位で揺れる
-                //   のを smoothing。0 で K=3 固定 (既定挙動)。
-                var pair2 = MeshPenetrationResolver.Resolve(
-                    donorMesh: donorTop, referenceMesh: currentSkin, referenceShape: null,
-                    minOffset: 0f, skinPushAmount: skinPush,
-                    skinAnchorVerts: anchorVerts, skinFalloffRadius: falloffR,
-                    logTag: "TopsSkinShrink",
-                    useSkinNormalForPush: true,
-                    clothSampleRadius: sampleR);
-                pushedSkin = pair2.skin;
-                s_skinShrinkCache[key] = pushedSkin;
-            }
-
-            if (pushedSkin != null)
-            {
-                skinUpper.sharedMesh = pushedSkin;
-                stepsApplied++;
-            }
-        }
-
-        PatchLogger.LogDebug($"[TopsLoader] SkinShrink: {stepsApplied} step applied, {skipNonTops} non-tops skipped (push={skinPush:F4}m, fade={falloffR:F4}m, sampleR={sampleR:F3}m, {character.name})");
-    }
-
-    /// <summary>
-    /// shrink 対象 (mesh_skin_upper) 以外の skin 系 SMR の頂点を集める。
-    /// MeshPenetrationResolver の skin push の falloff anchor として使う (隣接 skin との境界で push 量を 0 に
-    /// フェードさせるため)。SwimWearStockingPatch.CollectShrinkAnchorVerts の上半身版。
-    /// </summary>
-    private static Vector3[] CollectSkinShrinkAnchorVerts(SkinnedMeshRenderer[] renderers)
+    /// <param name="renderers">character 配下の全 SMR スナップショット。</param>
+    /// <param name="excludeNames">anchor から除外する SMR 名集合 (shrink 対象自身)。例: "mesh_skin_upper" / "mesh_skin_lower"。</param>
+    internal static Vector3[] CollectSkinShrinkAnchorVerts(
+        SkinnedMeshRenderer[] renderers, HashSet<string> excludeNames)
     {
         var list = new List<Vector3>();
         foreach (var r in renderers)
         {
             if (r == null || r.sharedMesh == null) continue;
             if (!r.name.StartsWith("mesh_skin_", StringComparison.Ordinal)) continue;
-            if (s_skinShrinkAnchorExclude.Contains(r.name)) continue;
+            if (excludeNames != null && excludeNames.Contains(r.name)) continue;
             list.AddRange(r.sharedMesh.vertices);
         }
         return list.ToArray();
@@ -935,8 +857,7 @@ public class TopsLoader : MonoBehaviour
         // ribbon 系除外は MeshDistancePreserver.Preserve 内 (donorBoneIsRibbon mask) で per-vert 判定する。
         // SMR 名ベースだと同一 mesh 内 ribbon 部 + 非 ribbon 部混在に対応できないため。
         // cache hit でも entry が Destroy 済みの場合は recompute する (Unity null check で検出)。
-        // 通常は InvalidateDistancePreserveCache() でしか Destroy されないが、防御として
-        // ApplyTopsSkinShrinkForTarget 側 (s_skinShrinkCache) と対称のガードを置く。
+        // 通常は InvalidateDistancePreserveCache() でしか Destroy されないが防御的ガード。
         if (!s_resolvedCache.TryGetValue(cacheKey, out var resolved) || resolved == null)
         {
             resolved = MeshDistancePreserver.Preserve(
@@ -1033,6 +954,10 @@ public class TopsLoader : MonoBehaviour
             }
             s_targetSnapshots.Remove(key);
         }
+        // SkinShrinkCoordinator から Tops contribution を削除する。Bottoms 残存なら Coordinator 内で
+        // skin_upper.sharedMesh を直前に戻した target 元 asset から Bottoms-only push し直す。
+        // API 契約: 上記 foreach で snap.OriginalMesh を skin_upper.sharedMesh に書き戻し済みの状態で呼ぶ。
+        SkinShrinkCoordinator.UnregisterTops(character);
         s_applied.Remove(instanceId);
         if (restoredAny)
             PatchLogger.LogInfo($"[TopsLoader] 復元: {character.name}");

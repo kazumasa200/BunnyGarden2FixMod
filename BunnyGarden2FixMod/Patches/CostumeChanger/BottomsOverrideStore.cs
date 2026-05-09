@@ -68,6 +68,9 @@ public static class BottomsOverrideStore
 
     public static bool TryGet(CharID target, out Entry entry) => s_overrides.TryGetValue(target, out entry);
 
+    /// <summary>登録済み全 override を target ごとに列挙する (TopsOverrideStore.EnumerateOverrides と対称)。</summary>
+    public static IEnumerable<KeyValuePair<CharID, Entry>> EnumerateOverrides() => s_overrides;
+
     /// <summary>
     /// 登録済み override から (donor, costume) のユニーク列を返す。
     /// preload は (donor, costume) 単位でキャッシュするため、複数 target が同じ donor を共有しても
