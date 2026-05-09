@@ -1228,8 +1228,8 @@ public class CostumePickerController : MonoBehaviour
         // GameObject が非 active でも Animator.Play は state を仕込め、Animator.Update(0f) で
         // bone transform を正解ポーズに更新できる。これにより active 化フレームで T ポーズが
         // 見えず、SetupMagicaCloth も正解ポーズ基準で揺れもの初期化できる。
-        // try/catch 防御: Unity バージョン差分で Update(0f) が disabled Animator 上で
-        // 警告/例外を投げる可能性があるため、失敗時も ShowCharacter 呼出しを止めない。
+        // Unity バージョン差分で Update(0f) が disabled Animator 上で警告/例外を投げる
+        // 可能性があるため try/catch でガードし、失敗時も ShowCharacter 呼出しを止めない。
         var newChar = env.FindCharacter(id);
         var newAnim = newChar != null ? newChar.GetComponent<Animator>() : null;
         if (newAnim != null && motionHash != 0)

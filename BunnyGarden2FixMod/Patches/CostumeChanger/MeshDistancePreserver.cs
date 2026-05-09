@@ -231,11 +231,9 @@ internal static class MeshDistancePreserver
         // skinShare 帯別頂点数: <0.1 / <0.5 / <0.9 / >=0.9
         var shareBand = new int[4];
 
-        // ============================================================
         // Pass 1: cloth → donor skin 初回サンプリング
         //   d_donor[i] と「Pass 3 で skip すべき頂点」(out-of-range / inverted) を pre-compute する。
         //   Pass 3 でも donor skin 再サンプリングするので snAvg_donor は cache 不要 (modSkin で取り直す)。
-        // ============================================================
         const byte STATUS_OK         = 0;
         const byte STATUS_OUT_RANGE  = 1;
         const byte STATUS_INVERTED   = 2;
@@ -260,13 +258,11 @@ internal static class MeshDistancePreserver
         }
         long pass1Ms = sw.ElapsedMilliseconds - pass1Start;
 
-        // ============================================================
         // Pass 2: donor skin 「めり込み箇所」を内側へ凹ませる
         //   clipping cloth vert (d_donor < minOffset) ごとに、近傍 donor skin 頂点へ
         //   inward push 量 (deficit = minOffset - d_donor) を逆距離² 重み平均で集計。
         //   skin 頂点単位で集計して dSkinNormals 逆向きに移動。
         //   minOffset == 0 のとき完全 skip (純粋 preservation)。
-        // ============================================================
         long pass2Start = sw.ElapsedMilliseconds;
         var modSkinVerts = dSkinVerts;        // 退化挙動なら参照そのまま (clone 不要)
         var modDonorSkinGrid = donorSkinGrid; // 同上
@@ -335,10 +331,8 @@ internal static class MeshDistancePreserver
         }
         long pass2Ms = sw.ElapsedMilliseconds - pass2Start;
 
-        // ============================================================
         // Pass 3: 補正 donor skin で d_donor 再算出 + target skin と比較して push 算出
         //   cloth vert 自体は触らず、push は target 法線方向のみ。
-        // ============================================================
         long passStart = sw.ElapsedMilliseconds;
         // outOfRange / donorFallback 内訳。Pass 別 / skin 別に集計するため一旦分けて最後に合算。
         int outOfRangeP1Donor = 0, outOfRangeP3Donor = 0, outOfRangeTarget = 0;
@@ -499,14 +493,10 @@ internal static class MeshDistancePreserver
     }
 
     /// <summary>
-    /// cloth vert <paramref name="v"/> について、neighbors 内 skin 頂点の boneWeight を逆距離² 重み平均で
-    /// 集計し、distance falloff 値 <paramref name="t"/> (0=skin, 1=donor、負値はクランプで 0 = skin に張り付く)
-    /// で donor 元 boneWeight と blend して 4-slot top-k の正規化 BoneWeight を返す。
-    /// truncate (top-4 制限) で落ちた weight 合計を <paramref name="weightLoss"/> に出力。
-    /// blend 結果 total &lt;= 0 (skin coverage ゼロ + donor 元も 0) の場合は donor 元 boneWeight をそのまま返す。
-    ///
-    /// scratchKeys / scratchSorted は per-call 再利用バッファ (MeshDistancePreserver.Preserve 呼び出し内で
-    /// 呼び出し毎に再利用、Preserve スコープ外には持ち出さない)。
+    /// cloth vert <paramref name="v"/> の boneWeight を、neighbors skin の逆距離² 重み平均と donor 元を
+    /// <paramref name="t"/> (0=skin, 1=donor、負値クランプ) で blend し、4-slot top-k 正規化で返す。
+    /// truncate で落ちた weight 合計を <paramref name="weightLoss"/> に出力。total≤0 なら donor 元をそのまま返す。
+    /// scratchKeys/scratchSorted は per-call 再利用バッファ (Preserve スコープ内のみ)。
     /// </summary>
     private static BoneWeight ComputeBlendedBoneWeight(
         Vector3 v,
@@ -647,16 +637,10 @@ internal static class MeshDistancePreserver
     }
 
     /// <summary>
-    /// 複数の skin SMR を 1 つの verts/normals 配列に結合し、それらが boneWeights で参照する骨名を収集する。
-    /// null 要素 / sharedMesh が無い / verts/normals 不整合 / bones 不整合の SMR は無視する。
-    /// 結合後の verts が 0 件なら false を返す。
-    /// <para>
-    /// <paramref name="combinedBoneWeights"/> と <paramref name="combinedBoneNames"/> は boneWeight 転送 (Pass 4) 用:
-    /// 全 SMR の bones[] を name で union した <c>combinedBoneNames</c> 配列を構築し、各 vertex の BoneWeight を
-    /// この index 空間に remap した <c>combinedBoneWeights</c> を返す。SMR 横断で同名 bone は同 combined index に
-    /// 統合される。boneWeights / bones が一つでも不整合な SMR があれば <c>combinedBoneWeights = null</c> で返却
-    /// (= boneWeight 転送機能 disable シグナル)。
-    /// </para>
+    /// 複数 skin SMR を 1 つの verts/normals に結合し、参照骨名を収集。不整合 SMR は無視。verts 0 件で false。
+    /// <paramref name="combinedBoneWeights"/>/<paramref name="combinedBoneNames"/> は Pass 4 boneWeight 転送用:
+    /// 全 SMR bones[] を name で union した index 空間に remap (同名 bone は統合)。
+    /// 不整合 SMR があれば <c>combinedBoneWeights = null</c> で返却 (= 転送機能 disable シグナル)。
     /// </summary>
     private static bool CombineSkinSmrs(
         SkinnedMeshRenderer[] smrs,
@@ -801,15 +785,9 @@ internal static class MeshDistancePreserver
     }
 
     /// <summary>
-    /// 「姿勢従属副骨」判定。Twist / deltoid 系は artist が意図的に控えめに割った姿勢補助骨で、skin
-    /// (人体表現) 由来の比率を blend で取り込むと cloth vert の腕回転追従度等が増幅し脇下突き抜けを
-    /// 悪化させる。Pass 4 (skin → cloth weight 転送) の Phase 1 集計でこれら bone は skip し、donor 元の
-    /// 比率を温存する。
-    /// <para>
-    /// breast / pectoral 等の動的 driver は「主骨レベルで cloth に使われる」ため除外しない（除外すると
-    /// cloth の breast 追従度が減衰して胸まわり cloth が skin から浮く現象が発生する）。
-    /// </para>
-    /// 命名 pattern は project により増減しうる。
+    /// 姿勢従属副骨判定 (Twist / deltoid)。skin 由来比率を blend で取り込むと cloth の腕回転追従が増幅し
+    /// 脇下突き抜けが悪化するため、Pass 4 Phase 1 集計で skip し donor 元比率を温存する。
+    /// breast / pectoral 等の動的 driver は主骨として cloth に使われるため除外しない (除外すると胸まわり cloth が浮く)。
     /// </summary>
     private static bool IsAuxiliaryBone(string name)
     {

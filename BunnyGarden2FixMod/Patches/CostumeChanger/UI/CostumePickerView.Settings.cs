@@ -101,7 +101,6 @@ public partial class CostumePickerView
         m_settingsContent.Add(m_unlockAllNote);
     }
 
-    /// <summary>⚙ 設定ボタンの構築。BuildHeaderButtons (本体) から呼ばれる。</summary>
     private void BuildSettingsButton()
     {
         var gearTex = EmbeddedTexture.Load("BunnyGarden2FixMod.Resources.settings.png");

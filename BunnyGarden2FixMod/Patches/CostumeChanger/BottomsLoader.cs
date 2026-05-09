@@ -172,16 +172,10 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// Bottoms 候補判定。<c>mesh_costume_*</c> で始まり、名前に <c>skirt</c> / <c>pants</c> /
-    /// <c>frill</c> のいずれかを含む SMR を Bottoms とみなす。<see cref="TopsLoader.IsTopsCandidate"/>
-    /// と相互排他。
-    /// 例: mesh_costume_skirt / mesh_costume_skirt_sensitivemode /
-    ///     mesh_costume_skirtfrill / mesh_costume_pants / mesh_costume_frill → Bottoms。
-    ///     mesh_costume / mesh_costume_ribbon / mesh_costume_sleeve → Tops（false を返す）。
-    ///     mesh_costume_skirt_trp 等の <c>_trp</c> 透過レイヤは FittingRoom Panties 閲覧専用で
-    ///     VIP では常に hidden が原状のため除外（候補に含めると injection 経路で active=true で
-    ///     注入され rest pose で透過 skirt が visible 化する）。
-    /// "mesh_costume" 単体（接頭辞 + 区切り文字無し）は Tops のメイン上衣なので除外。
+    /// Bottoms 候補判定。<c>mesh_costume_*</c> 接頭 + <c>skirt</c>/<c>pants</c>/<c>frill</c> 含む SMR。
+    /// <see cref="TopsLoader.IsTopsCandidate"/> と相互排他。
+    /// <c>_trp</c> 透過レイヤは VIP で hidden が原状のため除外（注入で active=true 化すると visible 化）。
+    /// "mesh_costume" 単体は Tops メイン上衣なので除外。
     /// </summary>
     public static bool IsBottomsCandidate(SkinnedMeshRenderer smr)
     {
@@ -334,28 +328,18 @@ public class BottomsLoader : MonoBehaviour
 
     /// <summary>
     /// <see cref="CharacterHandle.setup"/> Postfix から呼ぶ。
-    /// SwimWear / Bunnygirl は VIP で donor config による skirt 物理注入 (TryCreateSkirtCloth +
-    /// RemapColliderRefs mirror) を行うため除外しない。Bunnygirl の <c>mesh_costume_full</c> は
-    /// <see cref="IsBottomsCandidate"/> で除外されるため (a)(c) ループは no-op、(b) のみで donor
-    /// skirt SMR が overlay 注入されて Bunnygirl 全身 SMR は hide されない。
-    /// donor 自身が Bunnygirl の場合は <c>donor.BottomsSmrs</c> も空 (IsBottomsCandidate で除外) のため
-    /// (a)(b)(c) いずれも no-op。target Bottoms 候補も空なので hide も走らず安全に何もしない。
+    /// SwimWear / Bunnygirl も donor skirt 物理注入対象のため除外しない。Bunnygirl の
+    /// <c>mesh_costume_full</c> は IsBottomsCandidate で除外され (a)(c) は no-op、(b) のみで overlay 注入。
     /// donor 自身の setup() Postfix（preload host 配下）は IsChildOf ガードで skip する。
     /// </summary>
     public static void ApplyIfOverridden(CharacterHandle handle)
     {
         if (handle?.Chara == null) return;
 
-        // donor 自身の setup() Postfix が走るケースを除外。preload host 配下の
-        // GameObject は SetActive(false) で配置されるため通常は描画されないが、
-        // setup() 自体は呼ばれるためここで弾く（in-flight 並行 preload 下でも安全）。
-        // 自分の host だけでなく TopsLoader の preload host 配下も skip する: TopsLoader が target の
-        // skin donor (Babydoll) として preload した character の setup() でも当 patch は発火するため、
-        // ここで弾かないと donor preload character に Bottoms override が誤適用される。target と同じ
-        // CharID で Bottoms override が登録されていると、preload donor character の skin SMR.sharedMesh が
-        // SkinShrinkCoordinator 経由で transient pushed Mesh に上書きされ、後続の InvalidateCache で
-        // destroyed Mesh となって target の Apply(d) swap source (=donor.skin_upper.sharedMesh) を
-        // 巻き込み破壊する症状を踏んだ (実機 diag log で確認済み 2026-05-08)。
+        // donor 自身の setup() Postfix を除外。preload host 配下は SetActive(false) でも setup() は走る。
+        // 自分の host + TopsLoader の preload host 配下も skip 必須: 同 CharID で Bottoms override 登録時、
+        // donor の skin SMR.sharedMesh が SkinShrink で transient Mesh に置換 → InvalidateCache で
+        // destroyed → target Apply の swap source を巻き込み破壊する (実機 diag 2026-05-08)。
         if (s_loaderHostRoot != null && handle.Chara.transform.IsChildOf(s_loaderHostRoot.transform)) return;
         if (TopsLoader.IsDonorPreloadParent(handle.Chara)) return;
 
@@ -387,14 +371,9 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// Wardrobe (F7) Bottoms タブ確定時に呼ぶ。target の既存 GameObject に対して再適用許可フラグを
-    /// セットしてから <see cref="Apply"/> する。reload 経由 (env.LoadCharacter) は同 costume だと
-    /// no-op で setup() Postfix が発火しないためこちらを使う。
-    ///
-    /// 同一 target に対して donor 切替で連続呼び出しされても、<see cref="CaptureSnapshotIfFirst"/>
-    /// の ContainsKey ガードにより snapshot は **最初の Apply 以前の素状態** を保持し続ける。
-    /// このため <see cref="RestoreFor"/> を間に挟まずに連続切替しても、最終的な Restore は
-    /// 一貫して素状態へ戻せる（donor A → donor B → Restore で donor A の中間状態が漏れない）。
+    /// Wardrobe (F7) Bottoms タブ確定時に呼ぶ。reload 経由は同 costume で no-op になるためこちらを使う。
+    /// 連続 donor 切替でも CaptureSnapshotIfFirst の ContainsKey ガードで snapshot は素状態を保持し、
+    /// donor A → B → Restore でも一貫して素状態へ戻る（中間状態が漏れない）。
     /// </summary>
     public static void ApplyDirectly(GameObject character, CharID donorChar, CostumeType donorCostume)
     {
@@ -585,16 +564,10 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// Bottoms swap 後、skirt 系 MeshCloth の proxy mesh が build 時 cache のまま乖離して
-    /// 物理が止まる問題を解決するため <see cref="MagicaClothRebuilder.RebuildSkirtCloth"/> に委譲する。
-    ///
-    /// 設計: SMR.bones の入れ替えに伴う Transform 参照ずれは Hair/Breast/Ribbon 等
-    /// (BoneCloth) では発生しない (Bottoms swap は skirt SMR の bones だけ touch するため)。
-    /// 唯一影響を受ける skirt 系 MeshCloth は単なる Transform 補正では再駆動できない
-    /// (proxy mesh 自体を再生成する必要あり) ため、donor 側 serializeData で完全再 build する。
-    ///
-    /// <c>activeSelf</c> ガード: Bar / Ahhn 中など物理 disable 状態のシーンで意図せず触らないよう
-    /// 構造的に防ぐ。
+    /// Bottoms swap 後の skirt MeshCloth proxy mesh 乖離を <see cref="MagicaClothRebuilder.RebuildSkirtCloth"/>
+    /// で解決する。SMR.bones swap の Transform ずれは BoneCloth (Hair/Breast/Ribbon) には影響せず、
+    /// skirt MeshCloth のみ proxy mesh 再生成が必要なため donor serializeData で完全再 build。
+    /// <c>activeSelf</c> ガード: Bar / Ahhn 中など物理 disable シーンで触らない構造的防御。
     /// </summary>
     private static void RebindMagicaClothIfActive(GameObject character, DonorEntry donor)
     {
@@ -697,15 +670,12 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// target に新規 Bottoms SMR を注入する。親は mesh_skin_lower の親（同階層）。
-    /// reference SMR が見つからなければ character 直下。
-    /// rootBone / localBounds / updateWhenOffscreen は reference SMR (mesh_skin_lower) から流用し、
-    /// frustum culling や AABB 計算が安定するようにする（SwimWearStockingPatch.CreateInjected と同方針）。
-    /// 既存 SMR を swap する経路（SwapSmr 単独）は rootBone を変更しない。
+    /// target に新規 Bottoms SMR を注入する。親は mesh_skin_lower の親（reference 無なら character 直下）。
+    /// rootBone / localBounds / updateWhenOffscreen は reference SMR から流用し frustum culling/AABB を
+    /// 安定化（SwimWearStockingPatch.CreateInjected と同方針）。SwapSmr 単独経路は rootBone 不変更。
     /// </summary>
     /// <param name="renderers">
-    /// 呼び出し側で取得済みの SMR スナップショット。reference SMR 検索目的のみで使用する。
-    /// 注入された SMR はこの配列に含まれない（古いスナップショット）ことに注意。
+    /// 呼び出し側で取得済みの SMR スナップショット (reference 検索のみ)。注入後 SMR は含まれない点に注意。
     /// </param>
     private static SkinnedMeshRenderer InjectSmrLogged(
         GameObject character, string name, SkinnedMeshRenderer[] renderers)

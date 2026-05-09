@@ -70,7 +70,7 @@ public static class SwimWearStockingPatch
     }
 
     /// <summary>
-    /// シーンアンロード時にキャッシュを一掃する。StockingsDonorLoader MonoBehaviour 側から呼ばれる。
+    /// シーンアンロード時にキャッシュを一掃する。
     /// 破棄済み SMR 参照を持ち越すと次シーンでの復元時に fake-null 例外 / InstanceID 再利用による
     /// 誤 hit が発生するため、毎シーンでリセットする。
     /// </summary>
@@ -95,19 +95,12 @@ public static class SwimWearStockingPatch
     }
 
     /// <summary>
-    /// チューニングスライダー等から ConfigStockingOffset/SkinShrink/FalloffRadius を変更した直後に呼び、
-    /// 次の env.ApplyStockings() で食い込み解消が新パラメータで再構築されるよう状態を整える。
+    /// ConfigStockingOffset/SkinShrink/FalloffRadius 変更直後に呼び、次の env.ApplyStockings() で
+    /// 食い込み解消が新パラメータで再構築されるよう状態を整える。
     ///
-    /// 復元手順:
-    ///   1. swim skin の sharedMesh を backup originalMesh に戻す（次の TransplantInto が
-    ///      vanilla skin から transplanted を構築できるようにする）
-    ///   2. s_resolvedAppliedIds をクリア（ApplyPenetrationResolve の二重補正防止 early-return を解除）
-    ///
-    /// s_resolvedCache / s_transplantedCache は破棄しない:
-    ///   - resolvedCache キーには量子化パラメータが含まれるので、別パラメータでは別エントリが作られる。
-    ///     同一パラメータに戻したときの再ヒットを許容するためそのまま保持する（OnSceneUnloaded で一括破棄）。
-    ///   - 注入 stockings smr の sharedMesh は ApplyStockingSync 冒頭で donor.sharedMesh に
-    ///     必ず差し戻されるため、ここで触らなくて良い。
+    /// 手順: (1) swim skin sharedMesh を backup originalMesh に戻す (TransplantInto が vanilla 起点で再構築できるよう)、
+    /// (2) s_resolvedAppliedIds をクリア (二重補正防止 early-return を解除)。
+    /// resolvedCache/transplantedCache は保持: 量子化 key で別エントリ化されるため、同一パラメータ復帰時の再ヒットを許容。
     /// </summary>
     internal static void InvalidateForReapply(CharID id)
     {

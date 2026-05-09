@@ -242,7 +242,7 @@ public class TopsLoader : MonoBehaviour
         if (s_inFlight.TryGetValue(key, out var pending))
             return pending;
 
-        // UniTask 多重 await のため Preserve()（BottomsLoader と同方針、UniTask issue #93）
+        // UniTask 多重 await のため Preserve()。
         var task = PreloadDonorInternal(donor, costume).Preserve();
         s_inFlight[key] = task;
         return task;
@@ -320,39 +320,21 @@ public class TopsLoader : MonoBehaviour
 
     private static void OnSceneUnloaded(Scene scene)
     {
-        // 全 state を scene 跨ぎで保持する。session 内では Unity の InstanceID は再利用されないため、
-        // 旧シーンの破棄済み target に紐づく stale entry は harmless に残るのみで誤検知しない。
+        // 全 state を保持し何もしない。session 内で InstanceID は再利用されないため
+        // 破棄済み target に紐づく stale entry は harmless に残るのみで誤検知しない。
         //
-        // 1. s_resolvedCache (distance preserve 補正済み Mesh):
-        //    加算読込のサブシーン (FittingRoom / Talk2D / 同伴 event 等) の sceneUnloaded は別シーン
-        //    (Bar 等) で適用中の target SMR が cache の Mesh を sharedMesh で参照中に発火する。
-        //    ここで Destroy すると表示中の Tops mesh が「Unity null」化し画面から消える。
-        //    ChangeSceneAsyncFromTo の LoadSceneAsync(new) → UnloadSceneAsync(old) でも、新シーン
-        //    setup() Postfix が先行 cache 書込み直後に旧シーン unload が走るレースが起きうる。
-        //    cache key は donor / target Babydoll preload (DontDestroyOnLoad) の Mesh InstanceID で
-        //    構成され安定なので保持・再利用が正しい。
+        // - s_resolvedCache: 加算読込シーンの unload は別シーンで適用中 SMR が
+        //   cache Mesh を sharedMesh で参照中に発火する。Destroy すると Tops が
+        //   画面から消える。ChangeSceneAsync の new→old 順 unload でも、新シーン
+        //   setup() Postfix が先行 cache 書込み直後に旧シーン unload が走るレース
+        //   が起きうる。cache key は安定 InstanceID で再利用も正しい。
+        // - s_targetSnapshots / s_applied: m_holeScene の char は env で preserve され
+        //   同 InstanceID で Apply trigger が再発火する。Clear すると
+        //   CaptureSnapshotIfFirst が donor 補正済み mesh を素として誤記録する。
+        // - s_resolvedAppliedIds: cache 追従で保持。組合せ上限は数百規模で頭打ち。
+        // - s_inFlight: donorParent は DontDestroyOnLoad 配下なので scene 跨ぎ safe。
         //
-        // 2. s_targetSnapshots / s_applied (target GameObject 単位の状態):
-        //    m_holeScene の char は env scene 切替で preserve されるため、Bar 復帰時に同 InstanceID で
-        //    Apply trigger (TopsPreloadFallbackPatch) が再発火する。snapshot を Clear すると
-        //    CaptureSnapshotIfFirst が現在の (= donor 補正済み) SMR.sharedMesh を OriginalMesh として
-        //    誤記録し、Wardrobe Restore が donor mesh に戻す壊れた挙動になる。
-        //    s_applied を保持することで dedup により Apply skip → snapshot 上書きを防ぐ。
-        //    新 GameObject (= 新 InstanceID) は別 entry として Apply 走るので新シーンの正規 Apply 経路にも影響なし。
-        //
-        // 3. s_resolvedAppliedIds: cache に追従して保持。Set には resolved Mesh の InstanceID のみが
-        //    入る (donor 元 mesh ID は入らない) ため、新 target の swap 直後 (sharedMesh = donor 元 mesh) に
-        //    冒頭ガード `Contains(donorMesh.InstanceID)` が誤発火することはない。
-        //    cache key 組合せ上限 (donor 6 char × costume × target Babydoll variant) は数十~数百規模で頭打ち。
-        //
-        // 4. s_inFlight: 保持。donorParent は DontDestroyOnLoad 配下なので scene 跨ぎで safe。
-        //    Clear すると preload 完了後に s_donors へ登録されず次 Apply で再 preload が走る。
-        //
-        // GPU メモリの cleanup は config 変更時の InvalidateDistancePreserveCache() に集約し、平常時は
-        // プロセス終了まで保持する (s_donors と同寿命ポリシー)。
-        //
-        // SkinShrinkCoordinator.ClearScene は BottomsLoader.OnSceneUnloaded から呼ばれる
-        // (両 Loader から重複で呼ぶと s_entries を 2 回 Clear するだけで実害は無いが慣習として 1 回に集約)。
+        // GPU memory cleanup は InvalidateDistancePreserveCache() に集約。
     }
 
     /// <summary>
@@ -551,8 +533,9 @@ public class TopsLoader : MonoBehaviour
 
         bool didSomething = false;
         // (e) 距離保存補正に渡す Tops SMR ペアを集める（swap / inject 経由のもの）。
-        // donor 側の SMR (preload エントリ) は元の bones[] / boneWeights を持つため、skinShare 計算で参照する。
-        // additive モードでは distance preservation 自体を skip する (target skin_upper を swap しない前提のため)。
+        // donor 側の SMR (preload エントリ) は元の bones[] / boneWeights を持つため、Pass 4 の boneWeight blend で参照する。
+        // additive モードでも injected donor pair を distance preservation 対象に集める
+        // (preload Babydoll 基準は live skin の swap 状態に依存しないため)。
         var swappedTopsPairs = new List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer DonorPreload)>();
 
         if (additiveMode)
@@ -565,6 +548,7 @@ public class TopsLoader : MonoBehaviour
                 var injected = InjectSmrLogged(character, kv.Key, renderers);
                 CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
                 SwapSmr(injected, kv.Value, character, kv.Key + "(injected,additive)");
+                swappedTopsPairs.Add((injected, kv.Value));
                 didSomething = true;
             }
         }
@@ -612,16 +596,13 @@ public class TopsLoader : MonoBehaviour
         //      Bottoms override が設定されている target は Bottoms 側に任せる（Bottoms override 優先）。
         //      transplant した SMR は Tops snapshot 経由で RestoreFor が冪等に元に戻す。
         //      mesh_costume_skirt は SwimWear donor 全般でループ内除外する（下記参照、KANA SwimWear の bikini bottom もここで弾かれる）。
-        // 不変: donorCostume == SwimWear が条件に入る → additiveMode == false が確定 (additive の定義より)。
-        //       したがってこのブロックは additive モードでは到達しない。
-        // gate 削除 (2026-05-08): bottoms override 設定時も (c2) を走らせ LUNA frill を transplant する。
-        // 順序非依存性 (tops 先 / bottoms 先) を保証するための symmetric design。
-        // bottoms override が target に存在する場合は (c2) 内部で per-loader isolation により BottomsLoader 所有名を除外する。
-        // donor 側は除外しないため LUNA frill は inject 経路で重ねて表示される (両 frill 共存)。
+        // donorCostume == SwimWear → additiveMode == false 確定 (定義より additive 不到達)。
+        // bottoms override 併用時も (c2) を走らせ順序非依存性を保証 (tops 先 / bottoms 先)。
+        // per-loader isolation: target 側のみ BottomsLoader 所有名を除外し、donor 側は除外しないため
+        // LUNA frill は inject 経路で重ねて両 frill 共存する。
         if (donorCostume == CostumeType.SwimWear)
         {
-            // BottomsLoader が transplant する name 集合 (bottoms override の skirt / frill 等)。
-            // (c2) はこれらに触らないことで bottoms 領域を BottomsLoader の責任範囲として尊重する。
+            // BottomsLoader が触る name 集合。bottoms 領域は BottomsLoader の責任範囲として尊重。
             var bottomsOwned = new HashSet<string>(StringComparer.Ordinal);
             if (targetCharID < CharID.NUM && BottomsOverrideStore.TryGet(targetCharID, out var bottomsEntry))
             {
@@ -696,18 +677,10 @@ public class TopsLoader : MonoBehaviour
             }
         }
 
-        // (d) target の mesh_skin_upper swap。self-donor / cross-char 共に target/Babydoll で swap し、
-        //     bottoms override 等が target.mesh_skin_upper を Babydoll 基準で扱える前提を整える
-        //     （直接 swap が必要なケースは costume 変更機能でカバー済み）。
-        //     skin donor (= (target.charID, Babydoll)) は <see cref="PreloadDonorAsync"/> 経由で
-        //     ApplyTopsAsync 側が先行ロードする前提。
-        //     skip 理由 (verbose ログで区別):
-        //       (i)  target.charID が NUM (env 逆引き失敗)
-        //       (ii) targetCostume == Babydoll (冪等スキップ)
-        //       (iii) skin donor preload 未完了 / 失敗 (s_donors に無い)
-        //       (iv) skin donor の AllSmrs に mesh_skin_upper が無い、または target 側に無い
-        //     (iii)(iv) のときは (e) distance preservation が target の元 mesh_skin_upper を基準に走り、
-        //     Babydoll 基準の境界整合は得られないが、補正自体は破綻しない (フェイルセーフ)。
+        // (d) target.mesh_skin_upper を target/Babydoll に swap。bottoms override 等が
+        //     Babydoll 基準で扱える前提を整える。skin donor は ApplyTopsAsync 側で先行 preload 済み。
+        //     skip した場合 (e) distance preservation は target 元 mesh_skin_upper 基準で走り、
+        //     Babydoll 基準の境界整合は得られないが補正自体は破綻しない (フェイルセーフ)。
         if (additiveMode)
         {
             // additive モードでは target の素肌を維持するため skin upper swap は skip。
@@ -735,22 +708,14 @@ public class TopsLoader : MonoBehaviour
             var targetSkinUpper = renderers.FirstOrDefault(s => s != null && s.name == "mesh_skin_upper");
             if (donorSkinUpper != null && targetSkinUpper != null)
             {
-                // ApplyDirectly 経路 (live tune slider 変更時) で 2 cycle に跨る連鎖 bug の入口防衛:
-                //   cycle N:
-                //     1. 先行する RestoreFor が snap.OriginalMesh で sharedMesh を stable asset に戻す
-                //     2. RestoreFor 末尾の UnregisterTops の RefreshOne が HasBottoms 残存時に
-                //        Bottoms contribution を skin_upper にも push して sharedMesh を transient
-                //        pushed Mesh で上書き (この transient は s_cache にも入る)
-                //     3. ここで CaptureSnapshotIfFirst を呼ぶと transient Mesh を OriginalMesh として
-                //        焼き込んでしまう
-                //   cycle N+1:
-                //     4. InvalidateCache が cycle N の transient を Destroy
-                //     5. RestoreFor が snap.OriginalMesh = destroyed transient を sharedMesh に書き戻す
-                //        (Unity-null) → skin_upper が描画破損
-                // 本 rewind で 3 を断ち切る: capture 直前に Coordinator 保持の原 mesh
-                // (= e.OriginalSkinUpper、addressables 由来 stable asset) に明示的に戻し、snapshot に
-                // 常に stable な参照のみが焼かれるよう保つ。UnregisterTops 側の RefreshOne 挙動
-                // (standalone Tops 取り消し時に Bottoms→upper push が継続する仕様) はそのまま維持。
+                // ApplyDirectly (live tune) で 2 cycle に跨る連鎖 bug の入口防衛。
+                // cycle N: RestoreFor → UnregisterTops の RefreshOne が HasBottoms 残存時に
+                //   Bottoms push を upper にも適用し sharedMesh が transient Mesh に。直後の
+                //   CaptureSnapshotIfFirst が transient を OriginalMesh として焼き込む。
+                // cycle N+1: InvalidateCache が transient を Destroy → RestoreFor が
+                //   destroyed Mesh を sharedMesh に書き戻し → skin_upper 描画破損。
+                // capture 直前に Coordinator 保持の addressables stable asset へ明示 rewind し、
+                // snapshot には常に stable 参照のみ焼く。RefreshOne 仕様自体はそのまま維持。
                 SkinShrinkCoordinator.RestoreSkinUpperToOriginal(character, targetSkinUpper);
                 CaptureSnapshotIfFirst((instanceId, "mesh_skin_upper"), wasInjected: false, smr: targetSkinUpper, injectedGo: null);
                 SwapSmr(targetSkinUpper, donorSkinUpper, character, "mesh_skin_upper");
@@ -764,17 +729,16 @@ public class TopsLoader : MonoBehaviour
             }
         }
 
-        // (e) per-vert distance preservation: donor 側 Babydoll skin / target 側 Babydoll skin の
-        //     対称な基準で d_donor / d_target を比較し、移植後も donor 元の浮き具合を target で再現する。
-        //     donor 側は (donorChar, Babydoll) の preload エントリ (= s_donors) から mesh_skin_upper を取得。
-        //     target 側は (d) で Babydoll に swap 済みの mesh_skin_upper を renderers から取得。
+        // (e) per-vert distance preservation: donor / target 双方の preload Babydoll を基準に
+        //     d_donor / d_target を比較し、移植後も donor 元の浮き具合を target で再現する。
+        //     基準 mesh は s_donors[(charID, Babydoll)] の preload エントリから取得するため、
+        //     live target.mesh_skin_upper の swap 状態 (= (d) skip 有無) には依存しない。
+        //     additive モードでも injected donor pair を同手順で補正する。Bunnygirl additive は
+        //     live skin (variant) と Babydoll skin の頂点配置が乖離しユーザー判断でリスク受容
+        //     (実機で破綻が出たら別計画で skip ガード追加する。
+        //      参照: docs/superpowers/plans/2026-05-08-additive-tops-vertex-adjust.md)。
         //     donor Babydoll preload 失敗 / mesh_skin_upper SMR 不在 / target 側不在のいずれかで skip (Apply 本体は続行)。
-        if (additiveMode)
-        {
-            // additive モードでは inject のみで swap は無いため距離保存対象なし → skip。
-            PatchLogger.LogDebug($"[TopsLoader] distance preservation skip: additive mode ({character.name})");
-        }
-        else if (swappedTopsPairs.Count > 0)
+        if (swappedTopsPairs.Count > 0)
         {
             // donor 側 Babydoll skin (upper + lower) を取得。
             // ワンピース型 donor (KANA SwimWear 等) の下半身頂点も適切な近傍を見つけられるよう、
@@ -823,7 +787,11 @@ public class TopsLoader : MonoBehaviour
         // (f) Tops SkinShrink: target.mesh_skin_upper を tops より内側へ push して z-fighting / 貫通を解消。
         //     SkinShrinkCoordinator が Bottoms contribution と統合管理し、両 contribution を素 mesh から
         //     順次 push し直すため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
-        //     additive モード / swap 無し / Bottoms only donor 経路は contribution 不在 → UnregisterTops。
+        //     additive モードでは (d) skin_upper Babydoll swap が走らず RegisterTops の API 契約
+        //     (現 sharedMesh = Babydoll asset を OriginalSkinUpper として焼く) を満たせないため skip。
+        //     SwimWear / Bunnygirl では mesh_costume が body を覆うため SkinShrink の視覚効果も限定的。
+        //     additive で SkinShrink を有効化する場合は Coordinator API の改修が必要 (別計画)。
+        //     swap 無し / Bottoms only donor 経路は contribution 不在 → UnregisterTops。
         if (!additiveMode && swappedTopsPairs.Count > 0)
         {
             SkinShrinkCoordinator.RegisterTops(
@@ -1004,29 +972,18 @@ public class TopsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// TopsLoader が target に植えた / swap で touch した Bottoms 候補 SMR の <b>GameObject InstanceID 集合</b>を返す。
-    /// per-loader isolation: BottomsLoader が target 列挙からこれらを除外して TopsLoader 所有 SMR を不可視化する
-    /// (donor 側は除外せず、両 frill を独立 GameObject として共存させる設計)。
+    /// TopsLoader が target に植えた / swap で touch した Bottoms 候補 SMR の GameObject InstanceID 集合。
+    /// per-loader isolation 用: BottomsLoader が target 列挙からこれらを除外し TopsLoader 所有 SMR を不可視化
+    /// (donor 側は非除外で両 frill 共存)。
     ///
-    /// 重要: snapshot ベースで GO 単位識別。name 単位だと BottomsLoader 自身が前回の bottoms donor で
-    /// inject した同名 SMR (例: 前 donor=Babydoll で frill 注入後、新 donor=Casual に切替) も巻き添えで除外され、
-    /// (c) hide 経路で清掃されず孤児として残留してしまうため。
+    /// snapshot ベースで GO 単位識別。name 単位だと前回 bottoms donor で inject した同名 SMR が巻き添え除外され
+    /// (c) hide で清掃されず孤児残留する。
     ///
-    /// 実装: <see cref="s_targetSnapshots"/> 全走査 + <see cref="BottomsLoader.IsBottomsCandidateName"/> filter。
+    /// 不変条件: Apply (a)(b) は Tops 候補名のみ、(c2) のみ Bottoms 候補名を snapshot 投入で disjoint。
+    /// (a)(b) で Bottoms 候補名を touch する変更時は本 API の semantic 再設計が必要 (沈黙の回帰リスク)。
     ///
-    /// 不変条件: TopsLoader.Apply の (a)(b) ループは Tops 候補名 SMR (mesh_costume / mesh_costume_ribbon /
-    /// mesh_costume_sleeve 等) のみ snapshot 投入し、(c2) ブロックのみ Bottoms 候補名 (mesh_costume_frill 等)
-    /// を投入する。両集合は disjoint なため Bottoms 候補名 filter で実質 (c2) 経由 entry のみが返る。
-    /// 将来 (a)(b) で Bottoms 候補名を touch する変更を入れる場合は本 API の semantic を再設計する必要あり
-    /// (沈黙の回帰リスク)。
-    ///
-    /// 返り値の内訳:
-    ///   - snapshot.WasInjected=true: (c2) inject 経路で TopsLoader が新規生成した GameObject
-    ///   - snapshot.WasInjected=false: (c2) swap 経路で target 元 SMR の sharedMesh を donor mesh に上書き
-    ///     (SMR 自体は target 元のままだが mesh が donor 由来 → BottomsLoader が swap で再上書きすると
-    ///     donor 由来の見た目が壊れるため除外)
-    ///
-    /// snapshot に該当エントリ無し / character null → 空集合。
+    /// WasInjected=true は (c2) 新規 GameObject、=false は (c2) swap で donor mesh が焼かれた target 元 SMR
+    /// (BottomsLoader が再 swap すると donor 見た目が壊れるため除外)。
     /// </summary>
     internal static IEnumerable<int> GetOwnedBottomsCandidateGoIds(GameObject character)
     {

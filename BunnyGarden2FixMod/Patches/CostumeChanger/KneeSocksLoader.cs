@@ -31,7 +31,6 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 ///
 /// ニーソックス override を解除するときは Restore() で副作用を復元してから
 /// env.ApplyStockings を呼ぶことでリロード不要。
-/// CostumePickerController.DecideActiveTab / ApplyStocking が担う。
 /// </summary>
 public class KneeSocksLoader : MonoBehaviour
 {
@@ -298,9 +297,6 @@ public class KneeSocksLoader : MonoBehaviour
         PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ニーソックスを適用しました: {character.name}");
     }
 
-    /// <summary>
-    /// setup/setupPantiesOnly Postfix から呼ばれる。ニーソックス override が設定されていれば Apply する。
-    /// </summary>
     public static void ApplyIfOverridden(CharacterHandle handle)
     {
         if (IsPreloading) return; // プリロード中の dummy handle への誤適用を防ぐ

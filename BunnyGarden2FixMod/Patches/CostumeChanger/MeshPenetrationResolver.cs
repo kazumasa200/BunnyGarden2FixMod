@@ -26,34 +26,20 @@ internal static class MeshPenetrationResolver
 {
     /// <summary>
     /// donor と reference を 1 パスで処理し、食い込みを解消した両 mesh を返す。
+    /// 入力 mesh は in-place 変更しない（戻り値で新規 Mesh を返す）。
+    /// <paramref name="referenceShape"/> 例: <c>"blendShape_skin_lower.skin_stocking"</c>。
     /// </summary>
-    /// <param name="donorMesh">補正対象 donor (mesh_stockings 元)。変更されない。</param>
-    /// <param name="referenceMesh">基準 mesh (swim mesh_skin_lower の transplanted 後)。変更されない。</param>
-    /// <param name="referenceShape">基準 mesh の weight=100 適用 blendShape 名 (例 "blendShape_skin_lower.skin_stocking")。</param>
-    /// <param name="minOffset">stocking 食い込み判定閾値 兼 stocking push 後の最小距離 (m)。&lt;= 0 で stocking push 無効。</param>
-    /// <param name="skinPushAmount">stocking 押し出し後表面から内側へ skin を置く目標距離 (m)。
-    /// 突き抜けがあれば「表面まで揃える + skinPushAmount」のフル押し込みになる。&lt;= 0 で skin push 無効。</param>
-    /// <param name="skinAnchorVerts">skin push の falloff anchor (隣接 skin mesh 頂点)。null/空なら falloff 無し。</param>
-    /// <param name="skinFalloffRadius">skin push の境界フェード半径 (m)。&lt;= 0 で falloff 無し。</param>
-    /// <param name="logTag">ログ出力タグ。</param>
-    /// <param name="useSkinNormalForPush">true で skin push の axis に skin 自身の外向き法線を使う。
-    /// false (既定) では donor cloth 外向き法線を使う (Stocking 既存挙動)。
-    /// Tops cloth は frill / 双面ジオメトリで cloth 法線が反転・突発的に変わるケースがあり、
-    /// 法線軸として cloth 側を使うと skin が外側 (cloth 方向) に押されて z-fighting 悪化することがあるため、
-    /// Tops 系呼出では skin 法線で押し方向を固定する方が安定。</param>
-    /// <param name="clothSampleRadius">skin push pass で「skin 頂点近傍の cloth 表面 (vAvg / vnAvg)」を
-    /// 推定する際に半径内の全 cloth 頂点を距離重み平均する。&lt;= 0 (既定) で K=3 固定。半径内に頂点が
-    /// 無ければ K=3 にフォールバック。MeshDistancePreserver.skinSampleRadius と同方針。
-    /// pass 1 (cloth push) は対象外: Stocking 経路は K=3 のまま。Tops では minOffset=0 で pass 1 走らない。</param>
-    /// <returns>(adjusted donor, adjusted skin)。それぞれ null なら no-op（差し替え不要）。</returns>
-    /// <param name="useScatterPush">true で skin push pass を「scatter from cloth」モードに切り替える。
-    /// 既存 gather mode (各 skin 頂点が radius 内の cloth から 1 つの surface 推定 vAvg / vnAvg を作って
-    /// pushDist = scaledPush - signedD で push) と異なり、scatter mode では「各 cloth 頂点ごとに
-    /// pushNeeded = scaledPush - signedD を計算 → kernel 重み付き平均 displacement」を取る。
-    /// 効果: 同 cloth 周辺にある複数 skin 頂点 (例: waist 縫い目で接する mesh_skin_upper / mesh_skin_lower)
-    /// が同じ cloth 集合から類似の displacement を得て、SMR 境界でも push 量が滑らかに連続化する。
-    /// kernel: w = (1 - dsq/R²) (sqrt 不要)、R = clothSampleRadius (>0 必須)。
-    /// 既定 false で gather mode (Stocking 等の既存呼出は影響なし)。</param>
+    /// <param name="minOffset">stocking 食い込み判定閾値 兼 push 後最小距離 (m)。&lt;= 0 で stocking push 無効。</param>
+    /// <param name="skinPushAmount">stocking 押し出し後表面から内側へ skin を置く目標距離 (m)。&lt;= 0 で skin push 無効。</param>
+    /// <param name="skinAnchorVerts">falloff anchor (隣接 skin 頂点)。null/空で falloff 無し。</param>
+    /// <param name="useSkinNormalForPush">true で skin push axis に skin 自身の外向き法線を使う。
+    /// Tops cloth は frill/双面で法線が反転するため cloth 法線軸だと z-fighting 悪化、skin 法線で固定する方が安定。</param>
+    /// <param name="clothSampleRadius">skin push pass の cloth 表面推定半径 (距離重み平均)。&lt;= 0 で K=3 固定。
+    /// pass 1 (cloth push) は対象外。</param>
+    /// <param name="useScatterPush">true で skin push を「scatter from cloth」モードに切替。
+    /// 各 cloth 頂点で pushNeeded を計算 → kernel 重み付き平均 displacement を skin に再分配。
+    /// waist 縫い目等で隣接 skin SMR 境界の push 量を連続化する目的。kernel: w = (1 - dsq/R²)、R = clothSampleRadius (>0 必須)。</param>
+    /// <returns>(adjusted donor, adjusted skin)。null なら no-op。</returns>
     internal static (Mesh donor, Mesh skin) Resolve(
         Mesh donorMesh, Mesh referenceMesh, string referenceShape,
         float minOffset, float skinPushAmount,

@@ -200,16 +200,10 @@ internal static class MagicaClothRebuilder
     }
 
     /// <summary>
-    /// 過去の「donor 無」 apply で <see cref="DestroyImmediate"/> された target MagicaCloth_Skirt component を
-    /// snapshot から復元する。snapshot は **消費しない** (後続 user toggle-off 時の <see cref="RestoreSkirtCloth"/>
-    /// で再利用するため)。1 件以上復元できたら true。
-    ///
-    /// この関数は「component を取り戻すための throwaway build」に過ぎない。直後の caller (
-    /// <see cref="RebuildSkirtCloth"/> の continue 経路) が <see cref="RebuildFromComponent"/> を呼び、
-    /// <see cref="SafeDestroyPreservingSmrState"/> で破棄して donor config で再 build する。
-    /// proxy mesh build → 直後 destroy のオーバーヘッドはあるが、component を AddComponent 単独で
-    /// 残すと <see cref="FindSkirtMeshCloth"/> 等の探索 / serializeData 復元との整合が崩れるため
-    /// 最低限 build まで通している (remapColliders=false で collider 再マップは省略)。
+    /// donor 無 apply で <see cref="DestroyImmediate"/> された target MagicaCloth_Skirt を snapshot から復元する
+    /// throwaway build。snapshot は **消費しない** (toggle-off の <see cref="RestoreSkirtCloth"/> で再利用)。
+    /// AddComponent 単独だと <see cref="FindSkirtMeshCloth"/> 探索 / serializeData 復元と整合が崩れるため
+    /// 最低限 build まで通す (remapColliders=false)。直後 caller が <see cref="RebuildFromComponent"/> で再 build。
     /// </summary>
     private static bool TryRecoverDestroyedSkirt(GameObject character, Type magicaType)
     {
@@ -551,16 +545,9 @@ internal static class MagicaClothRebuilder
         var targetGo = targetComp.gameObject;
 
         // target hierarchy 内 SMR の name → SMR 辞書 (sourceRenderers 解決用)。
-        //
-        // COSTUME 切替直後は古い衣装の SMR (祖先 inactive で activeInHierarchy=false な orphan) と
-        // 新衣装の SMR (activeInHierarchy=true な生身) が同名で重複しているケースがある
-        // (env.LoadCharacter が wrapper GO を再利用しつつ children を入れ替える経路で発生)。
-        // 単純な「先勝ち」だと iteration order により古い orphan を採用してしまい、
-        // SwapSmr が orphan に donor mesh を swap → 生身 SMR は prefab mesh のまま → 物理 OFF に見える。
-        //
-        // 採用優先順位: activeInHierarchy=true > activeSelf=true (祖先 inactive)。
-        // COSTUME 切替直後 (ShowCharacter 前) で activeInHierarchy=true な SMR が無いケースの fallback として
-        // activeSelf=true も拾う。
+        // COSTUME 切替直後は古い衣装 orphan SMR (祖先 inactive) と新衣装 SMR が同名で重複するため、
+        // 先勝ちだと orphan を採用 → SwapSmr で donor mesh が orphan に流れ生身は prefab mesh のまま物理 OFF。
+        // 採用優先順位: activeInHierarchy=true > activeSelf=true。後者は ShowCharacter 前の fallback。
         var smrByName = new Dictionary<string, SkinnedMeshRenderer>();
         foreach (var smr in character.GetComponentsInChildren<SkinnedMeshRenderer>(true))
         {
@@ -853,21 +840,12 @@ internal static class MagicaClothRebuilder
     }
 
     /// <summary>
-    /// target hierarchy に MCC 系子 GO 自体が無いケース (Bunnygirl target で骨格に collider GO が
-    /// 含まれない等) の救済。<paramref name="parentBone"/> 配下に <paramref name="goName"/> の新規
-    /// GameObject を生成し、source の local TRS / layer を継承、source 同型 component を AddComponent
-    /// + <see cref="CopyFields"/> shallow 移植する。<see cref="MagicaClothInjectedColliderMarker"/>
-    /// を <c>DestroyGameObject=true</c> で付与し、Restore 時に GO ごと destroy する。
-    ///
-    /// layer を親 bone から継承する点は <c>feedback_inject_smr_layer.md</c> と同根の注意 (新規 GO
-    /// は親 layer を自動継承しないため明示コピーしないと grey 描画 / 物理レイヤミスマッチが起きる)。
-    ///
-    /// local TRS 前提: source の localPosition/localRotation/localScale をそのまま target 親 bone 配下に
-    /// 貼るため、donor と target の同名 bone の局所空間が一致している前提に依存する。片側だけ twist
-    /// 加工 / 軸 flip された non-symmetric rig では位置がずれる可能性あり。同様に
-    /// MagicaCapsuleCollider.center / size 等の field も CopyFields で donor 値そのまま転写されるため
-    /// bone 局所空間が一致する前提に依存する。本 mod が対象とする vanilla MagicaCloth GO 命名規則
-    /// (<c>MCC (R_Upperleg_skinJT)</c> 等) では実機検証済で問題無し。
+    /// target に MCC 子 GO が無いケース (Bunnygirl 等) の救済。<paramref name="parentBone"/> 配下に新規 GO 生成し、
+    /// source の local TRS / layer を継承、同型 component を AddComponent + <see cref="CopyFields"/> 移植。
+    /// <see cref="MagicaClothInjectedColliderMarker"/> を <c>DestroyGameObject=true</c> で付与し Restore 時 GO ごと destroy。
+    /// layer 明示コピー必須 (`feedback_inject_smr_layer.md`: 新規 GO は親 layer 非継承で grey 描画になる)。
+    /// local TRS / center / size はそのまま転写するため、donor と target の同名 bone の局所空間一致を前提とする
+    /// (twist / 軸 flip 非対称 rig ではズレる可能性あり)。vanilla MCC 命名 (<c>MCC (R_Upperleg_skinJT)</c>) では検証済。
     /// </summary>
     private static Component InjectColliderGo(GameObject parentBone, Component source, string goName)
     {
@@ -957,15 +935,10 @@ internal static class MagicaClothRebuilder
     }
 
     /// <summary>
-    /// inject された MagicaCloth collider を全削除する。
-    /// <see cref="MagicaClothInjectedColliderMarker.DestroyGameObject"/> によって 2 経路を分岐:
-    /// - <c>true</c>: <see cref="InjectColliderGo"/> で生成した新規 GO → GameObject ごと destroy
-    /// - <c>false</c>: <see cref="CloneColliderTo"/> で既存 GO に AddComponent しただけ → 同 GO 上の
-    ///   <c>MagicaCloth2.Magica*Collider</c> component と marker のみ destroy、GO 自体は target body bone のため残置
-    ///
-    /// 前提: clone 経路 (DestroyGameObject=false) では同 GO に **複数 type の Magica*Collider が共存しない**。
-    /// vanilla MCC GO は 1 GO 1 collider component の構成で、stock collider と clone collider が同 GO に
-    /// 異なる type で共存するケースは想定外。共存が発生する rig では stock 側まで destroy される懸念がある。
+    /// inject された MagicaCloth collider を全削除。<see cref="MagicaClothInjectedColliderMarker.DestroyGameObject"/> で分岐:
+    /// true=GO ごと destroy (<see cref="InjectColliderGo"/> 経路) / false=Magica*Collider と marker のみ destroy
+    /// (<see cref="CloneColliderTo"/> 経路、GO は target body bone のため残置)。
+    /// 前提: clone 経路の同 GO に複数 type の Magica*Collider は共存しない (vanilla は 1 GO 1 collider)。
     /// </summary>
     private static void CleanupInjectedColliders(GameObject character)
     {
@@ -1009,14 +982,10 @@ internal static class MagicaClothRebuilder
     }
 
     /// <summary>
-    /// reflection で全 instance field を src から dst へコピー。
-    /// List/Array 以外は参照コピー (sub-setting object は src と dst で共有される)。
-    /// donor 由来コピーでは Transform 参照が donor 側を指すため、呼出側で ReplaceTransform 必須。
-    ///
-    /// <paramref name="deep"/>=true のとき、MagicaCloth2 系 namespace の custom class field を再帰的に deep-clone する。
-    /// donor → target newComp 経路で donor の SerializeData sub-object (colliderCollisionConstraint 等) が
-    /// target newComp と参照共有 → <see cref="RemapColliderRefs"/> 等の in-place mutation で donor が破壊され、
-    /// COSTUME 切替で旧 target の dead Unity Object が donor.cc に残留 → 後続 apply で全 drop → 物理消失するのを防ぐ。
+    /// reflection で全 instance field を src→dst へコピー。List/Array 以外は参照コピー。
+    /// Transform 参照は donor 側を指すため呼出側で ReplaceTransform 必須。
+    /// <paramref name="deep"/>=true で MagicaCloth2 系 custom class field を再帰 deep-clone:
+    /// in-place mutation (<see cref="RemapColliderRefs"/> 等) が donor SerializeData を破壊 → 後続 apply で物理消失するのを防ぐ。
     /// </summary>
     private static void CopyFields(object src, object dst, bool deep = false, HashSet<object> visited = null)
     {

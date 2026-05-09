@@ -77,18 +77,10 @@ internal static class SkinShrinkCoordinator
 
     private static readonly Dictionary<int, Entry> s_entries = new();
 
-    // cache key 解説:
-    //   prevSkinId    = push 直前の skin SMR.sharedMesh.GetInstanceID() (1 step 入力)
-    //   donorClothId  = cloth SMR.sharedMesh.GetInstanceID()
-    //   yQ/fQ/srQ     = push/falloff/sample の量子化値 (param 同値で cache hit)
-    //   srcTag        = 0=Tops, 1=Bottoms (params が src で異なるため必須)
-    //   kindTag       = 0=mesh_skin_upper push, 1=mesh_skin_lower push
-    //                   (Bottoms 経路で 1 つの skirt mesh を upper/lower 両方に push するため必須)
-    // InstanceID 安全性: Unity の Mesh.GetInstanceID() は process 内で monotonic 採番のため、
-    // InvalidateCache で Destroy 済み Mesh の InstanceID が新規 Mesh で再利用される確率は事実上ゼロ。
-    // 元 TopsLoader/BottomsLoader.s_skinShrinkCache と同等の安全性を継承。
-    // s_entries.Values の OriginalSkinUpper/Lower は addressables 共有 asset のため Destroy されず
-    // InstanceID は永続。よって Original* に対する key は完全安定。
+    // key: (prevSkinId=push 直前 skin mesh, donorClothId=cloth mesh, yQ/fQ/srQ=量子化 params,
+    //       srcTag=0/1 Tops/Bottoms, kindTag=0/1 upper/lower push)
+    // srcTag/kindTag は必須: Bottoms 経路は 1 skirt mesh を upper/lower 両方に push するため。
+    // InstanceID 安全性: Unity は monotonic 採番、Original* は addressables 共有 asset で永続。
     private static readonly Dictionary<(int prevSkinId, int donorClothId, int yQ, int fQ, int srQ, int srcTag, int kindTag), Mesh> s_cache = new();
 
     // Anchor は非 skin 系 (face/eye) を優先する。upper/lower 互いを anchor から外すことで
@@ -348,20 +340,14 @@ internal static class SkinShrinkCoordinator
     }
 
     /// <summary>
-    /// 指定 character の skin_upper SMR を、Coordinator が保持する stable な原 mesh
-    /// (<c>e.OriginalSkinUpper</c>) に書き戻す。<see cref="TopsLoader"/> の Apply (d)
-    /// で <c>CaptureSnapshotIfFirst</c> 直前に呼ぶ用途。
+    /// skin_upper SMR を Coordinator 保持の stable な原 mesh (<c>e.OriginalSkinUpper</c>) に書き戻す。
+    /// <see cref="TopsLoader"/> の Apply (d) で <c>CaptureSnapshotIfFirst</c> 直前に呼ぶ。
     ///
-    /// 動機: ApplyDirectly 経路では <see cref="TopsLoader.RestoreFor"/> → <see cref="UnregisterTops"/>
-    /// の <see cref="RefreshOne"/> が HasBottoms 残存時に Bottoms contribution を skin_upper に
-    /// push して sharedMesh を transient pushed Mesh で上書きする。直後の Apply (d) で
-    /// <c>CaptureSnapshotIfFirst</c> がその transient Mesh を <c>OriginalMesh</c> として焼き込むと、
-    /// 次の slider 変更で <c>InvalidateCache</c> が transient を Destroy → RestoreFor が destroyed
-    /// Mesh を sharedMesh に戻す → skin_upper 描画破損 という連鎖が起きる。本 API で capture 直前に
-    /// stable asset へ rewind することで snapshot が常に addressables 由来 asset を指すよう保つ。
+    /// Why: ApplyDirectly 経路で RestoreFor→UnregisterTops→RefreshOne が HasBottoms 残存時に transient pushed Mesh で
+    /// sharedMesh を上書きし、それを Snapshot が OriginalMesh として焼き込むと、次の Invalidate→Destroy で
+    /// destroyed Mesh が sharedMesh に書き戻され描画破損する。snapshot が常に addressables asset を指すよう rewind。
     ///
-    /// no-op 条件: character/smr null、entry 未登録 (初回 Apply / ClearScene 直後)、
-    /// OriginalSkinUpper 未捕捉、既に一致。
+    /// no-op: null/未登録/OriginalSkinUpper 未捕捉/既に一致。
     /// </summary>
     internal static void RestoreSkinUpperToOriginal(GameObject character, SkinnedMeshRenderer skinUpperSmr)
     {
