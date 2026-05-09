@@ -16,6 +16,11 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 /// <see cref="TopsLoader.ApplyIfOverridden"/> を呼ぶ。flag=false パスでは Postfix 時点で
 /// <c>m_chara==null</c> (Unload 直後 + async Load 開始) なので skip し、後続の
 /// <see cref="TopsSetupPatch"/> Postfix に Apply を委ねる。
+///
+/// Bottoms 用の対称 fallback は意図的に設けていない。BottomsLoader.s_applied 冪等性 +
+/// preserve されている target の snapshot/swap 済 SMR の保持だけで、Bar→VIP→Bar 等の往復で
+/// Bottoms override が剥がれる症状は今のところ観測されていない。観測ベースで Bottoms に
+/// fallback が必要なシナリオが見つかったら BottomsPreloadFallbackPatch を別途追加する。
 /// </summary>
 [HarmonyPatch(typeof(CharacterHandle), nameof(CharacterHandle.Preload))]
 internal static class TopsPreloadFallbackPatch

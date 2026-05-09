@@ -868,6 +868,9 @@ internal static class MagicaClothRebuilder
         if (newSerData2 == null) return;
         var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
+        // resolve は 1 回だけ。途中で field 未解決なら警告を出して flag は true のまま放置する
+        // (= fix が永続的に no-op になる) のは意図通り。MagicaCloth の仕様変更時にログ連発を避け、
+        // 残りの rebuild path は SafeDestroyPreservingSmrState の SMR.sharedMesh 再注入に縮退委譲する。
         if (!s_originalMeshNullifyResolved)
         {
             s_originalMeshNullifyResolved = true;

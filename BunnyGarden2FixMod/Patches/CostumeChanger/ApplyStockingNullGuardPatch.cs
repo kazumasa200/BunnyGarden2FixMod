@@ -15,8 +15,16 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 /// タイトル戻り後の panties only Preload (setupPantiesOnly → ApplyStocking.Forget) で
 /// sharedMesh が null 化していると NRE する。同症状の既知記述: KneeSocksLoader.cs:244 のコメント。
 ///
-/// skip 前に m_lastLoadArg.Stocking = type を更新する。NRE 経路 (IsDisableStocking==false) との
-/// 互換性維持で、IsDisableStocking==true キャラとは挙動差が出るが NRE 回避を優先。
+/// skip 前に m_lastLoadArg.Stocking = type を更新するのは本体 CharacterHandle.cs:605 の挙動
+/// 再現で必須。本体は L605 で type を保存してから L606 以降の SMR 処理に進むため、保存だけは
+/// 完了している状態を維持する必要がある。CharacterHandle.cs:469 / L830 / L865 の各経路で
+/// `ApplyStocking(m_lastLoadArg.Stocking).Forget()` 形で「保存値による再 apply」が走るため、
+/// この更新を削除すると skip 後の再 apply で古い値が再注入され、ユーザの選択 type が消失する
+/// (HideShoes (L671) の `m_lastLoadArg.Stocking != 0` 判定も同根拠で要更新)。
+///
+/// IsDisableStocking==true キャラでは本体は L599 で更新せず return するが、Patch Prefix は
+/// L599 より前で発火するため sharedMesh==null かつ IsDisableStocking==true の組み合わせでは
+/// 「本体は更新しない / Patch は更新する」差分が残る。NRE 回避を優先して許容。
 /// </summary>
 [HarmonyPatch(typeof(CharacterHandle), nameof(CharacterHandle.ApplyStocking))]
 public static class ApplyStockingNullGuardPatch
