@@ -13,10 +13,6 @@ namespace BunnyGarden2FixMod.Patches;
 ///
 ///   LipSyncCalculator.Calculate 内で口パクの速度が固定値になっていたため
 /// 　フレームレートが高いと高速になっていた。フレームレートに合わせた数値に書き換える
-///   設定値 = 基準値 0.35f x 60 / FPS
-///    60FPS   → 基準 0.35f (×1.0)
-///    120FPS  → x0.5
-///    240FPS  → x0.25
 /// </summary>
 [HarmonyPatch(typeof(LipSyncCalculator), nameof(LipSyncCalculator.Calculate))]
 public static class LipSyncFpsFixPatch
@@ -35,18 +31,28 @@ public static class LipSyncFpsFixPatch
         var originalMethod = AccessTools.Method(typeof(Mathf), nameof(Mathf.Lerp), new[] { typeof(float), typeof(float), typeof(float) });
         var replacedMethod = AccessTools.Method(typeof(LipSyncFpsFixPatch), nameof(CustomLerp));
 
-        var GetFrequency = typeof(AudioClip).GetProperty("frequency").GetGetMethod();
-        var GetFPSMethod = AccessTools.Method(typeof(LipSyncFpsFixPatch), nameof(GetFPS));
+        var GetFrequencyMethod = AccessTools.PropertyGetter(typeof(AudioClip), nameof(AudioClip.frequency));
+        var GetDeltaTimeMethod = AccessTools.PropertyGetter(typeof(Time), nameof(Time.deltaTime));
 
         int patched = 0;
         for (int i = 0; i < codes.Count; i++)
         {
-            // this.m_clip.frequency / 60 の書き換え
-            if (codes[i].Calls(GetFrequency) &&
-                i+1 < codes.Count && codes[i+1].LoadsConstant(60) &&
-                i+2 < codes.Count && codes[i+2].opcode == OpCodes.Div)
+            // this.m_clip.frequency / 60 を (int)((float)this.m_clip.frequency * deltaTime) に書き換え
+            if (i+2 < codes.Count &&
+                codes[i].Calls(GetFrequencyMethod) &&
+                codes[i+1].LoadsConstant(60) &&
+                codes[i+2].opcode == OpCodes.Div)
             {
-                codes[i+1] = new CodeInstruction(OpCodes.Call, GetFPSMethod);
+                codes[i+1].opcode = OpCodes.Conv_R4;
+                codes[i+1].operand = null;
+
+                codes[i+2].opcode = OpCodes.Call;
+                codes[i+2].operand = GetDeltaTimeMethod;
+
+                codes.Insert(i+3, new CodeInstruction(OpCodes.Mul));
+                codes.Insert(i+4, new CodeInstruction(OpCodes.Conv_I4));
+
+                i += 4;
                 patched++;
                 continue;
             }
@@ -69,15 +75,9 @@ public static class LipSyncFpsFixPatch
 
     private static float CustomLerp(float a, float b, float t)
     {
-        float custom_t = 1.0f - Mathf.Pow(1.0f - t, 60f / (float)GetFPS());
+        float fpsRatio = Time.deltaTime * 60f;
+        float custom_t = 1.0f - Mathf.Pow(1.0f - t, fpsRatio);
         return Mathf.Lerp(a, b, custom_t);
-    }
-
-    private static int GetFPS()
-    {
-        int AppliedFrameRate = Application.targetFrameRate;
-        int FPS = AppliedFrameRate <= 0 ? 60 : AppliedFrameRate;
-        return FPS;
     }
 
 }
