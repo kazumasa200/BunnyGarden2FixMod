@@ -86,6 +86,7 @@
 | `GambleAlwaysWin` | `false` | ギャンブルで負けなくなる（チート） |
 | `Likability` | `false` | 好感度ヒント表示<br>会話選択肢・ドリンク・フードの正解をゲーム内に表示します。<br>【会話選択肢】選択肢テキストの先頭に記号が追加されます。<br>  ★ : 好感度UP（正解）<br>  ▼ : 好感度DOWN（酔い選択肢だが現在の状況では効果なし）<br>【ドリンク・フード】アイテムの背景色が変化します。<br>  緑 : キャストのお気に入り（AddFavoriteLikability > 0）<br>  黄 : 今日の旬アイテム（ボーナスあり）<br>  赤 : キャストが嫌いなもの（AddFavoriteLikability < 0） |
 | `BunnyDrinksEnabled` | `false` | バニー系ドリンクを常時メニューに追加<br>BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。 |
+| `SwaySkirtEnabled` | `false` | ミニゲーム時にそよかぜを吹かせる<br>ミニゲーム時にそよかぜを吹かせます（デフォルトキー J） |
 
 #### キャスト出勤順変更の操作方法
 
@@ -194,4 +195,6 @@ Wardrobe パネル表示中、以下のキーで操作できます。
 | `FastForwardButton` | `None` | 早送りホールドのボタン<br>押している間のみ有効。倍率は FastForwardSpeed で設定。 |
 | `ShowKey` | `F7` | 衣装変更 UI 表示のキーボードキー |
 | `ShowButton` | `None` | 衣装変更 UI 表示のボタン |
+| `SwaySkirtHotKeyKey` | `J` | そよかぜを吹かせる（ミニゲームのみ）のキーボードキー |
+| `SwaySkirtHotKeyButton` | `None` | そよかぜを吹かせる（ミニゲームのみ）のボタン |
 

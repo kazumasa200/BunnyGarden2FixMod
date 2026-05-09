@@ -71,6 +71,8 @@ public static class Configs
     public static ConfigEntry<bool> CheatLikability;
     /// <summary>バニー系ドリンクを常時メニューに追加</summary>
     public static ConfigEntry<bool> BunnyDrinksEnabled;
+    /// <summary>ミニゲーム時にそよかぜを吹かせる</summary>
+    public static ConfigEntry<bool> SwaySkirtEnabled;
     /// <summary>衣装変更を有効化（要再起動）</summary>
     public static ConfigEntry<bool> CostumeChangerEnabled;
     /// <summary>ゲーム指定衣装を優先</summary>
@@ -127,6 +129,8 @@ public static class Configs
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig FastForward;
     /// <summary>衣装変更 UI 表示</summary>
     public static global::BunnyGarden2FixMod.Utils.HotkeyConfig CostumeChangerShow;
+    /// <summary>そよかぜを吹かせる（ミニゲームのみ）</summary>
+    public static global::BunnyGarden2FixMod.Utils.HotkeyConfig SwaySkirt;
 
     // ─── BindAll: Plugin.Awake から1回呼ぶ ──────────
     public static void BindAll(ConfigFile cfg)
@@ -305,6 +309,11 @@ F1 で編集モードを開始し、数字キー（1〜5）でキャストを選
             false,
             @"バニー系ドリンクを常時メニューに追加
 BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。");
+
+        SwaySkirtEnabled = cfg.Bind("Cheat", "SwaySkirtEnabled",
+            false,
+            @"ミニゲーム時にそよかぜを吹かせる
+ミニゲーム時にそよかぜを吹かせます（デフォルトキー J）");
 
         CostumeChangerEnabled = cfg.Bind("CostumeChanger", "Enabled",
             true,
@@ -500,6 +509,13 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             global::UnityEngine.InputSystem.Key.F7,
             global::BunnyGarden2FixMod.Utils.ControllerButton.None,
             @"衣装変更 UI 表示",
+            @"");
+
+        SwaySkirt = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
+            "Hotkey", "SwaySkirtHotKey",
+            global::UnityEngine.InputSystem.Key.J,
+            global::BunnyGarden2FixMod.Utils.ControllerButton.None,
+            @"そよかぜを吹かせる（ミニゲームのみ）",
             @"");
 
     }
@@ -739,6 +755,14 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
+            Category = "Cheat",
+            Label    = "ミニゲーム時にそよかぜを吹かせる",
+            Desc     = "ミニゲーム時にそよかぜを吹かせます（デフォルトキー J）",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => SwaySkirtEnabled),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
             Category = "CostumeChanger",
             Label    = "衣装変更を有効化（要再起動）",
             Desc     = "衣装変更 UI とパッチを有効化します。\nOFF→ON でパッチ適用が必要なため、変更は再起動後に反映されます。\n",
@@ -975,6 +999,15 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             Desc     = "",
             Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.KeyBinding,
             HotkeyProvider  = () => CostumeChangerShow,
+            DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Utils.ControllerButton)),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "Hotkey",
+            Label    = "そよかぜを吹かせる（ミニゲームのみ）",
+            Desc     = "",
+            Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.KeyBinding,
+            HotkeyProvider  = () => SwaySkirt,
             DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Utils.ControllerButton)),
         },
     };

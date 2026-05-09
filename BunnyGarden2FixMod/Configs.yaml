@@ -353,6 +353,14 @@
       ui:
         kind: toggle
 
+    - name: SwaySkirtEnabled
+      label: ミニゲーム時にそよかぜを吹かせる
+      type: bool
+      default: false
+      description: ミニゲーム時にそよかぜを吹かせます（デフォルトキー J）
+      ui:
+        kind: toggle
+
 
 - section: CostumeChanger
   name: 衣装変更
@@ -690,6 +698,15 @@
       key: Show
       type: hotkey
       defaultKey: F7
+      defaultButton: None
+      ui:
+        kind: keybinding
+
+    - name: SwaySkirt
+      label: そよかぜを吹かせる（ミニゲームのみ）
+      key: SwaySkirtHotKey
+      type: hotkey
+      defaultKey: J
       defaultButton: None
       ui:
         kind: keybinding
