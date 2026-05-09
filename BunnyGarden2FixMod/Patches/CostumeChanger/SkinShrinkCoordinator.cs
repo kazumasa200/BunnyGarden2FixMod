@@ -236,9 +236,9 @@ internal static class SkinShrinkCoordinator
         {
             // face/eye 不在 fallback: 旧 skin系 anchor (互いを除外)
             anchorForUpper = (skinUpper != null && skinUpper.sharedMesh != null)
-                ? TopsLoader.CollectSkinShrinkAnchorVerts(renderers, s_fallbackExcludeUpper) : null;
+                ? CollectSkinShrinkAnchorVerts(renderers, s_fallbackExcludeUpper) : null;
             anchorForLower = (skinLower != null && skinLower.sharedMesh != null)
-                ? TopsLoader.CollectSkinShrinkAnchorVerts(renderers, s_fallbackExcludeLower) : null;
+                ? CollectSkinShrinkAnchorVerts(renderers, s_fallbackExcludeLower) : null;
             PatchLogger.LogDebug($"[SkinShrinkCoord] face/eye anchor 不在、skin系 fallback 経路 ({character.name})");
         }
 
@@ -265,6 +265,28 @@ internal static class SkinShrinkCoordinator
 
         if (totalSteps > 0)
             PatchLogger.LogDebug($"[SkinShrinkCoord] refresh: {totalSteps} step (hasTops={e.HasTops}, hasBottoms={e.HasBottoms}, anchorVerts={anchor.Length}, {character.name})");
+    }
+
+    /// <summary>
+    /// shrink 対象 SMR (引数 <paramref name="excludeNames"/>) を除く skin 系 SMR の頂点を集める。
+    /// MeshPenetrationResolver の skin push の falloff anchor として使う (隣接 skin との境界で
+    /// push 量を 0 にフェードさせるため)。
+    /// face/eye anchor 不在時の fallback 経路で使用。
+    /// </summary>
+    /// <param name="renderers">character 配下の全 SMR スナップショット。</param>
+    /// <param name="excludeNames">anchor から除外する SMR 名集合 (shrink 対象自身)。例: "mesh_skin_upper" / "mesh_skin_lower"。</param>
+    private static Vector3[] CollectSkinShrinkAnchorVerts(
+        SkinnedMeshRenderer[] renderers, HashSet<string> excludeNames)
+    {
+        var list = new List<Vector3>();
+        foreach (var r in renderers)
+        {
+            if (r == null || r.sharedMesh == null) continue;
+            if (!r.name.StartsWith("mesh_skin_", System.StringComparison.Ordinal)) continue;
+            if (excludeNames != null && excludeNames.Contains(r.name)) continue;
+            list.AddRange(r.sharedMesh.vertices);
+        }
+        return list.ToArray();
     }
 
     /// <summary>

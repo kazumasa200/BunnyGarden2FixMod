@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
@@ -18,7 +19,7 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 /// 設計方針 (bottoms-variable-list 計画):
 ///   - Wardrobe (F7) の Bottoms タブで donor (CharID + CostumeType) が選択されると
 ///     <see cref="PreloadDonorAsync"/> が呼ばれ、未ロードならその場で preload する。
-///     並行性ガードは in-flight タスクキャッシュ (<see cref="s_inFlight"/>) で実現。
+///     並行性ガードは in-flight タスクキャッシュ (<see cref="DonorPreloadCache{T}"/>) で実現。
 ///   - <see cref="CharacterHandle.setup"/> Postfix（<see cref="BottomsSetupPatch"/>）から
 ///     <see cref="ApplyIfOverridden"/> を呼び、target の Bottoms 候補 SMR を donor の同名 SMR で
 ///     sharedMesh + bones (リマップ) + materials を差し替える。donor のみ持つ SMR は注入し、
@@ -45,7 +46,7 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 /// GC ガード:
 ///   - donor preload 用 GameObject は <see cref="Initialize"/> で渡される pickerHost
 ///     （CostumeChangerPatch で DontDestroyOnLoad 済み）配下に <c>SetActive(false)</c> で配置。
-///   - <see cref="DonorEntry.Handle"/> を <see cref="s_donors"/> 辞書で参照保持し
+///   - <see cref="DonorEntry.Handle"/> を <see cref="s_cache"/> 内辞書で参照保持し
 ///     CharacterHandle インスタンスが GC されないようにする。
 /// </summary>
 public class BottomsLoader : MonoBehaviour
@@ -58,35 +59,10 @@ public class BottomsLoader : MonoBehaviour
         public List<SkinnedMeshRenderer> BottomsSmrs;       // Bottoms 候補 (IsBottomsCandidate フィルタ後)
     }
 
-    /// <summary>
-    /// Apply 時に target SMR の元状態を保存し、Restore 時に復元するためのスナップショット。
-    /// 1 instanceId × kind (= SMR 名) ごとに 1 エントリ。同 instance 上で複数回 Apply
-    /// しても初回 Apply 時のみ保存し、以後は上書きしない（Restore で素の状態に戻すため）。
-    /// </summary>
-    private struct TargetKindSnapshot
-    {
-        public bool WasInjected;          // true なら Restore 時に GameObject を Destroy
-        public GameObject InjectedGo;     // WasInjected 用
-        public bool OriginalActive;
-        public bool OriginalEnabled;      // Renderer.enabled (描画 ON/OFF)
-        // OriginalMesh は addressables 所有のため Destroy されず、参照保持のみで安全に Restore できる
-        // （SwimWearStockingPatch / KneeSocksLoader / TopsLoader と同方針）。
-        public Mesh OriginalMesh;
-        public Transform[] OriginalBones;
-        public Material[] OriginalMaterials;
-    }
-
-    private static readonly Dictionary<(CharID Donor, CostumeType Costume), DonorEntry> s_donors = new();
-    // key の IsInjected は additive モードで target 既存 SMR と inject SMR が同名で並ぶケースの識別用
-    // (例: target LUNA SwimWear の mesh_costume_frill + donor inject の mesh_costume_frill)。
-    // 通常モードでも swap (IsInjected=false) と inject (IsInjected=true) は元々 kind 集合 disjoint だが、
-    // additive 導入で同名衝突が起きうるため型に組み込む (TopsLoader と同形)。
-    private static readonly Dictionary<(int InstanceId, string Kind, bool IsInjected), TargetKindSnapshot> s_targetSnapshots = new();
-
-    // 進行中の preload タスクをキーごとに共有することで、同一 (donor, costume) への
-    // 重複呼出が二重 GameObject 生成や CharacterHandle.Preload 多重発火を起こさないようにする。
-    // 単一スレッド (Unity main thread) 前提のため lock 不要。
-    private static readonly Dictionary<(CharID Donor, CostumeType Costume), UniTask<bool>> s_inFlight = new();
+    private static readonly DonorPreloadCache<DonorEntry> s_cache = new(
+        "[BottomsLoader]",
+        BuildDonorEntry,
+        e => e.BottomsSmrs != null && e.BottomsSmrs.Count > 0);
 
     // donor preload 用のホスト GameObject。Initialize で同期生成し、pickerHost の
     // DontDestroyOnLoad を継承するためシーン遷移をまたいで生存する。
@@ -107,7 +83,7 @@ public class BottomsLoader : MonoBehaviour
     /// </summary>
     internal static IEnumerable<string> GetTransplantedBottomsKinds(CharID donorChar, CostumeType donorCostume)
     {
-        if (!s_donors.TryGetValue((donorChar, donorCostume), out var donor)) yield break;
+        if (!s_cache.TryGet((donorChar, donorCostume), out var donor)) yield break;
         if (donor.BottomsSmrs == null) yield break;
         foreach (var smr in donor.BottomsSmrs)
         {
@@ -117,23 +93,13 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// 指定の parent GameObject が donor preload host (s_loaderHostRoot 配下) かを判定。
-    /// CostumeChangerPatch.Prefix から donor preload 経路の override 適用を抑止するために参照。
-    /// </summary>
-    internal static bool IsDonorPreloadParent(GameObject parent)
-    {
-        if (parent == null || s_loaderHostRoot == null) return false;
-        return parent.transform.IsChildOf(s_loaderHostRoot.transform);
-    }
-
-    /// <summary>
     /// DIAGNOSTIC ONLY — SwimWear 物理診断用。
     /// preload 済みの donor GameObject を取得する。
     /// preload が未完了 or 失敗した場合は false を返す。
     /// </summary>
     internal static bool TryGetDonorParent(CharID donor, CostumeType costume, out GameObject parent)
     {
-        if (s_donors.TryGetValue((donor, costume), out var entry) && entry.DonorParent != null)
+        if (s_cache.TryGet((donor, costume), out var entry) && entry.DonorParent != null)
         {
             parent = entry.DonorParent;
             return true;
@@ -153,6 +119,8 @@ public class BottomsLoader : MonoBehaviour
         s_loaderHostRoot = new GameObject(nameof(BottomsLoader) + "Hosts");
         s_loaderHostRoot.transform.SetParent(loader.transform, false);
         s_loaderHostRoot.SetActive(false);
+        s_cache.SetHostRoot(s_loaderHostRoot);
+        DonorPreloadRegistry.Register(s_cache.IsHostParent);
         SceneManager.sceneUnloaded += OnSceneUnloaded;
         // BottomsSkinShrink 系は live tune (F9 設定パネル等) で値が変わると即時反映する。
         if (Configs.BottomsSkinShrink != null)
@@ -208,97 +176,28 @@ public class BottomsLoader : MonoBehaviour
     /// 既にキャッシュ済みなら即時 true を返す。in-flight の場合は同じ task を共有する。
     /// 戻り値は「donor が Bottoms 候補 SMR を 1 つ以上持つか」。両方無い場合は false。
     /// </summary>
-    public static UniTask<bool> PreloadDonorAsync(CharID donor, CostumeType costume)
+    public static UniTask<bool> PreloadDonorAsync(CharID donor, CostumeType costume) =>
+        s_cache.PreloadAsync(donor, costume);
+
+    private static DonorEntry BuildDonorEntry(
+        CharID donor, CostumeType costume, GameObject donorParent,
+        CharacterHandle handle, List<SkinnedMeshRenderer> allSmrs)
     {
-        var key = (donor, costume);
-        if (s_donors.TryGetValue(key, out var cached))
-            return UniTask.FromResult(cached.BottomsSmrs != null && cached.BottomsSmrs.Count > 0);
-        if (s_inFlight.TryGetValue(key, out var pending))
-            return pending;
+        var bottomsSmrs = allSmrs.Where(IsBottomsCandidate).ToList();
+        var entry = new DonorEntry { Handle = handle, DonorParent = donorParent, AllSmrs = allSmrs, BottomsSmrs = bottomsSmrs };
 
-        // UniTaskCompletionSource は内部 continuation を multi-cast 保持するため
-        // pre-completion で複数の await/Forget/ContinueWith が安全。
-        // .Preserve() の MemoizeSource は OnCompleted を underlying source に forward するだけで
-        // 単一 continuation slot 制約を解消しないため使用不可。
-        var tcs = new UniTaskCompletionSource<bool>();
-        s_inFlight[key] = tcs.Task;
-        RunPreloadWorker(donor, costume, tcs).Forget();
-        return tcs.Task;
-    }
-
-    private static async UniTaskVoid RunPreloadWorker(CharID donor, CostumeType costume, UniTaskCompletionSource<bool> tcs)
-    {
-        var key = (donor, costume);
-        bool result = false;
-        try
-        {
-            result = await PreloadDonorInternal(donor, costume);
-        }
-        catch (Exception ex)
-        {
-            PatchLogger.LogWarning($"[BottomsLoader] preload worker 例外: {donor}/{costume}: {ex}");
-        }
-        finally
-        {
-            // TrySetResult を先に呼ぶことで、同期的に発火する continuation 中も
-            // s_inFlight に entry が残り、再帰的な PreloadDonorAsync(同 key) は
-            // 完了済みの tcs.Task を即座に返すため二重 worker 起動を防ぐ。
-            tcs.TrySetResult(result);
-            s_inFlight.Remove(key);
-        }
-    }
-
-    private static async UniTask<bool> PreloadDonorInternal(CharID donor, CostumeType costume)
-    {
-        var key = (donor, costume);
-        try
-        {
-            if (s_loaderHostRoot == null)
-            {
-                PatchLogger.LogWarning($"[BottomsLoader] preload 前に Initialize が必要: {donor}/{costume}");
-                return false;
-            }
-
-            await UniTask.WaitUntil(() => GBSystem.Instance != null && GBSystem.Instance.RefSaveData() != null);
-
-            var donorParent = new GameObject($"Donor_{donor}_{costume}");
-            donorParent.transform.SetParent(s_loaderHostRoot.transform, false);
-            donorParent.SetActive(false);
-
-            var handle = new CharacterHandle(donorParent);
-            handle.Preload(donor, new CharacterHandle.LoadArg { Costume = costume });
-            await UniTask.WaitUntil(() => handle.IsPreloadDone());
-
-            // await 再開後に別 caller が同 key を先に登録している場合は自分の donorParent を破棄して
-            // 既存エントリに合流する（Wardrobe での donor 連打による二重 preload 防止）。
-            if (s_donors.TryGetValue(key, out var raceWinner))
-            {
-                UnityEngine.Object.Destroy(donorParent);
-                return raceWinner.BottomsSmrs != null && raceWinner.BottomsSmrs.Count > 0;
-            }
-
-            var allSmrs = donorParent.GetComponentsInChildren<SkinnedMeshRenderer>(true).ToList();
-            var bottomsSmrs = allSmrs.Where(IsBottomsCandidate).ToList();
-            s_donors[key] = new DonorEntry { Handle = handle, DonorParent = donorParent, AllSmrs = allSmrs, BottomsSmrs = bottomsSmrs };
-
-            PatchLogger.LogDebug($"[BottomsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, bottomsCandidates={bottomsSmrs.Count}, names=[{string.Join(", ", bottomsSmrs.Select(s => s.name))}])");
-            return bottomsSmrs.Count > 0;
-        }
-        catch (Exception ex)
-        {
-            PatchLogger.LogWarning($"[BottomsLoader] preload 失敗: {donor}/{costume}: {ex}");
-            return false;
-        }
+        PatchLogger.LogDebug($"[BottomsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, bottomsCandidates={bottomsSmrs.Count}, names=[{string.Join(", ", bottomsSmrs.Select(s => s.name))}])");
+        return entry;
     }
 
     // 全 state を scene 跨ぎで保持する (TopsLoader.OnSceneUnloaded と同方針)。
     // m_holeScene の char は env scene 切替で preserve されるため同 InstanceID で Apply trigger
-    // (BottomsSetupPatch) が再発火する。s_targetSnapshots を Clear すると、scene 2 での再 Apply 時に
-    // CaptureSnapshotIfFirst が現在 (= donor 補正済み) の SMR.sharedMesh を OriginalMesh として
+    // (BottomsSetupPatch) が再発火する。SmrSnapshotStore を Clear すると、scene 2 での再 Apply 時に
+    // Capture が現在 (= donor 補正済み) の SMR.sharedMesh を OriginalMesh として
     // 誤記録し、Wardrobe Restore が donor mesh に戻す壊れた挙動になる。s_applied / MagicaCloth
     // snapshot も同理由で保持。session 内では Unity の InstanceID は再利用されないため、旧シーンの
     // 破棄済み target に紐づく stale entry は harmless に残るのみで誤検知しない。
-    // s_inFlight は意図的に保持: donorParent は DontDestroyOnLoad 配下なので scene 跨ぎでも安全。
+    // s_cache (donor preload) は意図的に保持: donorParent は DontDestroyOnLoad 配下なので scene 跨ぎでも安全。
     // SkinShrinkCoordinator.s_entries は ClearScene で破棄するが、後続 Apply で Register* が再構築する。
     private static void OnSceneUnloaded(Scene scene)
     {
@@ -380,17 +279,16 @@ public class BottomsLoader : MonoBehaviour
         if (handle?.Chara == null) return;
 
         // donor 自身の setup() Postfix を除外。preload host 配下は SetActive(false) でも setup() は走る。
-        // 自分の host + TopsLoader の preload host 配下も skip 必須: 同 CharID で Bottoms override 登録時、
+        // 全 Loader (Tops/Bottoms/...) の preload host 配下も skip 必須: 同 CharID で Bottoms override 登録時、
         // donor の skin SMR.sharedMesh が SkinShrink で transient Mesh に置換 → InvalidateCache で
         // destroyed → target Apply の swap source を巻き込み破壊する (実機 diag 2026-05-08)。
-        if (s_loaderHostRoot != null && handle.Chara.transform.IsChildOf(s_loaderHostRoot.transform)) return;
-        if (TopsLoader.IsDonorPreloadParent(handle.Chara)) return;
+        if (DonorPreloadRegistry.IsAnyHostParent(handle.Chara)) return;
 
         var id = handle.GetCharID();
         if (!BottomsOverrideStore.TryGet(id, out var entry)) return;
 
         var donorKey = (entry.DonorChar, entry.DonorCostume);
-        if (s_donors.ContainsKey(donorKey))
+        if (s_cache.ContainsKey(donorKey))
         {
             Apply(handle.Chara, entry.DonorChar, entry.DonorCostume);
             return;
@@ -438,12 +336,12 @@ public class BottomsLoader : MonoBehaviour
         //   donor の Bottoms SMR を inject 経路で重ねる。target の元 frill 等を維持できる。
         //   donor=SwimWear (Bottoms に SwimWear donor を当てるレアケース) は従来 (a)(b)(c) で処理。
         // m_lastLoadArg が race 等で null の場合は additive=false (= 既存通常モード) にフォールバック。
-        var targetHandle = ResolveTargetHandle(character);
+        var targetHandle = Internal.CharacterResolver.ResolveHandle(character);
         var targetCostume = targetHandle?.m_lastLoadArg?.Costume;
         bool additiveMode = (targetCostume == CostumeType.SwimWear || targetCostume == CostumeType.Bunnygirl)
                             && donorCostume != CostumeType.SwimWear;
 
-        if (!s_donors.TryGetValue((donorChar, donorCostume), out var donor))
+        if (!s_cache.TryGet((donorChar, donorCostume), out var donor))
         {
             // preload 未完了 vs 本当に donor 未登録（再起動が必要）を区別してログを出す。
             // preload 完了前に setup() Postfix が走るタイミング（GBSystem 待機中など）でも
@@ -469,6 +367,58 @@ public class BottomsLoader : MonoBehaviour
         // TopsLoader は逆に Count==0 で early return するが、Bottoms は target を消しても
         // 致命的にならないため hide 経路を維持する。
 
+        var ctx = new BottomsApplyContext
+        {
+            Character = character,
+            Donor = donor,
+            AdditiveMode = additiveMode,
+            InstanceId = instanceId,
+            Renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true),
+            SwappedBottomsPairs = new List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer Donor)>(),
+            DidSomething = false,
+        };
+
+        ApplySmrPhase(ref ctx);
+
+        ApplySkinShrinkPhase(ref ctx);
+
+        // didSomething に関わらず Applied 登録（冪等性確保、再 setup() trigger 時の毎フレーム再走査回避）。
+        // s_applied は scene 跨ぎで保持される (memory feedback_scene_unload_snapshot_clear.md)。
+        // session 内で InstanceID は再利用されないため stale entry は harmless。
+        s_applied.Add(instanceId);
+        if (ctx.DidSomething)
+        {
+            PatchLogger.LogInfo($"[BottomsLoader] 適用: {character.name} ← {donorChar}/{donorCostume}");
+            // ctx.DidSomething=true は SMR.bones / sharedMesh / sharedMaterials のいずれかを実書換えしたことを
+            // 必ず含意する。bones 入れ替えなしなら MagicaCloth binding ずれも発生しないため rebind 不要。
+            RebindMagicaClothIfActive(character, donor);
+        }
+    }
+
+    /// <summary>
+    /// Apply 内で 2 phase 跨ぎに引き回す中間状態。フェーズ間の SMR ペア / DidSomething 流れを 1 構造体に集約。
+    ///
+    /// Renderers: Apply 開始時点の <c>GetComponentsInChildren&lt;SkinnedMeshRenderer&gt;</c> snapshot
+    /// （<see cref="MagicaClothRebuilder.NormalizeSmrMeshBeforeSwap"/> 後に取得）。(b) で
+    /// <see cref="InjectSmrLogged"/> された新規 SMR は含まない (元 Apply の挙動と等価)。
+    /// </summary>
+    private struct BottomsApplyContext
+    {
+        public GameObject Character;
+        public DonorEntry Donor;
+        public bool AdditiveMode;
+        public int InstanceId;
+        public SkinnedMeshRenderer[] Renderers;
+        public List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer Donor)> SwappedBottomsPairs;
+        public bool DidSomething;
+    }
+
+    /// <summary>
+    /// (a)(b)(c) Bottoms SMR の swap / inject / hide。topsOwnedGoIds 除外と targetByName/donorByName
+    /// 構築、debug ログを含む。
+    /// </summary>
+    private static void ApplySmrPhase(ref BottomsApplyContext ctx)
+    {
         // per-loader isolation: TopsLoader (c2) が SwimWear donor 経由で植えた / 上書きした
         // Bottoms 候補 SMR は BottomsLoader から透過扱い。target 側のみ除外し donor 側は除外しない
         // → LUNA frill (TopsLoader 所有) と donor frill (BottomsLoader 注入) が独立 GameObject として共存。
@@ -476,10 +426,9 @@ public class BottomsLoader : MonoBehaviour
         // GameObject InstanceID で識別 (name 単位ではない): name ベースだと BottomsLoader 自身が前回 bottoms donor で
         // inject した同名 SMR (例: 前 donor=Babydoll で frill 注入後、新 donor=Casual に切替) も誤って巻き添え除外され、
         // (c) hide 経路で清掃されず孤児として残留してしまうため。snapshot ベースで TopsLoader が touch した GO のみ識別する。
-        var topsOwnedGoIds = new HashSet<int>(TopsLoader.GetOwnedBottomsCandidateGoIds(character));
+        var topsOwnedGoIds = new HashSet<int>(TopsLoader.GetOwnedBottomsCandidateGoIds(ctx.Character));
 
-        var renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-        var targetBottomsList = renderers.Where(IsBottomsCandidate).ToList();
+        var targetBottomsList = ctx.Renderers.Where(IsBottomsCandidate).ToList();
 
         // 同名 SMR 重複の検出。COSTUME 切替直後は古い衣装の SMR (祖先 inactive で activeInHierarchy=false な orphan) と
         // 新衣装の SMR (生身) が同名で重複するケースがある。単純な「先勝ち」だと iteration order により orphan を採用してしまい、
@@ -504,13 +453,13 @@ public class BottomsLoader : MonoBehaviour
             }
             else
             {
-                PatchLogger.LogWarning($"[BottomsLoader] target 同名 Bottoms SMR 重複: {character.name}/{smr.name}（採用={targetByName[smr.name].gameObject.activeInHierarchy}/skipped={smr.gameObject.activeInHierarchy}）");
+                PatchLogger.LogWarning($"[BottomsLoader] target 同名 Bottoms SMR 重複: {ctx.Character.name}/{smr.name}（採用={targetByName[smr.name].gameObject.activeInHierarchy}/skipped={smr.gameObject.activeInHierarchy}）");
             }
         }
         var donorByName = new Dictionary<string, SkinnedMeshRenderer>();
-        if (donor.BottomsSmrs != null)
+        if (ctx.Donor.BottomsSmrs != null)
         {
-            foreach (var smr in donor.BottomsSmrs)
+            foreach (var smr in ctx.Donor.BottomsSmrs)
             {
                 if (!donorByName.ContainsKey(smr.name))
                     donorByName[smr.name] = smr;
@@ -519,8 +468,8 @@ public class BottomsLoader : MonoBehaviour
 
         if (PatchLogger.IsDebugEnabled)
         {
-            PatchLogger.LogDebug($"[BottomsLoader] target={character.name} mode={(additiveMode ? "additive" : "swap")} bottoms candidates: {(targetByName.Count == 0 ? "(none)" : string.Join(", ", targetByName.Keys))}");
-            if (additiveMode)
+            PatchLogger.LogDebug($"[BottomsLoader] target={ctx.Character.name} mode={(ctx.AdditiveMode ? "additive" : "swap")} bottoms candidates: {(targetByName.Count == 0 ? "(none)" : string.Join(", ", targetByName.Keys))}");
+            if (ctx.AdditiveMode)
             {
                 // additive 経路では target/donor 同名でも target を温存し donor 側を inject 経路で追加する。
                 // common 集合は「target 既存と並ぶ overlay」として表示。swap/hide は走らないので独立列挙はしない。
@@ -540,13 +489,11 @@ public class BottomsLoader : MonoBehaviour
             }
         }
 
-        bool didSomething = false;
         // BottomsSkinShrink 用に swap した skirt SMR ペアを捕捉する。
         // 通常モードは (a) 既存 swap + (b) inject swap の両方が含まれ、additive モードは (b) inject のみ。
         // (target SMR, donor 元 SMR) のペアを後段で skin shrink に渡す。
-        var swappedBottomsPairs = new List<(SkinnedMeshRenderer Target, SkinnedMeshRenderer Donor)>();
 
-        if (additiveMode)
+        if (ctx.AdditiveMode)
         {
             // additive: target の Bottoms SMR は全て温存し、donor の Bottoms SMR を全て inject 経路で追加する。
             // 同名 SMR が並ぶケース (target.mesh_costume_frill と donor.mesh_costume_frill) でも snapshot key の
@@ -554,11 +501,11 @@ public class BottomsLoader : MonoBehaviour
             // (a) swap / (c) hide はスキップ。target frill 等を「元 SwimWear のまま温存する」のが本モードの目的。
             foreach (var kv in donorByName)
             {
-                var injected = InjectSmrLogged(character, kv.Key, renderers);
-                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
-                SwapSmr(injected, kv.Value, character, kv.Key + "(injected,additive)");
-                swappedBottomsPairs.Add((injected, kv.Value));
-                didSomething = true;
+                var injected = InjectSmrLogged(ctx.Character, kv.Key, ctx.Renderers);
+                CaptureSnapshotIfFirst((ctx.InstanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
+                SwapSmr(injected, kv.Value, ctx.Character, kv.Key + "(injected,additive)");
+                ctx.SwappedBottomsPairs.Add((injected, kv.Value));
+                ctx.DidSomething = true;
             }
         }
         else
@@ -567,21 +514,21 @@ public class BottomsLoader : MonoBehaviour
             foreach (var kv in donorByName)
             {
                 if (!targetByName.TryGetValue(kv.Key, out var targetSmr)) continue;
-                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: targetSmr, injectedGo: null);
-                SwapSmr(targetSmr, kv.Value, character, kv.Key);
-                swappedBottomsPairs.Add((targetSmr, kv.Value));
-                didSomething = true;
+                CaptureSnapshotIfFirst((ctx.InstanceId, kv.Key), wasInjected: false, smr: targetSmr, injectedGo: null);
+                SwapSmr(targetSmr, kv.Value, ctx.Character, kv.Key);
+                ctx.SwappedBottomsPairs.Add((targetSmr, kv.Value));
+                ctx.DidSomething = true;
             }
 
             // (b) donor のみ持つ: target に新規 SMR を注入して swap
             foreach (var kv in donorByName)
             {
                 if (targetByName.ContainsKey(kv.Key)) continue;
-                var injected = InjectSmrLogged(character, kv.Key, renderers);
-                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
-                SwapSmr(injected, kv.Value, character, kv.Key + "(injected)");
-                swappedBottomsPairs.Add((injected, kv.Value));
-                didSomething = true;
+                var injected = InjectSmrLogged(ctx.Character, kv.Key, ctx.Renderers);
+                CaptureSnapshotIfFirst((ctx.InstanceId, kv.Key), wasInjected: true, smr: null, injectedGo: injected.gameObject);
+                SwapSmr(injected, kv.Value, ctx.Character, kv.Key + "(injected)");
+                ctx.SwappedBottomsPairs.Add((injected, kv.Value));
+                ctx.DidSomething = true;
             }
 
             // (c) target のみ持つ: donor の Bottoms 構成に整合させるため hide
@@ -592,22 +539,31 @@ public class BottomsLoader : MonoBehaviour
                 if (donorByName.ContainsKey(kv.Key)) continue;
                 // 既に inactive ならログ抑制（冪等）
                 if (!kv.Value.gameObject.activeSelf) continue;
-                CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
+                CaptureSnapshotIfFirst((ctx.InstanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
                 kv.Value.gameObject.SetActive(false);
-                PatchLogger.LogDebug($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
-                didSomething = true;
+                PatchLogger.LogDebug($"[BottomsLoader] target の {kv.Key} を隠す: {ctx.Character.name}（donor 側に無いため）");
+                ctx.DidSomething = true;
             }
         }
+    }
 
-        // (e) BottomsSkinShrink: target の mesh_skin_lower / mesh_skin_upper を skirt より内側へ push して skin 突き抜けを解消。
-        // SkinShrinkCoordinator が Tops contribution と統合管理し、両 SMR を素 mesh に rewind してから
-        // 両 contribution を順次 push するため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
-        // skirt mesh / MagicaCloth 物理は touch しないため RebindMagicaClothIfActive との順序は問わない。
-        if (didSomething && swappedBottomsPairs.Count > 0)
+    /// <summary>
+    /// (e) BottomsSkinShrink: target の mesh_skin_lower / mesh_skin_upper を skirt より内側へ push して skin 突き抜けを解消。
+    /// SkinShrinkCoordinator が Tops contribution と統合管理し、両 SMR を素 mesh に rewind してから
+    /// 両 contribution を順次 push するため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
+    /// skirt mesh / MagicaCloth 物理は touch しないため RebindMagicaClothIfActive との順序は問わない。
+    ///
+    /// condition は <c>ctx.DidSomething &amp;&amp; SwappedBottomsPairs.Count &gt; 0</c>。Tops 側 (ApplySkinShrinkPhase) の
+    /// <c>!AdditiveMode &amp;&amp; pairs &gt; 0</c> とは非対称: Bottoms は skin upper Babydoll swap に依存しないため
+    /// additive モードでも Register が走る (cf. plan §5 R4)。
+    /// </summary>
+    private static void ApplySkinShrinkPhase(ref BottomsApplyContext ctx)
+    {
+        if (ctx.DidSomething && ctx.SwappedBottomsPairs.Count > 0)
         {
             SkinShrinkCoordinator.RegisterBottoms(
-                character,
-                swappedBottomsPairs.Select(p => p.Target),
+                ctx.Character,
+                ctx.SwappedBottomsPairs.Select(p => p.Target),
                 Configs.BottomsSkinShrink?.Value ?? 0f,
                 Configs.BottomsSkinShrinkFalloffRadius?.Value ?? 0f,
                 Configs.BottomsSkinShrinkSampleRadius?.Value ?? 0f);
@@ -616,44 +572,8 @@ public class BottomsLoader : MonoBehaviour
         {
             // (c) の hide のみ (donor が bottoms 持たない RIN/MIUKA SwimWear) → 古い Bottoms contribution が
             // あれば削除し、Tops も無ければ skin SMR を素 mesh に戻す。
-            SkinShrinkCoordinator.UnregisterBottoms(character);
+            SkinShrinkCoordinator.UnregisterBottoms(ctx.Character);
         }
-
-        // didSomething に関わらず Applied 登録（冪等性確保、毎フレーム再走査回避）。
-        // s_applied は SceneManager.sceneUnloaded で Clear されるので新シーンでは再評価される。
-        s_applied.Add(instanceId);
-        if (didSomething)
-        {
-            PatchLogger.LogInfo($"[BottomsLoader] 適用: {character.name} ← {donorChar}/{donorCostume}");
-            // didSomething=true は SMR.bones / sharedMesh / sharedMaterials のいずれかを実書換えしたことを
-            // 必ず含意する。bones 入れ替えなしなら MagicaCloth binding ずれも発生しないため rebind 不要。
-            RebindMagicaClothIfActive(character, donor);
-        }
-    }
-
-    private static System.Type s_magicaClothType;
-    private static bool s_magicaClothTypeResolveAttempted;
-
-    /// <summary>
-    /// <c>MagicaCloth2.MagicaCloth</c> 型を AppDomain から動的解決する (DLL 直接 reference を避けるため)。
-    /// 初回呼出でキャッシュ。型未解決時は null で再走査もしない (試行 1 回限り)。
-    /// </summary>
-    private static System.Type ResolveMagicaClothType()
-    {
-        if (s_magicaClothType != null) return s_magicaClothType;
-        if (s_magicaClothTypeResolveAttempted) return null;
-        s_magicaClothTypeResolveAttempted = true;
-        foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-        {
-            try
-            {
-                var t = asm.GetType("MagicaCloth2.MagicaCloth", false);
-                if (t != null) { s_magicaClothType = t; return t; }
-            }
-            catch { /* 一部 dynamic assembly で GetType 例外あり、無視 */ }
-        }
-        PatchLogger.LogDebug("[BottomsLoader] MagicaCloth2 type 未解決 (1 回限り走査)");
-        return null;
     }
 
     /// <summary>
@@ -678,27 +598,8 @@ public class BottomsLoader : MonoBehaviour
     /// </summary>
     private static void CaptureSnapshotIfFirst(
         (int InstanceId, string Kind) baseKey, bool wasInjected,
-        SkinnedMeshRenderer smr, GameObject injectedGo)
-    {
-        var key = (baseKey.InstanceId, baseKey.Kind, wasInjected);
-        if (s_targetSnapshots.ContainsKey(key)) return;
-        var snap = new TargetKindSnapshot
-        {
-            WasInjected = wasInjected,
-            InjectedGo = injectedGo,
-        };
-        if (smr != null)
-        {
-            snap.OriginalActive = smr.gameObject.activeSelf;
-            snap.OriginalEnabled = smr.enabled;
-            snap.OriginalMesh = smr.sharedMesh;
-            // bones / sharedMaterials は defensive copy（target.bones = donor.bones で上書きされるため
-            // 元配列インスタンスがそのまま残らないと restore で donor の値を戻すことになる）
-            snap.OriginalBones = smr.bones != null ? (Transform[])smr.bones.Clone() : null;
-            snap.OriginalMaterials = smr.sharedMaterials != null ? (Material[])smr.sharedMaterials.Clone() : null;
-        }
-        s_targetSnapshots[key] = snap;
-    }
+        SkinnedMeshRenderer smr, GameObject injectedGo) =>
+        SmrSnapshotStore.Capture(SnapshotKind.Bottoms, baseKey.InstanceId, baseKey.Kind, wasInjected, smr, injectedGo);
 
     /// <summary>
     /// 指定 target の Bottoms SMR 状態を Apply 前のスナップショットへ復元する。
@@ -712,17 +613,15 @@ public class BottomsLoader : MonoBehaviour
         var renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
         bool restoredAny = false;
 
-        // ToList でスナップショットを keys を一旦コピー（foreach 中の Remove で例外を避ける）
-        var keysForThisInstance = s_targetSnapshots.Keys.Where(k => k.InstanceId == instanceId).ToList();
+        var entries = SmrSnapshotStore.EnumerateForInstance(SnapshotKind.Bottoms, instanceId);
 
         // BoneGrafter で植え替えた Bottoms 由来の bone subtree のみ Destroy (per-loader isolation)。
         // Restore 前に行うことで snapshot の OriginalBones (元 bone 配列) を smr.bones に戻したあとも
         // grafted bone が残らない。
         BoneGrafter.DestroyGrafted(character, "BottomsLoader");
 
-        foreach (var key in keysForThisInstance)
+        foreach (var (smrKind, isInjected, snap) in entries)
         {
-            if (!s_targetSnapshots.TryGetValue(key, out var snap)) continue;
             restoredAny = true;
             if (snap.WasInjected)
             {
@@ -736,7 +635,7 @@ public class BottomsLoader : MonoBehaviour
             }
             else
             {
-                var smr = renderers.FirstOrDefault(m => m.name == key.Kind);
+                var smr = renderers.FirstOrDefault(m => m.name == smrKind);
                 if (smr != null)
                 {
                     smr.gameObject.SetActive(snap.OriginalActive);
@@ -746,7 +645,7 @@ public class BottomsLoader : MonoBehaviour
                     if (snap.OriginalMaterials != null) smr.sharedMaterials = snap.OriginalMaterials;
                 }
             }
-            s_targetSnapshots.Remove(key);
+            SmrSnapshotStore.Remove(SnapshotKind.Bottoms, instanceId, smrKind, isInjected);
         }
 
         // BottomsSkinShrink で書き換えた mesh_skin_lower / mesh_skin_upper を SkinShrinkCoordinator に
@@ -813,75 +712,7 @@ public class BottomsLoader : MonoBehaviour
         return smr;
     }
 
-    private static void SwapSmr(SkinnedMeshRenderer target, SkinnedMeshRenderer donor, GameObject character, string label)
-    {
-        // ボーン対応付け: キャラ階層内の Transform を name(小文字) でインデックス化し、
-        // donor SMR の bone 名で名前マップ。未一致は target の rootBone（無ければキャラルート）へ fallback。
-        var bones = new Dictionary<string, Transform>();
-        foreach (var b in character.GetComponentsInChildren<Transform>(true))
-            bones[b.name.ToLowerInvariant()] = b;
+    private static void SwapSmr(SkinnedMeshRenderer target, SkinnedMeshRenderer donor, GameObject character, string label) =>
+        CostumeMeshSwapper.SwapSmr(target, donor, character, "BottomsLoader", skipActivateForTransparentLayer: true);
 
-        // donor 固有 bone (SwimWear の skirt_*_SW 等) は target に存在せず、
-        // 親追従だけだと bindpose ずれで verts が体外に飛ぶ。
-        // BoneGrafter で正規化マッピング (target standard 骨へ) と graft (Transform-only clone) を
-        // 行ってから bone 名解決すれば bindpose × bone.localToWorld が donor bind 時と整合し正しく描画される。
-        BoneGrafter.ResolveAndGraft(donor, character, bones, "BottomsLoader");
-
-        var fallback = target.rootBone ?? character.transform;
-        var donorBones = donor.bones ?? Array.Empty<Transform>();
-        var mappedBones = donorBones
-            .Select(b =>
-            {
-                if (b == null) return fallback;
-                if (bones.TryGetValue(b.name.ToLowerInvariant(), out var t)) return t;
-                return fallback;
-            })
-            .ToArray();
-
-        // _trp 系 SMR (透過レイヤ、e.g. mesh_costume_skirt_trp) は通常 hidden が原状で、
-        // FittingRoom Panties 閲覧モード等の特定 UI でのみ ENABLED される。FixMod が強制表示すると
-        // MagicaCloth_Skirt の MeshCloth 駆動対象外 (sourceRenderers 不在 + customSkinningSetting.enable=false)
-        // のため rest pose 固定の透過 skirt が visible 化し VIP で bug として露呈する。
-        // 元の Active/Enabled 状態を維持し、強制 ON はその他の SMR にのみ適用する。
-        var isTransparentLayer = target.gameObject.name.IndexOf("_trp", StringComparison.OrdinalIgnoreCase) >= 0;
-        if (!isTransparentLayer)
-        {
-            target.gameObject.SetActive(true);
-            // 元 SMR が Renderer.enabled=false で隠されているケース (target 衣装に該当 bottoms が無い costume等)
-            // でも描画されるよう強制 true。snapshot.OriginalEnabled で Restore は元に戻る。
-            target.enabled = true;
-        }
-        target.sharedMesh = donor.sharedMesh;
-        target.bones = mappedBones;
-        // donor の Material を「共有」する意図的な代入。donor は preload host 配下で SetActive(false)
-        // のため通常変更されない。ゲーム本体が donor.sharedMaterials[i] を直接書き換える経路があれば
-        // 全 target に伝播する点に注意（A1 から不変、SwimWearStockingPatch も同方針）。
-        target.sharedMaterials = donor.sharedMaterials;
-
-        // 注入経路では InjectSmrLogged で rootBone を必ず設定するが、想定外の経路で null のまま
-        // ここに到達した場合の防御として、bones 設定後に rootBone null を fallback で埋める。
-        // 既存 SMR の swap (rootBone 既設) では fallback と一致しないため上書きせず A1 互換。
-        if (target.rootBone == null) target.rootBone = fallback;
-    }
-
-    /// <summary>
-    /// env と HoleScene の m_characters から character の <see cref="CharacterHandle"/> を逆引き解決する。
-    /// 失敗時は null。additive モード判定 (<see cref="Apply"/> 内 targetCostume 取得) に使用。
-    /// 同伴イベント等 (env != HoleScene) で HoleScene preserved char に対し <see cref="ApplyDirectly"/> が
-    /// 走るケースで env のみ走査だと targetCostume 解決失敗 → additive モード判定が誤り、Bunnygirl ガードも
-    /// 効かない問題を解消。
-    /// TODO: <see cref="TopsLoader"/> 側にも同等ロジックがあるため、共有 helper (CharaResolver 等) に
-    /// 統合する。重複は本 2 件以内に留め、3 件目を入れる前に抽出リファクタを実施する。
-    /// </summary>
-    private static CharacterHandle ResolveTargetHandle(GameObject character)
-    {
-        var sys = GBSystem.Instance;
-        if (sys == null) return null;
-        var env = sys.GetActiveEnvScene();
-        var handle = env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
-        if (handle != null) return handle;
-        var holeScene = sys.GetHoleScene();
-        if (ReferenceEquals(holeScene, env)) return null;
-        return holeScene?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
-    }
 }

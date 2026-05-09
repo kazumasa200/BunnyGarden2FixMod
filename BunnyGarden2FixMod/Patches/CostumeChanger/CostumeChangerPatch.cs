@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using GB.DLC;
@@ -98,7 +99,7 @@ public static class CostumeChangerPatch
         if (s_characterHandleParentField != null)
         {
             var parent = s_characterHandleParentField.GetValue(__instance) as GameObject;
-            if (BottomsLoader.IsDonorPreloadParent(parent) || TopsLoader.IsDonorPreloadParent(parent))
+            if (DonorPreloadRegistry.IsAnyHostParent(parent))
             {
                 return;
             }
@@ -166,7 +167,7 @@ public static class CostumeChangerPatch
         if (s_characterHandleParentField != null)
         {
             var parent = s_characterHandleParentField.GetValue(__instance) as GameObject;
-            if (BottomsLoader.IsDonorPreloadParent(parent) || TopsLoader.IsDonorPreloadParent(parent))
+            if (DonorPreloadRegistry.IsAnyHostParent(parent))
             {
                 return;
             }

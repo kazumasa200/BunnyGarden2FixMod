@@ -1,8 +1,7 @@
 using BunnyGarden2FixMod.ExSave;
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using GB.Game;
-using MessagePack;
-using System;
 using System.Collections.Generic;
 
 namespace BunnyGarden2FixMod.Patches.CostumeChanger;
@@ -73,30 +72,16 @@ public static class StockingOverrideStore
     public static void RehydrateFromExSave()
     {
         s_overrides.Clear();
-        s_rehydrateFailed = false;
-        if (!Configs.PersistCostumeOverrides.Value)
+        if (!OverrideStorePersistence.TryReadFromExSave<byte>(
+                ExSaveKey, "[StockingOverrideStore]", Configs.PersistCostumeOverrides.Value,
+                out var dict, out s_rehydrateFailed))
         {
-            PatchLogger.LogInfo("[StockingOverrideStore] rehydrate skip: PersistCostumeOverrides=false");
             return;
         }
-        if (!ExSaveStore.CommonData.TryGet(ExSaveKey, out byte[] bytes) || bytes == null || bytes.Length == 0)
-        {
-            PatchLogger.LogInfo("[StockingOverrideStore] rehydrate skip: ExSave entry なし");
-            return;
-        }
-        try
-        {
-            var dict = MessagePackSerializer.Deserialize<Dictionary<int, byte>>(bytes, ExSaveData.s_options);
-            foreach (var kv in dict)
-                SetValidatedNoMirror((CharID)kv.Key, (int)kv.Value);
-            int restored = s_overrides.Count;
-            PatchLogger.LogInfo($"[StockingOverrideStore] rehydrate: {bytes.Length} bytes → {restored} 個復元");
-        }
-        catch (Exception ex)
-        {
-            s_rehydrateFailed = true;
-            PatchLogger.LogWarning($"[StockingOverrideStore] ExSave rehydrate 失敗、空で続行 + 次回保存もスキップして元データ保護: {ex.Message} (bytes={bytes?.Length ?? 0})");
-        }
+
+        foreach (var kv in dict)
+            SetValidatedNoMirror((CharID)kv.Key, (int)kv.Value);
+        PatchLogger.LogInfo($"[StockingOverrideStore] rehydrate: {s_overrides.Count} 個復元");
     }
 
     /// <summary>in-memory の s_overrides をクリアする（Reset 時に呼ばれる）。</summary>
@@ -118,23 +103,9 @@ public static class StockingOverrideStore
     /// <summary>s_overrides の全内容を ExSave の CommonData に書き込む。</summary>
     private static void WriteToExSave()
     {
-        if (!Configs.PersistCostumeOverrides.Value) return;
-        if (s_rehydrateFailed)
-        {
-            PatchLogger.LogWarning("[StockingOverrideStore] ExSave 書込スキップ: 直前の rehydrate 失敗データを保護中（再起動 or 修復まで dict のみ更新）");
-            return;
-        }
-        try
-        {
-            var dict = BuildSerializableDict();
-            byte[] bytes = MessagePackSerializer.Serialize(dict, ExSaveData.s_options);
-            ExSaveStore.CommonData.Set(ExSaveKey, bytes);
-            PatchLogger.LogDebug($"[StockingOverrideStore] write: {dict.Count} 個 → {bytes.Length} bytes");
-        }
-        catch (Exception ex)
-        {
-            PatchLogger.LogWarning($"[StockingOverrideStore] ExSave 書込失敗、in-memory 維持: {ex.Message}");
-        }
+        OverrideStorePersistence.WriteToExSave(
+            ExSaveKey, "[StockingOverrideStore]", Configs.PersistCostumeOverrides.Value,
+            s_rehydrateFailed, BuildSerializableDict);
     }
 
     /// <summary>s_overrides を Dictionary&lt;int, byte&gt; に変換する（MessagePack 直列化用）。</summary>

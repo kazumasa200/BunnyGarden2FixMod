@@ -1,9 +1,9 @@
 using BunnyGarden2FixMod.ExSave;
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB.Game;
 using MessagePack;
-using System;
 using System.Collections.Generic;
 
 namespace BunnyGarden2FixMod.Patches.CostumeChanger;
@@ -93,36 +93,23 @@ public static class BottomsOverrideStore
     public static void RehydrateFromExSave()
     {
         s_overrides.Clear();
-        s_rehydrateFailed = false;
-        if (!Configs.PersistCostumeOverrides.Value)
+        if (!OverrideStorePersistence.TryReadFromExSave<BottomsOverrideExSaveEntry>(
+                ExSaveKey, "[BottomsOverrideStore]", Configs.PersistCostumeOverrides.Value,
+                out var dict, out s_rehydrateFailed))
         {
-            PatchLogger.LogInfo("[BottomsOverrideStore] rehydrate skip: PersistCostumeOverrides=false");
             return;
         }
-        if (!ExSaveStore.CommonData.TryGet(ExSaveKey, out byte[] bytes) || bytes == null || bytes.Length == 0)
-        {
-            PatchLogger.LogInfo("[BottomsOverrideStore] rehydrate skip: ExSave entry なし");
-            return;
-        }
-        try
-        {
-            var dict = MessagePackSerializer.Deserialize<Dictionary<int, BottomsOverrideExSaveEntry>>(bytes, ExSaveData.s_options);
-            int restored = 0;
-            foreach (var kv in dict)
-                if (SetValidatedNoMirror((CharID)kv.Key, (CharID)kv.Value.DonorChar, (CostumeType)kv.Value.DonorCostume)) restored++;
-            PatchLogger.LogInfo($"[BottomsOverrideStore] rehydrate: {bytes.Length} bytes → {restored} 個復元");
 
-            // rehydrate された donor を先行 preload（setup() Postfix と preload 完了の race を縮める）。
-            // ApplyIfOverridden 側でも donor 未ロード時の自動 preload + re-apply フォールバックがあるが、
-            // 先行起動して setup と race させたほうがほぼ常に間に合う。
-            foreach (var e in EnumerateUniqueDonors())
-                BottomsLoader.PreloadDonorAsync(e.DonorChar, e.DonorCostume).Forget();
-        }
-        catch (Exception ex)
-        {
-            s_rehydrateFailed = true;
-            PatchLogger.LogWarning($"[BottomsOverrideStore] ExSave rehydrate 失敗、空で続行 + 次回保存もスキップして元データ保護: {ex.Message} (bytes={bytes?.Length ?? 0})");
-        }
+        int restored = 0;
+        foreach (var kv in dict)
+            if (SetValidatedNoMirror((CharID)kv.Key, (CharID)kv.Value.DonorChar, (CostumeType)kv.Value.DonorCostume)) restored++;
+        PatchLogger.LogInfo($"[BottomsOverrideStore] rehydrate: {restored} 個復元");
+
+        // rehydrate された donor を先行 preload（setup() Postfix と preload 完了の race を縮める）。
+        // ApplyIfOverridden 側でも donor 未ロード時の自動 preload + re-apply フォールバックがあるが、
+        // 先行起動して setup と race させたほうがほぼ常に間に合う。
+        foreach (var e in EnumerateUniqueDonors())
+            BottomsLoader.PreloadDonorAsync(e.DonorChar, e.DonorCostume).Forget();
     }
 
     /// <summary>in-memory の s_overrides をクリアする（Reset 時に呼ばれる）。</summary>
@@ -145,23 +132,9 @@ public static class BottomsOverrideStore
     /// <summary>s_overrides の全内容を ExSave の CommonData に書き込む。</summary>
     private static void WriteToExSave()
     {
-        if (!Configs.PersistCostumeOverrides.Value) return;
-        if (s_rehydrateFailed)
-        {
-            PatchLogger.LogWarning("[BottomsOverrideStore] ExSave 書込スキップ: 直前の rehydrate 失敗データを保護中（再起動 or 修復まで dict のみ更新）");
-            return;
-        }
-        try
-        {
-            var dict = BuildSerializableDict();
-            byte[] bytes = MessagePackSerializer.Serialize(dict, ExSaveData.s_options);
-            ExSaveStore.CommonData.Set(ExSaveKey, bytes);
-            PatchLogger.LogDebug($"[BottomsOverrideStore] write: {dict.Count} 個 → {bytes.Length} bytes");
-        }
-        catch (Exception ex)
-        {
-            PatchLogger.LogWarning($"[BottomsOverrideStore] ExSave 書込失敗、in-memory 維持: {ex.Message}");
-        }
+        OverrideStorePersistence.WriteToExSave(
+            ExSaveKey, "[BottomsOverrideStore]", Configs.PersistCostumeOverrides.Value,
+            s_rehydrateFailed, BuildSerializableDict);
     }
 
     /// <summary>s_overrides を Dictionary&lt;int, BottomsOverrideExSaveEntry&gt; に変換する（MessagePack 直列化用）。</summary>
