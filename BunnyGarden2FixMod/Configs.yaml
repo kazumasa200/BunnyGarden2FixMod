@@ -584,7 +584,7 @@
     - name: TopsSkinShrinkSampleRadius
       label: 上衣 肌押込み cloth サンプル半径 (m)
       type: float
-      default: 0.05
+      default: 0.0
       range: [0, 0.1]
       description: |
         肌押込み (TopsSkinShrink) の scatter kernel 半径（メートル）。各 skin 頂点が、半径内の
@@ -601,7 +601,7 @@
     - name: BottomsSkinShrink
       label: 下衣 肌押込み量 (m)
       type: float
-      default: 0.0
+      default: 0.005
       range: [0, 0.01]
       description: |
         下衣移植 (Bottoms override) 時、target の mesh_skin_lower / mesh_skin_upper の頂点を

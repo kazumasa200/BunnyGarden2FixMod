@@ -368,7 +368,14 @@ public class TopsLoader : MonoBehaviour
         if (handle?.Chara == null) return;
 
         // donor 自身の setup() Postfix が走るケースを除外（preload host 配下の GameObject）。
+        // 自分の host だけでなく BottomsLoader の preload host 配下も skip する: BottomsLoader が target の
+        // skin / Bottoms 系 donor として preload した character の setup() でも当 patch は発火するため、
+        // ここで弾かないと donor preload character に Tops override が誤適用される。target と同じ CharID で
+        // override が登録されていると、preload donor character の skin SMR.sharedMesh が
+        // SkinShrinkCoordinator 経由で transient pushed Mesh に上書きされ、後続の InvalidateCache で
+        // destroyed Mesh となって target の Apply(d) swap source も巻き込み破壊する症状を踏んだ。
         if (s_loaderHostRoot != null && handle.Chara.transform.IsChildOf(s_loaderHostRoot.transform)) return;
+        if (BottomsLoader.IsDonorPreloadParent(handle.Chara)) return;
 
         var id = handle.GetCharID();
         if (!TopsOverrideStore.TryGet(id, out var entry)) return;
@@ -607,8 +614,21 @@ public class TopsLoader : MonoBehaviour
         //      mesh_costume_skirt は SwimWear donor 全般でループ内除外する（下記参照、KANA SwimWear の bikini bottom もここで弾かれる）。
         // 不変: donorCostume == SwimWear が条件に入る → additiveMode == false が確定 (additive の定義より)。
         //       したがってこのブロックは additive モードでは到達しない。
-        if (donorCostume == CostumeType.SwimWear && !BottomsOverrideStore.TryGet(targetCharID, out _))
+        // gate 削除 (2026-05-08): bottoms override 設定時も (c2) を走らせ LUNA frill を transplant する。
+        // 順序非依存性 (tops 先 / bottoms 先) を保証するための symmetric design。
+        // bottoms override が target に存在する場合は (c2) 内部で per-loader isolation により BottomsLoader 所有名を除外する。
+        // donor 側は除外しないため LUNA frill は inject 経路で重ねて表示される (両 frill 共存)。
+        if (donorCostume == CostumeType.SwimWear)
         {
+            // BottomsLoader が transplant する name 集合 (bottoms override の skirt / frill 等)。
+            // (c2) はこれらに触らないことで bottoms 領域を BottomsLoader の責任範囲として尊重する。
+            var bottomsOwned = new HashSet<string>(StringComparer.Ordinal);
+            if (targetCharID < CharID.NUM && BottomsOverrideStore.TryGet(targetCharID, out var bottomsEntry))
+            {
+                foreach (var n in BottomsLoader.GetTransplantedBottomsKinds(bottomsEntry.DonorChar, bottomsEntry.DonorCostume))
+                    bottomsOwned.Add(n);
+            }
+
             var donorBottomsByName = new Dictionary<string, SkinnedMeshRenderer>();
             foreach (var smr in donor.AllSmrs ?? System.Linq.Enumerable.Empty<SkinnedMeshRenderer>())
             {
@@ -628,6 +648,9 @@ public class TopsLoader : MonoBehaviour
                 if (!BottomsLoader.IsBottomsCandidate(smr)) continue;
                 // 上記 donor 側と対称: target.mesh_costume_skirt は Tops で触らず元のまま残す。
                 if (smr.name == "mesh_costume_skirt") continue;
+                // bottoms-owned: BottomsLoader 注入 SMR は (c2) hide 経路で隠さない (per-loader isolation)。
+                // donor 側は除外しない (LUNA frill を inject 経路で重ねて両表示するため)。
+                if (bottomsOwned.Contains(smr.name)) continue;
                 if (!targetBottomsByName.ContainsKey(smr.name))
                     targetBottomsByName[smr.name] = smr;
             }
@@ -712,6 +735,23 @@ public class TopsLoader : MonoBehaviour
             var targetSkinUpper = renderers.FirstOrDefault(s => s != null && s.name == "mesh_skin_upper");
             if (donorSkinUpper != null && targetSkinUpper != null)
             {
+                // ApplyDirectly 経路 (live tune slider 変更時) で 2 cycle に跨る連鎖 bug の入口防衛:
+                //   cycle N:
+                //     1. 先行する RestoreFor が snap.OriginalMesh で sharedMesh を stable asset に戻す
+                //     2. RestoreFor 末尾の UnregisterTops の RefreshOne が HasBottoms 残存時に
+                //        Bottoms contribution を skin_upper にも push して sharedMesh を transient
+                //        pushed Mesh で上書き (この transient は s_cache にも入る)
+                //     3. ここで CaptureSnapshotIfFirst を呼ぶと transient Mesh を OriginalMesh として
+                //        焼き込んでしまう
+                //   cycle N+1:
+                //     4. InvalidateCache が cycle N の transient を Destroy
+                //     5. RestoreFor が snap.OriginalMesh = destroyed transient を sharedMesh に書き戻す
+                //        (Unity-null) → skin_upper が描画破損
+                // 本 rewind で 3 を断ち切る: capture 直前に Coordinator 保持の原 mesh
+                // (= e.OriginalSkinUpper、addressables 由来 stable asset) に明示的に戻し、snapshot に
+                // 常に stable な参照のみが焼かれるよう保つ。UnregisterTops 側の RefreshOne 挙動
+                // (standalone Tops 取り消し時に Bottoms→upper push が継続する仕様) はそのまま維持。
+                SkinShrinkCoordinator.RestoreSkinUpperToOriginal(character, targetSkinUpper);
                 CaptureSnapshotIfFirst((instanceId, "mesh_skin_upper"), wasInjected: false, smr: targetSkinUpper, injectedGo: null);
                 SwapSmr(targetSkinUpper, donorSkinUpper, character, "mesh_skin_upper");
                 bool selfDonor = donorChar == targetCharID;
@@ -961,6 +1001,59 @@ public class TopsLoader : MonoBehaviour
         s_applied.Remove(instanceId);
         if (restoredAny)
             PatchLogger.LogInfo($"[TopsLoader] 復元: {character.name}");
+    }
+
+    /// <summary>
+    /// TopsLoader が target に植えた / swap で touch した Bottoms 候補 SMR の <b>GameObject InstanceID 集合</b>を返す。
+    /// per-loader isolation: BottomsLoader が target 列挙からこれらを除外して TopsLoader 所有 SMR を不可視化する
+    /// (donor 側は除外せず、両 frill を独立 GameObject として共存させる設計)。
+    ///
+    /// 重要: snapshot ベースで GO 単位識別。name 単位だと BottomsLoader 自身が前回の bottoms donor で
+    /// inject した同名 SMR (例: 前 donor=Babydoll で frill 注入後、新 donor=Casual に切替) も巻き添えで除外され、
+    /// (c) hide 経路で清掃されず孤児として残留してしまうため。
+    ///
+    /// 実装: <see cref="s_targetSnapshots"/> 全走査 + <see cref="BottomsLoader.IsBottomsCandidateName"/> filter。
+    ///
+    /// 不変条件: TopsLoader.Apply の (a)(b) ループは Tops 候補名 SMR (mesh_costume / mesh_costume_ribbon /
+    /// mesh_costume_sleeve 等) のみ snapshot 投入し、(c2) ブロックのみ Bottoms 候補名 (mesh_costume_frill 等)
+    /// を投入する。両集合は disjoint なため Bottoms 候補名 filter で実質 (c2) 経由 entry のみが返る。
+    /// 将来 (a)(b) で Bottoms 候補名を touch する変更を入れる場合は本 API の semantic を再設計する必要あり
+    /// (沈黙の回帰リスク)。
+    ///
+    /// 返り値の内訳:
+    ///   - snapshot.WasInjected=true: (c2) inject 経路で TopsLoader が新規生成した GameObject
+    ///   - snapshot.WasInjected=false: (c2) swap 経路で target 元 SMR の sharedMesh を donor mesh に上書き
+    ///     (SMR 自体は target 元のままだが mesh が donor 由来 → BottomsLoader が swap で再上書きすると
+    ///     donor 由来の見た目が壊れるため除外)
+    ///
+    /// snapshot に該当エントリ無し / character null → 空集合。
+    /// </summary>
+    internal static IEnumerable<int> GetOwnedBottomsCandidateGoIds(GameObject character)
+    {
+        if (character == null) yield break;
+        var charInstanceId = character.GetInstanceID();
+        SkinnedMeshRenderer[] cachedRenderers = null;
+        foreach (var key in s_targetSnapshots.Keys)
+        {
+            if (key.InstanceId != charInstanceId) continue;
+            if (!BottomsLoader.IsBottomsCandidateName(key.Kind)) continue;
+            var snap = s_targetSnapshots[key];
+            if (key.IsInjected)
+            {
+                if (snap.InjectedGo != null)
+                    yield return snap.InjectedGo.GetInstanceID();
+            }
+            else
+            {
+                // swap 経路: target 元 SMR を name で逆引きして GameObject を特定する。
+                // GetComponentsInChildren は重いので 1 回だけ取得しキャッシュする。
+                if (cachedRenderers == null)
+                    cachedRenderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                var smr = cachedRenderers.FirstOrDefault(r => r != null && r.name == key.Kind);
+                if (smr != null)
+                    yield return smr.gameObject.GetInstanceID();
+            }
+        }
     }
 
     /// <summary>

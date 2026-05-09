@@ -42,6 +42,14 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 ///     になっていること (Tops Apply (d) 完了済)。Apply 末尾で呼ぶのはこの前提を満たす。
 ///   - すべての Register/Unregister は character GameObject の component が live な状態で呼ぶ
 ///     (<see cref="ClearScene"/> 後は呼ばない)。
+///
+/// skin_lower 側に対称な API (RestoreSkinLowerToOriginal 相当) は **意図的に未提供**:
+/// <see cref="TopsLoader"/>/<see cref="BottomsLoader"/> どちらも Apply で skin_lower SMR を
+/// CaptureSnapshotIfFirst していないため、transient pushed Mesh が snapshot に焼き込まれる
+/// 経路がない (本 Coordinator が skin_lower.sharedMesh を transient で書き換えても snapshot 化
+/// されないので live tune cycle で destroyed Mesh を sharedMesh に書き戻す事故は起きない)。
+/// 将来 BottomsLoader.Apply 等で skin_lower の snapshot capture を追加する場合は対称 API も
+/// 追加すること。
 /// </summary>
 internal static class SkinShrinkCoordinator
 {
@@ -179,6 +187,12 @@ internal static class SkinShrinkCoordinator
         // Bottoms 残存: TopsLoader.RestoreFor が直前に skin_upper.sharedMesh を target 元 costume asset に
         // 戻した前提。OriginalSkinUpper を null 化してから現 sharedMesh で再捕捉することで、
         // 「Tops 有時の素 = Babydoll」「Tops 無時の素 = target 元 asset」の遷移を吸収する。
+        // 安全弁: live tune cycle で snap.OriginalMesh が destroyed transient を指していた場合、
+        // RestoreFor で sharedMesh が Unity-null になっている。`su.sharedMesh != null` チェックは
+        // Unity-null も False で弾くため、destroyed Mesh を OriginalSkinUpper に再捕獲してしまう
+        // 事故は起きない (e.OriginalSkinUpper は null のまま温存される)。RefreshOne 内 L220 の
+        // null check で rewind も skip され、後続の Apply (d) が RestoreSkinUpperToOriginal +
+        // SwapSmr で正常に復旧する。
         var renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
         e.OriginalSkinUpper = null;
         var su = renderers.FirstOrDefault(r => r != null && r.name == "mesh_skin_upper");
@@ -331,6 +345,35 @@ internal static class SkinShrinkCoordinator
             }
         }
         return stepsApplied;
+    }
+
+    /// <summary>
+    /// 指定 character の skin_upper SMR を、Coordinator が保持する stable な原 mesh
+    /// (<c>e.OriginalSkinUpper</c>) に書き戻す。<see cref="TopsLoader"/> の Apply (d)
+    /// で <c>CaptureSnapshotIfFirst</c> 直前に呼ぶ用途。
+    ///
+    /// 動機: ApplyDirectly 経路では <see cref="TopsLoader.RestoreFor"/> → <see cref="UnregisterTops"/>
+    /// の <see cref="RefreshOne"/> が HasBottoms 残存時に Bottoms contribution を skin_upper に
+    /// push して sharedMesh を transient pushed Mesh で上書きする。直後の Apply (d) で
+    /// <c>CaptureSnapshotIfFirst</c> がその transient Mesh を <c>OriginalMesh</c> として焼き込むと、
+    /// 次の slider 変更で <c>InvalidateCache</c> が transient を Destroy → RestoreFor が destroyed
+    /// Mesh を sharedMesh に戻す → skin_upper 描画破損 という連鎖が起きる。本 API で capture 直前に
+    /// stable asset へ rewind することで snapshot が常に addressables 由来 asset を指すよう保つ。
+    ///
+    /// no-op 条件: character/smr null、entry 未登録 (初回 Apply / ClearScene 直後)、
+    /// OriginalSkinUpper 未捕捉、既に一致。
+    /// </summary>
+    internal static void RestoreSkinUpperToOriginal(GameObject character, SkinnedMeshRenderer skinUpperSmr)
+    {
+        if (character == null || skinUpperSmr == null) return;
+        int id = character.GetInstanceID();
+        if (!s_entries.TryGetValue(id, out var e)) return;
+        if (e.OriginalSkinUpper == null) return;
+        // `==` は UnityEngine.Object overload。skinUpperSmr.sharedMesh が destroyed (Unity-null) の
+        // 場合 e.OriginalSkinUpper (alive non-null) との比較は False を返すため、destroyed Mesh は
+        // 確実に下行で alive asset に書き戻される。
+        if (skinUpperSmr.sharedMesh == e.OriginalSkinUpper) return;
+        skinUpperSmr.sharedMesh = e.OriginalSkinUpper;
     }
 
     public static void ClearScene()

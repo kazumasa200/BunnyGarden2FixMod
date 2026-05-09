@@ -305,6 +305,11 @@ public class KneeSocksLoader : MonoBehaviour
     {
         if (IsPreloading) return; // プリロード中の dummy handle への誤適用を防ぐ
         if (handle?.Chara == null) return;
+        // TopsLoader / BottomsLoader が preload した donor character の setup() でも本 patch は発火する。
+        // donor preload に override 適用すると skin SMR の状態が破壊され、後続 target Apply の swap source
+        // を巻き込む。同 CharID で override 設定があれば誤適用されるため、preload host 配下は skip。
+        if (TopsLoader.IsDonorPreloadParent(handle.Chara)) return;
+        if (BottomsLoader.IsDonorPreloadParent(handle.Chara)) return;
         // 水着は SwimWearStockingPatch が専用ロジックで処理するためスキップ
         if (handle.m_lastLoadArg != null && handle.m_lastLoadArg.Costume == CostumeType.SwimWear) return;
         var id = handle.GetCharID();

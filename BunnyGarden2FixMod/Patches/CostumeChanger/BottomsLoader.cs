@@ -96,6 +96,23 @@ public class BottomsLoader : MonoBehaviour
     public static bool IsLoaded => s_loaderHostRoot != null;
 
     /// <summary>
+    /// BottomsLoader が transplant する Bottoms 候補 SMR の name 集合を返す。
+    /// per-loader isolation: TopsLoader (c2) が target 列挙からこれらを除外し
+    /// BottomsLoader 所有 SMR を不可視化するために参照する。setup() Postfix race-free。
+    /// donor preload 未完了 → 空集合。skirt も含む (BottomsLoader は skirt を所有する)。
+    /// </summary>
+    internal static IEnumerable<string> GetTransplantedBottomsKinds(CharID donorChar, CostumeType donorCostume)
+    {
+        if (!s_donors.TryGetValue((donorChar, donorCostume), out var donor)) yield break;
+        if (donor.BottomsSmrs == null) yield break;
+        foreach (var smr in donor.BottomsSmrs)
+        {
+            if (smr == null) continue;
+            yield return smr.name;
+        }
+    }
+
+    /// <summary>
     /// 指定の parent GameObject が donor preload host (s_loaderHostRoot 配下) かを判定。
     /// CostumeChangerPatch.Prefix から donor preload 経路の override 適用を抑止するために参照。
     /// </summary>
@@ -169,7 +186,16 @@ public class BottomsLoader : MonoBehaviour
     public static bool IsBottomsCandidate(SkinnedMeshRenderer smr)
     {
         if (smr == null) return false;
-        var n = smr.name;
+        return IsBottomsCandidateName(smr.name);
+    }
+
+    /// <summary>
+    /// SMR 名から Bottoms 候補かを判定する。<see cref="IsBottomsCandidate(SkinnedMeshRenderer)"/> の名前版。
+    /// TopsLoader が snapshot key (= SMR 名) から Bottoms 候補名のみを抽出する用途で参照する
+    /// (per-loader isolation)。
+    /// </summary>
+    public static bool IsBottomsCandidateName(string n)
+    {
         if (string.IsNullOrEmpty(n)) return false;
         if (!n.StartsWith("mesh_costume_", StringComparison.Ordinal)) return false;
         if (n.IndexOf("_trp", StringComparison.OrdinalIgnoreCase) >= 0) return false;
@@ -323,7 +349,15 @@ public class BottomsLoader : MonoBehaviour
         // donor 自身の setup() Postfix が走るケースを除外。preload host 配下の
         // GameObject は SetActive(false) で配置されるため通常は描画されないが、
         // setup() 自体は呼ばれるためここで弾く（in-flight 並行 preload 下でも安全）。
+        // 自分の host だけでなく TopsLoader の preload host 配下も skip する: TopsLoader が target の
+        // skin donor (Babydoll) として preload した character の setup() でも当 patch は発火するため、
+        // ここで弾かないと donor preload character に Bottoms override が誤適用される。target と同じ
+        // CharID で Bottoms override が登録されていると、preload donor character の skin SMR.sharedMesh が
+        // SkinShrinkCoordinator 経由で transient pushed Mesh に上書きされ、後続の InvalidateCache で
+        // destroyed Mesh となって target の Apply(d) swap source (=donor.skin_upper.sharedMesh) を
+        // 巻き込み破壊する症状を踏んだ (実機 diag log で確認済み 2026-05-08)。
         if (s_loaderHostRoot != null && handle.Chara.transform.IsChildOf(s_loaderHostRoot.transform)) return;
+        if (TopsLoader.IsDonorPreloadParent(handle.Chara)) return;
 
         var id = handle.GetCharID();
         if (!BottomsOverrideStore.TryGet(id, out var entry)) return;
@@ -406,6 +440,15 @@ public class BottomsLoader : MonoBehaviour
         // TopsLoader は逆に Count==0 で early return するが、Bottoms は target を消しても
         // 致命的にならないため hide 経路を維持する。
 
+        // per-loader isolation: TopsLoader (c2) が SwimWear donor 経由で植えた / 上書きした
+        // Bottoms 候補 SMR は BottomsLoader から透過扱い。target 側のみ除外し donor 側は除外しない
+        // → LUNA frill (TopsLoader 所有) と donor frill (BottomsLoader 注入) が独立 GameObject として共存。
+        //
+        // GameObject InstanceID で識別 (name 単位ではない): name ベースだと BottomsLoader 自身が前回 bottoms donor で
+        // inject した同名 SMR (例: 前 donor=Babydoll で frill 注入後、新 donor=Casual に切替) も誤って巻き添え除外され、
+        // (c) hide 経路で清掃されず孤児として残留してしまうため。snapshot ベースで TopsLoader が touch した GO のみ識別する。
+        var topsOwnedGoIds = new HashSet<int>(TopsLoader.GetOwnedBottomsCandidateGoIds(character));
+
         var renderers = character.GetComponentsInChildren<SkinnedMeshRenderer>(true);
         var targetBottomsList = renderers.Where(IsBottomsCandidate).ToList();
 
@@ -416,6 +459,10 @@ public class BottomsLoader : MonoBehaviour
         var targetByName = new Dictionary<string, SkinnedMeshRenderer>();
         foreach (var smr in targetBottomsList)
         {
+            // TopsLoader 所有 GameObject は per-loader isolation で除外。重複検出ループにも入れず WARN 抑制。
+            // BottomsLoader 自身が前回 donor で inject した同名 SMR は GO InstanceID が異なるためここで除外されず、
+            // 後続 (a)(b)(c) ループで通常通り処理される (donor 切替で清掃される)。
+            if (topsOwnedGoIds.Contains(smr.gameObject.GetInstanceID())) continue;
             if (!targetByName.TryGetValue(smr.name, out var existing))
             {
                 targetByName[smr.name] = smr;
