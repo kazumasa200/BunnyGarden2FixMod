@@ -399,6 +399,18 @@
       ui:
         kind: toggle
 
+    - name: PersistCostumeOverrides
+      label: 衣装変更状態を保存する
+      type: bool
+      default: true
+      description: |
+        Wardrobe で変更した衣装・パンツ・ストッキング・下衣移植の状態を MOD サイドカー (.exmod) に保存し、
+        ゲーム再起動後も復元します。保存先は `BepInEx/data/net.noeleve.BunnyGarden2FixMod/`（Steam Cloud 対象外）。
+        false の間に変更した内容は永続化されません。既に保存済の override 値は ExSave に残るため、
+        true に戻すと過去保存分が復元されます。
+      ui:
+        kind: toggle
+
     - name: SwimWearStocking
       label: 水着+ストッキング適用
       type: bool
@@ -484,7 +496,7 @@
     - name: TopsSkinMinOffset
       label: 上衣 肌からの最小距離 (m)
       type: float
-      default: 0.007
+      default: 0.005
       range: [0.0, 0.010]
       description: |
         donor 服が donor 側 Babydoll 肌にめり込んでいる箇所を解決するための safety margin（メートル）。
@@ -502,7 +514,7 @@
     - name: TopsSkinSampleRadius
       label: 上衣 肌サンプル半径 (m)
       type: float
-      default: 0.06
+      default: 0.03
       range: [0.0, 0.100]
       description: |
         上衣移植の距離保存で、donor 頂点が参照する skin の最近傍点を「半径内の全 skin 頂点」
@@ -536,7 +548,7 @@
     - name: TopsSkinShrink
       label: 上衣 肌押込み量 (m)
       type: float
-      default: 0
+      default: 0.005
       range: [0, 0.01]
       description: |
         上衣移植時、target の mesh_skin_upper の頂点を「donor tops 表面より内側」に
@@ -566,7 +578,7 @@
     - name: TopsSkinShrinkSampleRadius
       label: 上衣 肌押込み cloth サンプル半径 (m)
       type: float
-      default: 0
+      default: 0.05
       range: [0, 0.1]
       description: |
         肌押込み (TopsSkinShrink) 計算で、各 skin 頂点が参照する cloth の最近傍点を「半径内の全 cloth 頂点」
@@ -577,15 +589,6 @@
         kind: slider
         step: 0.001
         format: '{0:F3}'
-
-    - name: TopsLoaderVerbose
-      label: 上衣移植デバッグログ
-      type: bool
-      default: false
-      description: |
-        上衣移植 (Tops Transplant) の詳細ログを出力します。dev 向け調査用。
-        donor / target の SMR 一覧、Tops 候補、同名重複、共通/donor 専用/target 専用 SMR の差分を
-        BepInEx ログに出力します。F9 設定パネルには出ません。
 
     - name: PantiesAltSlotMatch
       label: 水着・バニーガール衣装でも下着を表示
@@ -614,17 +617,6 @@
       default: false
       ui:
         kind: toggle
-
-- section: Diagnostics
-  name: 診断
-  configs:
-    - name: SwimWearPhysicsDiag
-      label: 水着 物理診断ログ
-      type: bool
-      default: false
-      description: |
-        DIAGNOSTIC ONLY — issue 解決後削除予定。
-        SwimWear setup 時の hierarchy / animator / MagicaCloth を初回 (char, costume, scene) ごとに 1 回だけログ出力します。
 
 - section: General
   name: 全般

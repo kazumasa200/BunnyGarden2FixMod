@@ -184,13 +184,21 @@ internal static class MeshDistancePreserver
         // donor cloth bone idx 空間で「この bone は副骨か」を per-bone 1 回判定。Phase 1 の hot loop は
         // 単純な bool[] lookup で済む。
         bool[] donorBoneIsAux = null;
+        // Ribbon 系装飾骨 mask。ribbon bone が weight > 0 で 1 slot でも含まれる vert は Pass 4 全 skip
+        // （donor 元 weight 維持）。ribbon は skin 密着前提でなく独自 bone / 物理で動くため、skin 由来
+        // weight blend を入れると ribbon 駆動分が skin に張り付き本来の deformation を奪う。SMR 単位では
+        // なく per-vert 判定にして、同一 mesh 内に ribbon 部 + 非 ribbon 部が混在するケースに対応する。
+        bool[] donorBoneIsRibbon = null;
         if (weightTransferEnabled)
         {
             donorBoneIsAux = new bool[donorBones.Length];
+            donorBoneIsRibbon = new bool[donorBones.Length];
             for (int b = 0; b < donorBones.Length; b++)
             {
                 var bone = donorBones[b];
-                if (bone != null && IsAuxiliaryBone(bone.name)) donorBoneIsAux[b] = true;
+                if (bone == null) continue;
+                if (IsAuxiliaryBone(bone.name)) donorBoneIsAux[b] = true;
+                if (IsRibbonBone(bone.name)) donorBoneIsRibbon[b] = true;
             }
         }
 
@@ -339,6 +347,7 @@ internal static class MeshDistancePreserver
         int weightTransferred = 0;
         float maxWeightLoss = 0f;
         int auxSkippedTotal = 0;        // skin 由来集計から副骨理由で skip した slot 累計
+        int ribbonSkipped = 0;          // ribbon 支配で Pass 4 全 skip した vert 数
         // per-vert アロケーション排除のため reuse buffer (typical 4–8 keys)。
         var blendScratch = weightTransferEnabled ? new Dictionary<int, float>(8) : null;
         var blendScratchKeys = weightTransferEnabled ? new List<int>(8) : null;
@@ -371,15 +380,33 @@ internal static class MeshDistancePreserver
             // 距離 d_donor_eff が小さい (skin 密着) ほど skin 由来 weight 比率を上げる。
             if (weightTransferEnabled)
             {
-                // 0=skin (密着), 1=donor (離脱)。負値 (= cloth が skin より内側) は 0 にクランプして 100% skin。
-                float t = Mathf.Clamp01(d_donor_eff / weightFalloffOuter);
-                var blended = ComputeBlendedBoneWeight(
-                    v, neighbors, modSkinVerts, dSkinRemappedToCloth, donorBoneIsAux, donorBoneWeights[i],
-                    t, weightEps, blendScratch, blendScratchKeys, blendScratchSorted, out var loss, out var auxSkipped);
-                newBoneWeights[i] = blended;
-                if (loss > maxWeightLoss) maxWeightLoss = loss;
-                auxSkippedTotal += auxSkipped;
-                weightTransferred++;
+                // ribbon 影響判定: 4 slot のいずれかに ribbon bone が weight > 0 で含まれれば Pass 4 全 skip
+                // (newBoneWeights[i] は Clone で donor 原状を保持済み)。境界 vert (body 支配 + 微小 ribbon)
+                // も保護対象に含めて、ribbon 駆動分が skin 化で歪まないようにする。
+                var bw0 = donorBoneWeights[i];
+                int rLen = donorBoneIsRibbon.Length;
+                bool ribbonInfluenced =
+                    (bw0.weight0 > 0f && (uint)bw0.boneIndex0 < (uint)rLen && donorBoneIsRibbon[bw0.boneIndex0])
+                    || (bw0.weight1 > 0f && (uint)bw0.boneIndex1 < (uint)rLen && donorBoneIsRibbon[bw0.boneIndex1])
+                    || (bw0.weight2 > 0f && (uint)bw0.boneIndex2 < (uint)rLen && donorBoneIsRibbon[bw0.boneIndex2])
+                    || (bw0.weight3 > 0f && (uint)bw0.boneIndex3 < (uint)rLen && donorBoneIsRibbon[bw0.boneIndex3]);
+
+                if (ribbonInfluenced)
+                {
+                    ribbonSkipped++;
+                }
+                else
+                {
+                    // 0=skin (密着), 1=donor (離脱)。負値 (= cloth が skin より内側) は 0 にクランプして 100% skin。
+                    float t = Mathf.Clamp01(d_donor_eff / weightFalloffOuter);
+                    var blended = ComputeBlendedBoneWeight(
+                        v, neighbors, modSkinVerts, dSkinRemappedToCloth, donorBoneIsAux, donorBoneWeights[i],
+                        t, weightEps, blendScratch, blendScratchKeys, blendScratchSorted, out var loss, out var auxSkipped);
+                    newBoneWeights[i] = blended;
+                    if (loss > maxWeightLoss) maxWeightLoss = loss;
+                    auxSkippedTotal += auxSkipped;
+                    weightTransferred++;
+                }
             }
 
             // ---- target skin での signed distance ----
@@ -439,7 +466,7 @@ internal static class MeshDistancePreserver
             ? $"shareBand[<.1/<.5/<.9/>=.9]={shareBand[0]}/{shareBand[1]}/{shareBand[2]}/{shareBand[3]} boneScaleZeroed={boneScaleZeroed}"
             : "shareBand=N/A";
         string weightTransferStr = weightTransferEnabled
-            ? $"weightTransferred={weightTransferred} maxWeightLoss={maxWeightLoss:F3} auxSlotsSkipped={auxSkippedTotal}"
+            ? $"weightTransferred={weightTransferred} maxWeightLoss={maxWeightLoss:F3} auxSlotsSkipped={auxSkippedTotal} ribbonSkipped={ribbonSkipped}"
             : "weightTransfer=disabled";
         PatchLogger.LogInfo(
             $"[{logTag}] distance preserve: donor={donorMesh.name}({donorVerts.Length}v) " +
@@ -787,9 +814,19 @@ internal static class MeshDistancePreserver
     private static bool IsAuxiliaryBone(string name)
     {
         if (string.IsNullOrEmpty(name)) return false;
-        string n = name.ToLowerInvariant();
-        return n.Contains("twist")
-            || n.Contains("deltoid");
+        return name.IndexOf("twist", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || name.IndexOf("deltoid", System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>
+    /// Ribbon 系装飾骨判定。bone 名に <c>"ribbon"</c> を含むかで識別 (case-insensitive)。
+    /// Pass 4 で ribbon bone が weight > 0 で含まれる vert を全 skip して donor 元 weight を維持するために使う。
+    /// 必要なら <c>bow</c> / <c>accessory</c> 等を将来追加。
+    /// </summary>
+    private static bool IsRibbonBone(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        return name.IndexOf("ribbon", System.StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>

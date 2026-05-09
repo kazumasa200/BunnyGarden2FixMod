@@ -12,10 +12,9 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger.UI;
 /// <summary>
 /// UI Toolkit (UIDocument) ベースの Wardrobe ビュー。
 ///
-/// 構成: 本ファイル (共通) + 3 つの partial ファイルで分割。
-///   - CostumePickerView.Picker.cs: 5 タブ (COSTUME/PANTIES/STOCKING/BOTTOMS/TOPS) のメインビュー
+/// 構成: 本ファイル (共通) + 2 つの partial ファイルで分割。
+///   - CostumePickerView.Picker.cs: 5 タブ (衣装/パンツ/靴下/下衣/上衣) のメインビュー
 ///   - CostumePickerView.Settings.cs: 解放状態リセット / すべて解放
-///   - CostumePickerView.Debug.cs: mesh / MagicaCloth inspector (デバッグ専用)
 ///
 /// Controller は public API (Show/Hide/Render*/IsShown + 各種 event + DTO + WardrobeTab)
 /// のみに依存する前提。UGuiKit には依存しない。
@@ -42,10 +41,10 @@ public partial class CostumePickerView : MonoBehaviour
     private Label m_castNameLabel;            // ヘッダー内キャラ名ラベル
     private int m_castSelectedIndex;          // Render() 時点での VisibleCastSelectedIndex
     private int m_castCount;                  // Render() 時点での VisibleCasts.Count（ループ計算用）
-    private Button m_backButton;              // ←: Settings/Debug 中のみ可視
+    private Button m_backButton;              // ←: Settings 中のみ可視
 
     private enum ViewMode
-    { Picker, Settings, Debug }
+    { Picker, Settings }
 
     private ViewMode m_viewMode = ViewMode.Picker;
 
@@ -89,14 +88,10 @@ public partial class CostumePickerView : MonoBehaviour
             m_pickerContent.style.display = mode == ViewMode.Picker ? DisplayStyle.Flex : DisplayStyle.None;
         if (m_settingsContent != null)
             m_settingsContent.style.display = mode == ViewMode.Settings ? DisplayStyle.Flex : DisplayStyle.None;
-        if (m_debugContent != null)
-            m_debugContent.style.display = mode == ViewMode.Debug ? DisplayStyle.Flex : DisplayStyle.None;
         if (m_settingsButton != null)
             m_settingsButton.style.display = mode == ViewMode.Picker ? DisplayStyle.Flex : DisplayStyle.None;
-        if (m_debugButton != null)
-            m_debugButton.style.display = mode == ViewMode.Picker ? DisplayStyle.Flex : DisplayStyle.None;
         if (m_backButton != null)
-            m_backButton.style.display = (mode == ViewMode.Settings || mode == ViewMode.Debug) ? DisplayStyle.Flex : DisplayStyle.None;
+            m_backButton.style.display = mode == ViewMode.Settings ? DisplayStyle.Flex : DisplayStyle.None;
     }
 
     private void EnsureBuilt()
@@ -141,7 +136,7 @@ public partial class CostumePickerView : MonoBehaviour
         var headerRow = UITFactory.CreateRow();
         headerRow.style.height = 22;
         headerRow.style.marginBottom = 6;
-        headerRow.style.marginRight = 96;  // D(right=64, w=22) 左端=86px + 10px バッファ
+        headerRow.style.marginRight = 68;  // ⚙(right=36, w=22) 左端=58px + 10px バッファ
         headerRow.style.flexShrink = 0;
         headerRow.style.alignItems = Align.Center;
         m_panel.Add(headerRow);
@@ -188,13 +183,6 @@ public partial class CostumePickerView : MonoBehaviour
         m_panel.Add(m_settingsContent);
         BuildSettingsContent();
 
-        // Debug 用コンテナ（初期は Hidden）
-        m_debugContent = UITFactory.CreateColumn();
-        m_debugContent.style.flexGrow = 1;
-        m_debugContent.style.display = DisplayStyle.None;
-        m_panel.Add(m_debugContent);
-        BuildDebugContent();
-
         BuildHeaderButtons();
 
         m_panel.style.display = DisplayStyle.None;
@@ -205,19 +193,17 @@ public partial class CostumePickerView : MonoBehaviour
     /// 配置 (right から):
     ///   × right=8     (常時)
     ///   ⚙ right=36    (Picker のみ) ※ 配置詳細は <see cref="BuildSettingsButton"/> (Settings.cs)
-    ///   D right=64    (Picker のみ、Debug ビューへ) ※ 配置詳細は <see cref="BuildDebugButton"/> (Debug.cs)
-    ///   ← right=64    (Settings/Debug 中、D と同位置で排他)
+    ///   ← right=36    (Settings のみ、⚙ と同位置で排他制御は <see cref="SetMode"/>)
     /// </summary>
     private void BuildHeaderButtons()
     {
         BuildSettingsButton();   // ⚙
-        BuildDebugButton();      // [D]
 
-        // ← 戻るボタン（Settings / Debug 中に表示、D と同位置で排他）
+        // ← 戻るボタン（Settings 中に表示、⚙ と同位置で排他）
         var backTex = EmbeddedTexture.Load("BunnyGarden2FixMod.Resources.arrow-big-left.png");
         m_backButton = UITFactory.CreateTextureButton(backTex, () => OnBackClicked?.Invoke(), m_font);
         m_backButton.style.position = Position.Absolute;
-        m_backButton.style.right = 64;
+        m_backButton.style.right = 36;
         m_backButton.style.top = 8;
         m_backButton.style.width = 22;
         m_backButton.style.height = 22;
@@ -238,7 +224,7 @@ public partial class CostumePickerView : MonoBehaviour
     }
 
     /// <summary>
-    /// ◀▶ ナビの表示制御とフィールドを更新する。Render*/RenderSettings/RenderDebug 全モードから呼ぶ。
+    /// ◀▶ ナビの表示制御とフィールドを更新する。Render*/RenderSettings 全モードから呼ぶ。
     /// </summary>
     private void UpdateNavState(IReadOnlyList<CharID> visibleCasts, int selectedIndex)
     {

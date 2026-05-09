@@ -778,7 +778,7 @@ internal static class MagicaClothRebuilder
             }
         }
 
-        int colRemapped = 0, colCloned = 0, colInjected = 0, colDropped = 0, colMirrored = 0;
+        int colRemapped = 0, colCloned = 0, colInjected = 0, colDropped = 0;
         var colListField = ccData.GetType().GetField("colliderList", BindingFlags.Instance | BindingFlags.Public);
         if (colListField?.GetValue(ccData) is IList colList)
         {
@@ -799,33 +799,6 @@ internal static class MagicaClothRebuilder
                 }
             }
 
-            // donor のコリジョン定義は片側のみ (例: 'R_Upperleg' はあるが 'L_Upperleg' は無し) という
-            // asymmetric な構成が観測される。各エントリの L↔R mirror counterpart を target に解決
-            // (remap → clone → inject) して同じ list に追加し両側に collide させる。重複は skip。
-            // 起点は post-resolve の entry.gameObject.name を使う点に注意: ResolveOrInjectCollider が
-            // remap/clone/inject いずれの経路でも target 側 component の GO 名を donor 側名と同一に保つ前提
-            // (CloneColliderTo は AddComponent で同 GO に同名 attach、InjectColliderGo は goName をそのまま使用)。
-            // 名前を変える経路を将来導入する場合は donor 側 entry から mirror を引く 2-pass 構造に直すこと。
-            var existingComponents = new HashSet<Component>();
-            var snapshot = new List<Component>();
-            foreach (var entry in colList)
-            {
-                if (entry is Component c) { existingComponents.Add(c); snapshot.Add(c); }
-            }
-            foreach (var entry in snapshot)
-            {
-                if (entry == null) continue;
-                var mirroredGoName = MirrorBoneName(entry.gameObject.name);
-                if (mirroredGoName == null) continue;
-                var entryParentName = entry.transform.parent != null ? entry.transform.parent.name : null;
-                var mirroredBoneName = entryParentName != null ? MirrorBoneName(entryParentName) : null;
-                var (mirroredComp, _) = ResolveOrInjectCollider(entry, mirroredGoName, mirroredBoneName, transformByName);
-                if (mirroredComp == null) continue;
-                if (existingComponents.Contains(mirroredComp)) continue;
-                colList.Add(mirroredComp);
-                existingComponents.Add(mirroredComp);
-                colMirrored++;
-            }
         }
 
         int boneRemapped = 0, boneDropped = 0;
@@ -846,66 +819,7 @@ internal static class MagicaClothRebuilder
             }
         }
 
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] collider remap: {character.name} (colliderList: remapped={colRemapped} cloned={colCloned} injected={colInjected} mirrored={colMirrored} dropped={colDropped}, collisionBones: remapped={boneRemapped} dropped={boneDropped})");
-    }
-
-    /// <summary>
-    /// 名前内の左右トークン (R_/L_, _R_/_L_, _R/_L 末尾) を反転させる。該当無 / 中央線 (Hip / Spine
-    /// 等) / R 側と L 側両方のトークンを含む曖昧な名前 (例: <c>R_L_thing</c>, <c>Bone(R_skirt_L)</c>) は
-    /// null を返し mirror 対象外とする。両方含むパターンは「どちらを反転すべきか確定しない」ため安全に
-    /// 諦める方針。検出はトークン単位で行い、単独 'R' / 'L' (Ribbon の R 等) は単語境界判定で除外する。
-    /// </summary>
-    private static string MirrorBoneName(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return null;
-        bool hasR = HasSideToken(name, 'R');
-        bool hasL = HasSideToken(name, 'L');
-        if (hasR && hasL) return null; // ambiguous
-        if (!hasR && !hasL) return null;
-
-        // 末尾 _R / _L
-        if (name.EndsWith("_R", StringComparison.Ordinal)) return name.Substring(0, name.Length - 2) + "_L";
-        if (name.EndsWith("_L", StringComparison.Ordinal)) return name.Substring(0, name.Length - 2) + "_R";
-
-        // 中央 _R_ / _L_ (最初の出現のみ)
-        int idx;
-        idx = name.IndexOf("_R_", StringComparison.Ordinal);
-        if (idx >= 0) return name.Substring(0, idx) + "_L_" + name.Substring(idx + 3);
-        idx = name.IndexOf("_L_", StringComparison.Ordinal);
-        if (idx >= 0) return name.Substring(0, idx) + "_R_" + name.Substring(idx + 3);
-
-        // 接頭 R_ / L_ (単語境界判定: 先頭 / 非英数字直後)
-        // GO 名は "MCC (R_Upperleg_skinJT)" 形式があり、'(' 直後の R_ をひっかけたい
-        for (int i = 0; i + 2 <= name.Length; i++)
-        {
-            if (name[i] != 'R' && name[i] != 'L') continue;
-            if (name[i + 1] != '_') continue;
-            // 単語境界: 先頭 or 非英数字 (アンダースコア以外) 直後
-            bool atBoundary = i == 0 || !char.IsLetterOrDigit(name[i - 1]) && name[i - 1] != '_';
-            if (!atBoundary) continue;
-            char flipped = name[i] == 'R' ? 'L' : 'R';
-            return name.Substring(0, i) + flipped + name.Substring(i + 1);
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// 名前内に side トークン (<paramref name="side"/>_ 接頭・_<paramref name="side"/>_ 中央・末尾 _<paramref name="side"/>)
-    /// が単語境界で含まれるかを判定。<see cref="MirrorBoneName"/> の ambiguous 検出に使う。
-    /// </summary>
-    private static bool HasSideToken(string name, char side)
-    {
-        if (string.IsNullOrEmpty(name)) return false;
-        if (name.EndsWith("_" + side, StringComparison.Ordinal)) return true;
-        if (name.IndexOf("_" + side + "_", StringComparison.Ordinal) >= 0) return true;
-        for (int i = 0; i + 2 <= name.Length; i++)
-        {
-            if (name[i] != side) continue;
-            if (name[i + 1] != '_') continue;
-            bool atBoundary = i == 0 || !char.IsLetterOrDigit(name[i - 1]) && name[i - 1] != '_';
-            if (atBoundary) return true;
-        }
-        return false;
+        PatchLogger.LogInfo($"[MagicaClothRebuilder] collider remap: {character.name} (colliderList: remapped={colRemapped} cloned={colCloned} injected={colInjected} dropped={colDropped}, collisionBones: remapped={boneRemapped} dropped={boneDropped})");
     }
 
     /// <summary>
@@ -916,8 +830,6 @@ internal static class MagicaClothRebuilder
     /// 2. 同名 GO 存在 / 同型 component 無 → <b>clone</b> (<see cref="CloneColliderTo"/> で AddComponent、marker 付与、DestroyGameObject=false)
     /// 3. 同名 GO 無 / <paramref name="boneName"/> 親 bone あり → <b>inject</b> (<see cref="InjectColliderGo"/> で 新規 GO 生成 + AddComponent、marker DestroyGameObject=true)
     /// 4. いずれも失敗 → (null, null)
-    ///
-    /// 用途: main loop (donor → target) と mirror loop (post-remap entry → target mirror) の両方で使う。
     /// </summary>
     private static (Component comp, string action) ResolveOrInjectCollider(
         Component source,
@@ -951,10 +863,10 @@ internal static class MagicaClothRebuilder
     /// は親 layer を自動継承しないため明示コピーしないと grey 描画 / 物理レイヤミスマッチが起きる)。
     ///
     /// local TRS 前提: source の localPosition/localRotation/localScale をそのまま target 親 bone 配下に
-    /// 貼ると、bone の局所空間が左右対称な humanoid rig では mirror 注入で自然に対称配置となる。
-    /// 片側だけ twist 加工 / 軸 flip された non-symmetric rig では位置がずれる可能性あり。同様に
+    /// 貼るため、donor と target の同名 bone の局所空間が一致している前提に依存する。片側だけ twist
+    /// 加工 / 軸 flip された non-symmetric rig では位置がずれる可能性あり。同様に
     /// MagicaCapsuleCollider.center / size 等の field も CopyFields で donor 値そのまま転写されるため
-    /// bone 局所空間で対称な前提に依存する。本 mod が対象とする vanilla MagicaCloth GO 命名規則
+    /// bone 局所空間が一致する前提に依存する。本 mod が対象とする vanilla MagicaCloth GO 命名規則
     /// (<c>MCC (R_Upperleg_skinJT)</c> 等) では実機検証済で問題無し。
     /// </summary>
     private static Component InjectColliderGo(GameObject parentBone, Component source, string goName)

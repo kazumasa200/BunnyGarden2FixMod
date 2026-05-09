@@ -270,7 +270,28 @@ public class BottomsLoader : MonoBehaviour
         var id = handle.GetCharID();
         if (!BottomsOverrideStore.TryGet(id, out var entry)) return;
 
-        Apply(handle.Chara, entry.DonorChar, entry.DonorCostume);
+        var donorKey = (entry.DonorChar, entry.DonorCostume);
+        if (s_donors.ContainsKey(donorKey))
+        {
+            Apply(handle.Chara, entry.DonorChar, entry.DonorCostume);
+            return;
+        }
+
+        // donor 未ロード: ExSave rehydrate 経路では Wardrobe UI の PreloadDonorAsync が走らないため
+        // Apply が donor lookup で skip してしまう。先に preload を起動し、完了後に re-apply する。
+        var chara = handle.Chara;
+        var donorChar = entry.DonorChar;
+        var donorCostume = entry.DonorCostume;
+        PatchLogger.LogInfo($"[BottomsLoader] donor 未ロード、先行 preload を起動: {donorChar}/{donorCostume} (target={id})");
+        PreloadDonorAsync(donorChar, donorCostume).ContinueWith(success =>
+        {
+            if (!success) return;
+            if (chara == null) return; // Unity の == null は破棄済みを true にする
+            // store 側で override が変わっている可能性があるので最新を取り直す
+            if (!BottomsOverrideStore.TryGet(id, out var freshEntry)) return;
+            if (freshEntry.DonorChar != donorChar || freshEntry.DonorCostume != donorCostume) return;
+            Apply(chara, freshEntry.DonorChar, freshEntry.DonorCostume);
+        }).Forget();
     }
 
     /// <summary>

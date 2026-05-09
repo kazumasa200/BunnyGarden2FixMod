@@ -1,11 +1,16 @@
+using BunnyGarden2FixMod.ExSave;
+using BunnyGarden2FixMod.Utils;
+using Cysharp.Threading.Tasks;
 using GB.Game;
+using MessagePack;
+using System;
 using System.Collections.Generic;
 
 namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 
 /// <summary>
 /// キャラごとの「下衣移植」override（donor キャラ + donor コスチューム）を保持する
-/// プロセス内セッションストア。永続化しない。
+/// プロセス内セッションストア。永続化は ExSave (CommonData) の <c>bottoms.override.all</c> キーに行う。
 ///
 /// 制約:
 ///   - target == donor は許可（自身の他コスチューム由来 bottoms を素体に移植する用途）
@@ -20,6 +25,8 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 /// </summary>
 public static class BottomsOverrideStore
 {
+    private const string ExSaveKey = "bottoms.override.all";
+
     public readonly struct Entry
     {
         public Entry(CharID donorChar, CostumeType donorCostume)
@@ -35,6 +42,12 @@ public static class BottomsOverrideStore
     private static readonly Dictionary<CharID, Entry> s_overrides = new();
 
     /// <summary>
+    /// rehydrate が例外で失敗したことを記録するフラグ。
+    /// true の間は WriteToExSave を抑止し、破損データによる旧データ上書きを防ぐ。
+    /// </summary>
+    private static bool s_rehydrateFailed = false;
+
+    /// <summary>
     /// 無効な組み合わせは false を返す（target/donor 範囲外、costume == Num/Bunnygirl）。
     /// SwimWear donor は許可（mesh_costume_skirt を持つため）。
     /// donor == target も許可（自身の他コスチューム移植）。
@@ -42,14 +55,16 @@ public static class BottomsOverrideStore
     /// </summary>
     public static bool Set(CharID target, CharID donor, CostumeType costume)
     {
-        if (target >= CharID.NUM || donor >= CharID.NUM) return false;
-        if (costume == CostumeType.Num) return false;
-        if (costume == CostumeType.Bunnygirl) return false;
-        s_overrides[target] = new Entry(donor, costume);
-        return true;
+        bool ok = SetValidatedNoMirror(target, donor, costume);
+        if (ok) WriteToExSave();
+        return ok;
     }
 
-    public static void Clear(CharID target) => s_overrides.Remove(target);
+    public static void Clear(CharID target)
+    {
+        if (s_overrides.Remove(target))
+            WriteToExSave();
+    }
 
     public static bool TryGet(CharID target, out Entry entry) => s_overrides.TryGetValue(target, out entry);
 
@@ -67,4 +82,103 @@ public static class BottomsOverrideStore
             if (seen.Add(key)) yield return e;
         }
     }
+
+    /// <summary>
+    /// ExSave から override 状態を読み込み、s_overrides を再構築する。
+    /// ExSaveStore.LoadFromPath 後に呼ばれる。
+    /// </summary>
+    public static void RehydrateFromExSave()
+    {
+        s_overrides.Clear();
+        s_rehydrateFailed = false;
+        if (!Configs.PersistCostumeOverrides.Value)
+        {
+            PatchLogger.LogInfo("[BottomsOverrideStore] rehydrate skip: PersistCostumeOverrides=false");
+            return;
+        }
+        if (!ExSaveStore.CommonData.TryGet(ExSaveKey, out byte[] bytes) || bytes == null || bytes.Length == 0)
+        {
+            PatchLogger.LogInfo("[BottomsOverrideStore] rehydrate skip: ExSave entry なし");
+            return;
+        }
+        try
+        {
+            var dict = MessagePackSerializer.Deserialize<Dictionary<int, BottomsOverrideExSaveEntry>>(bytes, ExSaveData.s_options);
+            int restored = 0;
+            foreach (var kv in dict)
+                if (SetValidatedNoMirror((CharID)kv.Key, (CharID)kv.Value.DonorChar, (CostumeType)kv.Value.DonorCostume)) restored++;
+            PatchLogger.LogInfo($"[BottomsOverrideStore] rehydrate: {bytes.Length} bytes → {restored} 個復元");
+
+            // rehydrate された donor を先行 preload（setup() Postfix と preload 完了の race を縮める）。
+            // ApplyIfOverridden 側でも donor 未ロード時の自動 preload + re-apply フォールバックがあるが、
+            // 先行起動して setup と race させたほうがほぼ常に間に合う。
+            foreach (var e in EnumerateUniqueDonors())
+                BottomsLoader.PreloadDonorAsync(e.DonorChar, e.DonorCostume).Forget();
+        }
+        catch (Exception ex)
+        {
+            s_rehydrateFailed = true;
+            PatchLogger.LogWarning($"[BottomsOverrideStore] ExSave rehydrate 失敗、空で続行 + 次回保存もスキップして元データ保護: {ex.Message} (bytes={bytes?.Length ?? 0})");
+        }
+    }
+
+    /// <summary>in-memory の s_overrides をクリアする（Reset 時に呼ばれる）。</summary>
+    public static void ClearMemory()
+    {
+        s_overrides.Clear();
+        s_rehydrateFailed = false;
+    }
+
+    /// <summary>バリデーション後に dict へ投入する（ExSave mirror を行わない）。</summary>
+    private static bool SetValidatedNoMirror(CharID target, CharID donor, CostumeType costume)
+    {
+        if (target >= CharID.NUM || donor >= CharID.NUM) return false;
+        if (costume == CostumeType.Num) return false;
+        if (costume == CostumeType.Bunnygirl) return false;
+        s_overrides[target] = new Entry(donor, costume);
+        return true;
+    }
+
+    /// <summary>s_overrides の全内容を ExSave の CommonData に書き込む。</summary>
+    private static void WriteToExSave()
+    {
+        if (!Configs.PersistCostumeOverrides.Value) return;
+        if (s_rehydrateFailed)
+        {
+            PatchLogger.LogWarning("[BottomsOverrideStore] ExSave 書込スキップ: 直前の rehydrate 失敗データを保護中（再起動 or 修復まで dict のみ更新）");
+            return;
+        }
+        try
+        {
+            var dict = BuildSerializableDict();
+            byte[] bytes = MessagePackSerializer.Serialize(dict, ExSaveData.s_options);
+            ExSaveStore.CommonData.Set(ExSaveKey, bytes);
+            PatchLogger.LogDebug($"[BottomsOverrideStore] write: {dict.Count} 個 → {bytes.Length} bytes");
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[BottomsOverrideStore] ExSave 書込失敗、in-memory 維持: {ex.Message}");
+        }
+    }
+
+    /// <summary>s_overrides を Dictionary&lt;int, BottomsOverrideExSaveEntry&gt; に変換する（MessagePack 直列化用）。</summary>
+    private static Dictionary<int, BottomsOverrideExSaveEntry> BuildSerializableDict()
+    {
+        var dict = new Dictionary<int, BottomsOverrideExSaveEntry>(s_overrides.Count);
+        foreach (var kv in s_overrides)
+            dict[(int)kv.Key] = new BottomsOverrideExSaveEntry { DonorChar = (byte)kv.Value.DonorChar, DonorCostume = (byte)kv.Value.DonorCostume };
+        return dict;
+    }
+}
+
+// MessagePack-CSharp の DynamicObjectResolver は public 型のみ解決するため public class 必須
+/// <summary>下衣移植 override の ExSave 直列化用 POCO。</summary>
+[MessagePackObject]
+public class BottomsOverrideExSaveEntry
+{
+    [Key(0)]
+    public byte DonorChar { get; set; }
+
+    [Key(1)]
+    public byte DonorCostume { get; set; }
 }

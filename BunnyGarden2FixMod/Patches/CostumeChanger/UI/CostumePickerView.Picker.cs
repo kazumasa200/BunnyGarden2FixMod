@@ -108,7 +108,7 @@ public partial class CostumePickerView
     private void BuildPickerContent()
     {
         m_tabStrip = new UITTabStrip();
-        m_tabStrip.Setup(new[] { "COSTUME", "PANTIES", "STOCKING", "BOTTOMS", "TOPS" }, m_font);
+        m_tabStrip.Setup(new[] { "衣装", "パンツ", "靴下", "下衣", "上衣" }, m_font);
         m_tabStrip.style.marginBottom = 6;
         m_tabStrip.style.flexShrink = 0;
         m_tabStrip.OnTabClicked += i => OnTabClicked?.Invoke(i);
