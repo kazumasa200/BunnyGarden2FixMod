@@ -22,7 +22,7 @@ internal static class TopsPreloadFallbackPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[TopsPreloadFallbackPatch] 適用");
         return enabled;
     }

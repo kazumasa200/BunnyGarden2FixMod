@@ -304,6 +304,18 @@ public class TopsLoader : MonoBehaviour
         // destroyed Mesh となって target の Apply(d) swap source も巻き込み破壊する症状を踏んだ。
         if (DonorPreloadRegistry.IsAnyHostParent(handle.Chara)) return;
 
+        // FittingRoom 動作中 / 本体 CostumeOverride 中 / ExtraScene 中は skip (CostumeChangerPatch.Prefix と揃える)。
+        // setup() Postfix は Preload Prefix と独立経路なので、ここでも同じ guard が要る。
+        // ExtraScene (Album / Cheki / MiniGame 等) は本体 FittingRoom が衣装を制御するため、
+        // RespectGameCostumeOverride 有効時は MOD 適用しない (FR 退出後も FR の選択を保持)。
+        if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return;
+        if (Configs.RespectGameCostumeOverride.Value)
+        {
+            if (GBSystem.Instance != null
+                && GBSystem.Instance.GetCostumeOverride() != GBSystem.CostumeOverride.None) return;
+            if (GBSystem.GetCurrentSceneName() == "ExtraScene") return;
+        }
+
         var id = handle.GetCharID();
         if (!TopsOverrideStore.TryGet(id, out var entry)) return;
 
@@ -813,9 +825,9 @@ public class TopsLoader : MonoBehaviour
             SkinShrinkCoordinator.RegisterTops(
                 ctx.Character,
                 ctx.SwappedTopsPairs.Where(p => IsTopsCandidate(p.Target)).Select(p => p.Target),
-                Configs.TopsSkinShrink?.Value ?? 0f,
-                Configs.TopsSkinShrinkFalloffRadius?.Value ?? 0f,
-                Configs.TopsSkinShrinkSampleRadius?.Value ?? 0f);
+                Configs.TopsSkinShrink.Value,
+                Configs.TopsSkinShrinkFalloffRadius.Value,
+                Configs.TopsSkinShrinkSampleRadius.Value);
         }
         else
         {

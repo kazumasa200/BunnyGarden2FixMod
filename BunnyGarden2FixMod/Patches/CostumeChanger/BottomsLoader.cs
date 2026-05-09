@@ -284,6 +284,18 @@ public class BottomsLoader : MonoBehaviour
         // destroyed → target Apply の swap source を巻き込み破壊する (実機 diag 2026-05-08)。
         if (DonorPreloadRegistry.IsAnyHostParent(handle.Chara)) return;
 
+        // FittingRoom 動作中 / 本体 CostumeOverride 中 / ExtraScene 中は skip (CostumeChangerPatch.Prefix と揃える)。
+        // setup() Postfix は Preload Prefix と独立経路なので、ここでも同じ guard が要る。
+        // ExtraScene (Album / Cheki / MiniGame 等) は本体 FittingRoom が衣装を制御するため、
+        // RespectGameCostumeOverride 有効時は MOD 適用しない (FR 退出後も FR の選択を保持)。
+        if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return;
+        if (Configs.RespectGameCostumeOverride.Value)
+        {
+            if (GBSystem.Instance != null
+                && GBSystem.Instance.GetCostumeOverride() != GBSystem.CostumeOverride.None) return;
+            if (GBSystem.GetCurrentSceneName() == "ExtraScene") return;
+        }
+
         var id = handle.GetCharID();
         if (!BottomsOverrideStore.TryGet(id, out var entry)) return;
 
@@ -564,9 +576,9 @@ public class BottomsLoader : MonoBehaviour
             SkinShrinkCoordinator.RegisterBottoms(
                 ctx.Character,
                 ctx.SwappedBottomsPairs.Select(p => p.Target),
-                Configs.BottomsSkinShrink?.Value ?? 0f,
-                Configs.BottomsSkinShrinkFalloffRadius?.Value ?? 0f,
-                Configs.BottomsSkinShrinkSampleRadius?.Value ?? 0f);
+                Configs.BottomsSkinShrink.Value,
+                Configs.BottomsSkinShrinkFalloffRadius.Value,
+                Configs.BottomsSkinShrinkSampleRadius.Value);
         }
         else
         {

@@ -19,7 +19,7 @@ internal static class BottomsSetupPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[BottomsSetupPatch] 適用");
         return enabled;
     }

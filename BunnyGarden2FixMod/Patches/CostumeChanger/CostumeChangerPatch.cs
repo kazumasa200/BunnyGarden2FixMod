@@ -74,9 +74,7 @@ public static class CostumeChangerPatch
 
     private static bool Prepare()
     {
-        // PatchLogger.LogInfo は内部で null-conditional ガード済みのため、
-        // Initialize 未了でも安全に呼べる（最悪ログがドロップするだけ）。
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         PatchLogger.LogInfo($"[CostumeChangerPatch] 適用 (enabled={enabled})");
         return enabled;
     }
@@ -109,7 +107,7 @@ public static class CostumeChangerPatch
         if (IsFittingRoomActive()) return;
 
         // RespectGameCostumeOverride: 本体が ForceXxx を設定中なら MOD override を一時停止
-        if ((Configs.RespectGameCostumeOverride?.Value ?? true)
+        if (Configs.RespectGameCostumeOverride.Value
             && GBSystem.Instance != null
             && GBSystem.Instance.GetCostumeOverride() != GBSystem.CostumeOverride.None)
         {
@@ -250,7 +248,7 @@ public static class CostumeChangerPatch
 [HarmonyPatch(typeof(FittingRoom), "setupGenreSelect")]
 internal static class FittingRoomOnEnterPatch
 {
-    private static bool Prepare() => Configs.CostumeChangerEnabled?.Value ?? true;
+    private static bool Prepare() => Configs.CostumeChangerEnabled.Value;
 
     private static void Prefix(FittingRoom __instance)
     {

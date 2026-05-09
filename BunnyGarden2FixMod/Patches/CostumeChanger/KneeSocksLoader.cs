@@ -306,6 +306,17 @@ public class KneeSocksLoader : MonoBehaviour
         // donor preload に override 適用すると skin SMR の状態が破壊され、後続 target Apply の swap source
         // を巻き込む。同 CharID で override 設定があれば誤適用されるため、preload host 配下は skip。
         if (DonorPreloadRegistry.IsAnyHostParent(handle.Chara)) return;
+        // FittingRoom 動作中 / 本体 CostumeOverride 中 / ExtraScene 中は skip (CostumeChangerPatch.Prefix と揃える)。
+        // setup() Postfix は Preload Prefix と独立経路なので、ここでも同じ guard が要る。
+        // ExtraScene (Album / Cheki / MiniGame 等) は本体 FittingRoom が衣装を制御するため、
+        // RespectGameCostumeOverride 有効時は MOD 適用しない (FR 退出後も FR の選択を保持)。
+        if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return;
+        if (Configs.RespectGameCostumeOverride.Value)
+        {
+            if (GBSystem.Instance != null
+                && GBSystem.Instance.GetCostumeOverride() != GBSystem.CostumeOverride.None) return;
+            if (GBSystem.GetCurrentSceneName() == "ExtraScene") return;
+        }
         // 水着は SwimWearStockingPatch が専用ロジックで処理するためスキップ
         if (handle.m_lastLoadArg != null && handle.m_lastLoadArg.Costume == CostumeType.SwimWear) return;
         var id = handle.GetCharID();
@@ -378,7 +389,7 @@ internal static class KneeSocksSetupPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPatch] 適用");
         return enabled;
     }
@@ -394,7 +405,7 @@ internal static class KneeSocksSetupPantiesOnlyPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPantiesOnlyPatch] 適用");
         return enabled;
     }
@@ -412,7 +423,7 @@ internal static class KneeSocksApplyStockingPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksApplyStockingPatch] 適用");
         return enabled;
     }

@@ -15,7 +15,7 @@ internal static class TopsSetupPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[TopsSetupPatch] 適用");
         return enabled;
     }
