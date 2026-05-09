@@ -147,6 +147,10 @@ public class FreeCameraManager : MonoBehaviour
             // どちらのモードも無効な場合は、メインを停止してフリーカメラをメインディスプレイに出力する
             freeCam.targetDisplay = 0;
             originalCam.enabled = false;
+            freeCamObject.AddComponent<AudioListener>();
+            if (originalCam.TryGetComponent<AudioListener>(out var listener))
+                listener.enabled = false;
+
             Plugin.Logger.LogInfo("MainScreenでフリーカメラを有効化");
         }
 
@@ -178,6 +182,9 @@ public class FreeCameraManager : MonoBehaviour
         {
             originalCam.enabled = true;
             originalCam.targetDisplay = 0;
+
+            if (originalCam.TryGetComponent<AudioListener>(out var listener))
+                listener.enabled = true;
         }
 
         IsActive = false;
@@ -280,13 +287,15 @@ public class FreeCameraManager : MonoBehaviour
 
         // freeCamObjectを流用し，テクスチャを更新
         var cam = freeCamObject.GetComponent<Camera>();
-        if (cam != null)
-            cam.targetTexture = pipRenderTexture;
+        if (cam == null)
+            return;
+        cam.targetTexture = pipRenderTexture;
 
         // pipUIObjectを流用し，テクスチャを更新
         var image = pipUIObject.GetComponent<UnityEngine.UI.RawImage>();
-        if (image != null)
-            image.texture = pipRenderTexture;
+        if (image == null)
+            return;
+        image.texture = pipRenderTexture;
     }
 
     // 他のUIオブジェクトの最大のソート順序を取得する

@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.FreeCamera;
 using BunnyGarden2FixMod.Utils;
 using GB.Save;
 using HarmonyLib;
@@ -186,8 +187,9 @@ public static class ChekiResolutionPatch
 
         yield return new WaitForEndOfFrame();
 
-        // フリーカメラがDisplay2を使用する時のみ，Cameraからのキャプチャを使用する
-        bool useMainCameraCapture = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2;
+        // フリーカメラがアクティブかつDisplay2を使用する時のみ，Cameraからのキャプチャを使用する
+        bool useMainCameraCapture = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2 &&
+                                    FreeCameraManager.IsActive;
 
         if (useMainCameraCapture)
         {
