@@ -1,6 +1,7 @@
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
+using GB.DLC;
 using GB.Game;
 using GB.Scene;
 using System;
@@ -343,6 +344,7 @@ public class CostumePickerController : MonoBehaviour
         int pUnlock = m_pantiesItems.Count(x => !x.Locked);
         int sUnlock = m_stockingItems.Count(x => !x.Locked);
         PatchLogger.LogInfo($"[CostumePicker] オープン: {charId} / 衣装{cUnlock}/{m_costumeItems.Count} / パンツ{pUnlock}/{m_pantiesItems.Count} / ストッキング{sUnlock}/{m_stockingItems.Count}");
+        EnsurePrefetchDlcNamesAsync().Forget();
     }
 
     private void RebuildItemsFor(CharID charId)
@@ -634,20 +636,82 @@ public class CostumePickerController : MonoBehaviour
 
     private static char TypeLetter(int type) => (char)('A' + type);
 
-    /// <summary>
-    /// 衣装名をゲーム本体のローカライズされた表示名で解決する。
-    /// FittingRoom と同じ MSGID_SPLIT_2.FITTING_ROOM_COSTUME_* を参照する。
-    /// DLC 衣装は MSGID が存在しないので enum 名にフォールバック
-    /// （DLC 名は Text/dlc_costume/*.txt に非同期ロードで入っているが、同期取得不可のため）。
-    /// </summary>
+    // DLC 衣装名キャッシュ。Text/dlc_costume/{DLCID}.txt の 1 行目から現在言語の名前を抽出。
+    // 1 行目は "日本語名,,English Name,,中文,,..." の `,,` 区切りで多言語格納されているため、
+    // HomeScene.showDLCAnnounce と同じ言語インデックス選択をする (FittingRoom は array[0] 直で
+    // 多言語が混ざるバグがあるので真似しない)。プロセス永続: DLC は再起動まで不変。
+    private static readonly Dictionary<CostumeType, string> s_dlcNameCache = new();
+
+    // 連続 OpenFor で並列 prefetch が走らないようにする in-flight ガード。
+    private static bool s_dlcPrefetchInFlight;
+
     private static string ResolveCostumeName(CostumeType costume)
     {
+        if (costume.IsDLC() && s_dlcNameCache.TryGetValue(costume, out var dlcName))
+            return dlcName;
+
         var msg = GBSystem.Instance?.RefMessage();
         if (msg == null) return costume.ToString();
         var mid = CostumeToMsgId(costume);
         if (mid == null) return costume.ToString();
         try { return msg.RefText(mid); }
         catch { return costume.ToString(); }
+    }
+
+    private async UniTaskVoid EnsurePrefetchDlcNamesAsync()
+    {
+        if (s_dlcPrefetchInFlight) return;
+
+        var sys = GBSystem.Instance;
+        if (sys == null) return;
+
+        var installed = GetInstalledDlcCostumes();
+        if (installed.Count == 0) return;
+        if (installed.All(c => s_dlcNameCache.ContainsKey(c))) return;
+
+        s_dlcPrefetchInFlight = true;
+        try
+        {
+            bool any = false;
+            foreach (var costume in installed)
+            {
+                if (s_dlcNameCache.ContainsKey(costume)) continue;
+                try
+                {
+                    var dlcId = costume.ToDLCID();
+                    var handle = sys.LoadDLCAsync<TextAsset>(
+                        dlcId, "Text/dlc_costume/" + dlcId + ".txt");
+                    await handle.ToUniTask();
+                    var asset = handle.Result;
+                    if (asset == null) continue;
+                    var lines = asset.text.Split(
+                        new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
+                    if (lines.Length == 0 || string.IsNullOrEmpty(lines[0])) continue;
+
+                    var langs = lines[0].Split(new[] { ",," }, StringSplitOptions.None);
+                    var saveData = sys.RefSaveData();
+                    int langIndex = saveData != null ? (int)saveData.GetLanguage() : 0;
+                    if (langIndex < 0) langIndex = 0;
+                    if (langIndex >= langs.Length) langIndex = langs.Length - 1;
+                    var name = langs[langIndex];
+                    if (string.IsNullOrEmpty(name)) continue;
+
+                    s_dlcNameCache[costume] = name;
+                    any = true;
+                }
+                catch (Exception e)
+                {
+                    PatchLogger.LogWarning($"[CostumePicker] DLC 名取得失敗: {costume} ({e.Message})");
+                }
+            }
+
+            if (any && m_view != null && m_view.IsShown)
+                m_view.Render(BuildRenderData());
+        }
+        finally
+        {
+            s_dlcPrefetchInFlight = false;
+        }
     }
 
     /// <summary>

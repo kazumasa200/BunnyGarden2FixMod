@@ -216,12 +216,36 @@ public class BottomsLoader : MonoBehaviour
         if (s_inFlight.TryGetValue(key, out var pending))
             return pending;
 
-        // UniTask は完了後にプールへ戻り単一 await のみ許可されるため、複数 caller が
-        // 同 key の in-flight task を再 await できるよう Preserve() で multi-await 可にする。
-        // (https://github.com/Cysharp/UniTask/issues/93)
-        var task = PreloadDonorInternal(donor, costume).Preserve();
-        s_inFlight[key] = task;
-        return task;
+        // UniTaskCompletionSource は内部 continuation を multi-cast 保持するため
+        // pre-completion で複数の await/Forget/ContinueWith が安全。
+        // .Preserve() の MemoizeSource は OnCompleted を underlying source に forward するだけで
+        // 単一 continuation slot 制約を解消しないため使用不可。
+        var tcs = new UniTaskCompletionSource<bool>();
+        s_inFlight[key] = tcs.Task;
+        RunPreloadWorker(donor, costume, tcs).Forget();
+        return tcs.Task;
+    }
+
+    private static async UniTaskVoid RunPreloadWorker(CharID donor, CostumeType costume, UniTaskCompletionSource<bool> tcs)
+    {
+        var key = (donor, costume);
+        bool result = false;
+        try
+        {
+            result = await PreloadDonorInternal(donor, costume);
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[BottomsLoader] preload worker 例外: {donor}/{costume}: {ex}");
+        }
+        finally
+        {
+            // TrySetResult を先に呼ぶことで、同期的に発火する continuation 中も
+            // s_inFlight に entry が残り、再帰的な PreloadDonorAsync(同 key) は
+            // 完了済みの tcs.Task を即座に返すため二重 worker 起動を防ぐ。
+            tcs.TrySetResult(result);
+            s_inFlight.Remove(key);
+        }
     }
 
     private static async UniTask<bool> PreloadDonorInternal(CharID donor, CostumeType costume)
@@ -257,17 +281,13 @@ public class BottomsLoader : MonoBehaviour
             var bottomsSmrs = allSmrs.Where(IsBottomsCandidate).ToList();
             s_donors[key] = new DonorEntry { Handle = handle, DonorParent = donorParent, AllSmrs = allSmrs, BottomsSmrs = bottomsSmrs };
 
-            PatchLogger.LogInfo($"[BottomsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, bottomsCandidates={bottomsSmrs.Count}, names=[{string.Join(", ", bottomsSmrs.Select(s => s.name))}])");
+            PatchLogger.LogDebug($"[BottomsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, bottomsCandidates={bottomsSmrs.Count}, names=[{string.Join(", ", bottomsSmrs.Select(s => s.name))}])");
             return bottomsSmrs.Count > 0;
         }
         catch (Exception ex)
         {
             PatchLogger.LogWarning($"[BottomsLoader] preload 失敗: {donor}/{costume}: {ex}");
             return false;
-        }
-        finally
-        {
-            s_inFlight.Remove(key);
         }
     }
 
@@ -297,37 +317,56 @@ public class BottomsLoader : MonoBehaviour
     {
         SkinShrinkCoordinator.InvalidateCache();
 
-        var env = GBSystem.Instance?.GetActiveEnvScene();
-        if (env == null) return;
+        // 同伴イベント等 (env != HoleScene) で live tune が走った場合、env.FindCharacter は env 側の char しか返さず、
+        // HoleScene preserved の Bar char は再 Apply 対象から外れる。InvalidateCache で destroyed Mesh となった
+        // mesh_skin_* の sharedMesh を保持したまま Bar 復帰すると skin が消失するため、env と HoleScene の両方で
+        // FindCharacter する (TopsLoader.OnDistancePreserveParamChanged と同方針)。
+        var sys = GBSystem.Instance;
+        if (sys == null) return;
+        var env = sys.GetActiveEnvScene();
+        var holeScene = sys.GetHoleScene();
+        if (env == null && holeScene == null) return;
 
         // 列挙中の操作で例外が出ないよう ToList でスナップショット
         var snapshot = BottomsOverrideStore.EnumerateOverrides().ToList();
         if (snapshot.Count == 0) return;
 
         int reapplied = 0;
+        // env と HoleScene の FindCharacter が同一 GameObject を返す場合 (Bar 滞在中の通常経路) に
+        // 二重 Apply を防ぐ。InstanceID が別なら両者をそのまま Apply する (companion event の Talk2DScene char と
+        // HoleScene preserved char は別 GameObject)。
+        var seen = new HashSet<int>();
         foreach (var kv in snapshot)
         {
             var target = kv.Key;
             var entry = kv.Value;
-            var charObj = env.FindCharacter(target);
-            if (charObj == null) continue;
-            try
-            {
-                // ApplyDirectly が Apply → SkinShrinkCoordinator.RegisterBottoms を呼ぶ。Coordinator が
-                // 内部で skin SMR を素 mesh に rewind してから新 param で push し直すため累積補正は防がれる。
-                ApplyDirectly(charObj, entry.DonorChar, entry.DonorCostume);
-                reapplied++;
-            }
-            catch (System.Exception ex)
-            {
-                PatchLogger.LogWarning($"[BottomsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
-            }
+            TryReapply(env?.FindCharacter(target), target, entry, seen, ref reapplied);
+            if (!ReferenceEquals(env, holeScene))
+                TryReapply(holeScene?.FindCharacter(target), target, entry, seen, ref reapplied);
         }
         // Bottoms が register されていない (Tops 単独) target の cache を InvalidateCache で消したまま
         // にしないため、全 entry を refresh して整合を取る。Bottoms 側 ApplyDirectly で touch 済 entry も
         // 重ねて refresh されるが cache hit で軽量。
         SkinShrinkCoordinator.RefreshAllByConfig();
-        PatchLogger.LogInfo($"[BottomsLoader] BottomsSkinShrink param 変更 → {reapplied}/{snapshot.Count} target に再適用 (push={Configs.BottomsSkinShrink.Value:F4}m, fade={Configs.BottomsSkinShrinkFalloffRadius.Value:F4}m, sampleR={Configs.BottomsSkinShrinkSampleRadius.Value:F3}m)");
+        PatchLogger.LogDebug($"[BottomsLoader] BottomsSkinShrink param 変更 → {reapplied} 個 再適用 (登録 {snapshot.Count}, push={Configs.BottomsSkinShrink.Value:F4}m, fade={Configs.BottomsSkinShrinkFalloffRadius.Value:F4}m, sampleR={Configs.BottomsSkinShrinkSampleRadius.Value:F3}m)");
+    }
+
+    private static void TryReapply(GameObject charObj, CharID target, BottomsOverrideStore.Entry entry,
+        HashSet<int> seen, ref int reapplied)
+    {
+        if (charObj == null) return;
+        if (!seen.Add(charObj.GetInstanceID())) return;
+        try
+        {
+            // ApplyDirectly が Apply → SkinShrinkCoordinator.RegisterBottoms を呼ぶ。Coordinator が
+            // 内部で skin SMR を素 mesh に rewind してから新 param で push し直すため累積補正は防がれる。
+            ApplyDirectly(charObj, entry.DonorChar, entry.DonorCostume);
+            reapplied++;
+        }
+        catch (System.Exception ex)
+        {
+            PatchLogger.LogWarning($"[BottomsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
+        }
     }
 
     /// <summary>
@@ -362,7 +401,7 @@ public class BottomsLoader : MonoBehaviour
         var chara = handle.Chara;
         var donorChar = entry.DonorChar;
         var donorCostume = entry.DonorCostume;
-        PatchLogger.LogInfo($"[BottomsLoader] donor 未ロード、先行 preload を起動: {donorChar}/{donorCostume} (target={id})");
+        PatchLogger.LogDebug($"[BottomsLoader] donor 未ロード、先行 preload を起動: {donorChar}/{donorCostume} (target={id})");
         PreloadDonorAsync(donorChar, donorCostume).ContinueWith(success =>
         {
             if (!success) return;
@@ -412,7 +451,7 @@ public class BottomsLoader : MonoBehaviour
             if (IsLoaded)
                 PatchLogger.LogWarning($"[BottomsLoader] donor 未ロード: {donorChar}/{donorCostume}（map に追加した場合は再起動が必要）");
             else
-                PatchLogger.LogInfo($"[BottomsLoader] preload 未完了のため Apply スキップ: {donorChar}/{donorCostume}（後続 setup を待機）");
+                PatchLogger.LogDebug($"[BottomsLoader] preload 未完了のため Apply スキップ: {donorChar}/{donorCostume}（後続 setup を待機）");
             return;
         }
 
@@ -555,7 +594,7 @@ public class BottomsLoader : MonoBehaviour
                 if (!kv.Value.gameObject.activeSelf) continue;
                 CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
                 kv.Value.gameObject.SetActive(false);
-                PatchLogger.LogInfo($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
+                PatchLogger.LogDebug($"[BottomsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
                 didSomething = true;
             }
         }
@@ -613,7 +652,7 @@ public class BottomsLoader : MonoBehaviour
             }
             catch { /* 一部 dynamic assembly で GetType 例外あり、無視 */ }
         }
-        PatchLogger.LogInfo("[BottomsLoader] MagicaCloth2 type 未解決 (1 回限り走査)");
+        PatchLogger.LogDebug("[BottomsLoader] MagicaCloth2 type 未解決 (1 回限り走査)");
         return null;
     }
 
@@ -770,7 +809,7 @@ public class BottomsLoader : MonoBehaviour
             smr.updateWhenOffscreen = reference.updateWhenOffscreen;
         }
 
-        PatchLogger.LogInfo($"[BottomsLoader] {name} を注入: {character.name} (parent={(parent != null ? parent.name : "<null>")}, refBy={(costumeRef != null ? "costume" : skinRef != null ? "skin_lower" : "none")})");
+        PatchLogger.LogDebug($"[BottomsLoader] {name} を注入: {character.name} (parent={(parent != null ? parent.name : "<null>")}, refBy={(costumeRef != null ? "costume" : skinRef != null ? "skin_lower" : "none")})");
         return smr;
     }
 
@@ -826,14 +865,23 @@ public class BottomsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// env scene から character の <see cref="CharacterHandle"/> を逆引き解決する。失敗時は null。
-    /// additive モード判定 (<see cref="Apply"/> 内 targetCostume 取得) に使用。
-    /// TODO: <see cref="TopsLoader"/> 側にも env 走査ロジックがあるため、共有 helper (CharaResolver 等) に
-    /// 統合する。重複はこの 1 件以内に留め、2 件目を入れる前に抽出リファクタを実施する。
+    /// env と HoleScene の m_characters から character の <see cref="CharacterHandle"/> を逆引き解決する。
+    /// 失敗時は null。additive モード判定 (<see cref="Apply"/> 内 targetCostume 取得) に使用。
+    /// 同伴イベント等 (env != HoleScene) で HoleScene preserved char に対し <see cref="ApplyDirectly"/> が
+    /// 走るケースで env のみ走査だと targetCostume 解決失敗 → additive モード判定が誤り、Bunnygirl ガードも
+    /// 効かない問題を解消。
+    /// TODO: <see cref="TopsLoader"/> 側にも同等ロジックがあるため、共有 helper (CharaResolver 等) に
+    /// 統合する。重複は本 2 件以内に留め、3 件目を入れる前に抽出リファクタを実施する。
     /// </summary>
     private static CharacterHandle ResolveTargetHandle(GameObject character)
     {
-        var env = GBSystem.Instance?.GetActiveEnvScene();
-        return env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
+        var sys = GBSystem.Instance;
+        if (sys == null) return null;
+        var env = sys.GetActiveEnvScene();
+        var handle = env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
+        if (handle != null) return handle;
+        var holeScene = sys.GetHoleScene();
+        if (ReferenceEquals(holeScene, env)) return null;
+        return holeScene?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
     }
 }

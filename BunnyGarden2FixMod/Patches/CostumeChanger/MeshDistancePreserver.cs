@@ -74,7 +74,7 @@ internal static class MeshDistancePreserver
         var donorMesh = donorCostumeSmr != null ? donorCostumeSmr.sharedMesh : null;
         if (donorMesh == null)
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: donorMesh が null");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: donorMesh が null");
             return null;
         }
 
@@ -82,12 +82,12 @@ internal static class MeshDistancePreserver
         var donorNormals = donorMesh.normals;
         if (donorVerts.Length == 0)
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: donor verts 空 ({donorMesh.name})");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: donor verts 空 ({donorMesh.name})");
             return null;
         }
         if (donorNormals == null || donorNormals.Length != donorVerts.Length)
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: donor normals 不整合 ({donorMesh.name}, normals={donorNormals?.Length ?? -1}/{donorVerts.Length})");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: donor normals 不整合 ({donorMesh.name}, normals={donorNormals?.Length ?? -1}/{donorVerts.Length})");
             return null;
         }
 
@@ -97,14 +97,14 @@ internal static class MeshDistancePreserver
         bool boneScalingOk = donorBoneWeights != null && donorBoneWeights.Length == donorVerts.Length
                              && donorBones != null && donorBones.Length > 0;
         if (!boneScalingOk)
-            PatchLogger.LogInfo($"[{logTag}] distance preserve: BoneWeight scaling 無効 (boneWeights={donorBoneWeights?.Length ?? -1}/{donorVerts.Length}, bones={donorBones?.Length ?? -1}) — push 量は per-vert 1.0 倍");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve: BoneWeight scaling 無効 (boneWeights={donorBoneWeights?.Length ?? -1}/{donorVerts.Length}, bones={donorBones?.Length ?? -1}) — push 量は per-vert 1.0 倍");
 
         if (!CombineSkinSmrs(donorSkinSmrs,
             out var dSkinVerts, out var dSkinNormals,
             out var dSkinCombinedBw, out var dSkinCombinedBoneNames,
             out var dSkinBoneNames, out var dSkinSummary))
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: donorSkin 結合失敗 ({dSkinSummary})");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: donorSkin 結合失敗 ({dSkinSummary})");
             return null;
         }
 
@@ -113,7 +113,7 @@ internal static class MeshDistancePreserver
             out _, out _,
             out var tSkinBoneNames, out var tSkinSummary))
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: targetSkin 結合失敗 ({tSkinSummary})");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: targetSkin 結合失敗 ({tSkinSummary})");
             return null;
         }
 
@@ -202,10 +202,28 @@ internal static class MeshDistancePreserver
             }
         }
 
+        // Head 系装飾骨 mask。cloth vert の主骨支配 (weight >= HeadDominantThreshold) が全 Head bone のとき
+        // Pass 3 push と Pass 4 weight 転送を全 skip し donor 元位置/weight を維持する。
+        // Head bone は body skin (mesh_skin_upper) にも bind されるため skinShare ガードが効かず、
+        // 距離保存対象として扱うとヘッドドレス類が body skin への誤近傍関係で引き寄せられる。
+        // gate は weightTransferEnabled より広い boneScalingOk: Pass 3 でも使うため
+        // (skin 由来 boneWeight remap 不能でも donor cloth bw / bones だけあれば判定可能)。
+        bool[] donorBoneIsHead = null;
+        if (boneScalingOk)
+        {
+            donorBoneIsHead = new bool[donorBones.Length];
+            for (int b = 0; b < donorBones.Length; b++)
+            {
+                var bone = donorBones[b];
+                if (bone == null) continue;
+                if (IsHeadBone(bone.name)) donorBoneIsHead[b] = true;
+            }
+        }
+
         // カバー外判定閾値: 呼び出し側 (Configs) から指定。最小フロアで負値弾く。
         if (maxNeighborDist <= 0f)
         {
-            PatchLogger.LogWarning($"[{logTag}] distance preserve 中止: maxNeighborDist={maxNeighborDist:F4}m が無効");
+            PatchLogger.LogDebug($"[{logTag}] distance preserve 中止: maxNeighborDist={maxNeighborDist:F4}m が無効");
             return null;
         }
         float maxNeighborDistSq = maxNeighborDist * maxNeighborDist;
@@ -342,6 +360,7 @@ internal static class MeshDistancePreserver
         float maxWeightLoss = 0f;
         int auxSkippedTotal = 0;        // skin 由来集計から副骨理由で skip した slot 累計
         int ribbonSkipped = 0;          // ribbon 支配で Pass 4 全 skip した vert 数
+        int headSkipped = 0;            // Head 主骨支配で Pass 3 push + Pass 4 weight 転送 両方 skip した vert 数
         // per-vert アロケーション排除のため reuse buffer (typical 4–8 keys)。
         var blendScratch = weightTransferEnabled ? new Dictionary<int, float>(8) : null;
         var blendScratchKeys = weightTransferEnabled ? new List<int>(8) : null;
@@ -351,6 +370,17 @@ internal static class MeshDistancePreserver
         {
             if (pass1Status[i] == STATUS_OUT_RANGE) { outOfRangeP1Donor++; continue; }
             if (pass1Status[i] == STATUS_INVERTED) { skippedInverted++; continue; }
+
+            // Head 主骨支配 vert は Pass 3 push と Pass 4 weight 転送を両方 skip。
+            // ヘッドドレス系 vert は head と剛体追従すべきで、body skin との距離保存対象に
+            // すると誤 push される (Head bone は body skin にも bind されるため skinShare
+            // ガードが効かない)。Pass 3 冒頭で continue することで同ループ内 inline の Pass 4
+            // にも到達せず、newBoneWeights[i] は Clone で donor 原状を保持する。
+            if (boneScalingOk && IsHeadDominantVert(donorBoneWeights[i], donorBoneIsHead))
+            {
+                headSkipped++;
+                continue;
+            }
 
             var v = donorVerts[i];
 
@@ -457,12 +487,12 @@ internal static class MeshDistancePreserver
 
         sw.Stop();
         string shareBandStr = boneScalingOk
-            ? $"shareBand[<.1/<.5/<.9/>=.9]={shareBand[0]}/{shareBand[1]}/{shareBand[2]}/{shareBand[3]} boneScaleZeroed={boneScaleZeroed}"
+            ? $"shareBand[<.1/<.5/<.9/>=.9]={shareBand[0]}/{shareBand[1]}/{shareBand[2]}/{shareBand[3]} boneScaleZeroed={boneScaleZeroed} headSkipped={headSkipped}"
             : "shareBand=N/A";
         string weightTransferStr = weightTransferEnabled
             ? $"weightTransferred={weightTransferred} maxWeightLoss={maxWeightLoss:F3} auxSlotsSkipped={auxSkippedTotal} ribbonSkipped={ribbonSkipped}"
             : "weightTransfer=disabled";
-        PatchLogger.LogInfo(
+        PatchLogger.LogDebug(
             $"[{logTag}] distance preserve: donor={donorMesh.name}({donorVerts.Length}v) " +
             $"donorSkin=[{dSkinSummary}] targetSkin=[{tSkinSummary}] range={maxNeighborDist:F4}m minOffset={minOffset:F4}m skinSampleR={skinSampleRadius:F4}m weightFalloff={weightFalloffOuter:F4}m " +
             $"clipping={clippingCount} skinDented={skinDented}(maxDent={maxDent:F4}m) " +
@@ -808,6 +838,23 @@ internal static class MeshDistancePreserver
     }
 
     /// <summary>
+    /// Head 系装飾骨判定。bone 名に <c>"head"</c> を含むかで識別 (case-insensitive)。
+    /// <c>Head_skinJT</c> / <c>Head_End_skinJT</c> / <c>hairband_head_skinJT</c> 等を一括捕捉。
+    /// 主骨支配 vert (<see cref="HeadDominantThreshold"/> 以上) が全 Head bone のとき Pass 3 push と
+    /// Pass 4 boneWeight 転送を skip し donor 元位置/weight を維持する (<see cref="IsHeadDominantVert"/>)。
+    /// Head bone は body skin (mesh_skin_upper) にも bind されるため skinShare ガードが効かず、
+    /// 距離保存対象として扱うとヘッドドレス類が body skin との誤近傍関係で引き寄せられる。
+    /// 注: <c>forehead_*</c> も該当しうるが、混入しても本 mask は Head bone 同士の判定であって
+    /// body skin への誤 push 経路には乗らないため実害は低い。誤マッチが問題化したら
+    /// <c>Head_</c> 接頭限定など pattern 強化で対応する。
+    /// </summary>
+    private static bool IsHeadBone(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        return name.IndexOf("head", System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>
     /// Pass 4 副骨判定の動的閾値: donor 元 cloth bw でその bone の weight がこの値以上の場合は
     /// 「主骨レベルで使われている」と判断して副骨扱いを解除する（aux 名 pattern 一致でも）。
     /// 経験則:
@@ -829,6 +876,53 @@ internal static class MeshDistancePreserver
         if (!donorBoneIsAux[idx]) return false;
         if (idx == d0 || idx == d1 || idx == d2 || idx == d3) return false;
         return true;
+    }
+
+    /// <summary>
+    /// Head 主骨支配 vert 判定の閾値。weight がこの値以上の slot を「主骨レベル」とみなす。
+    /// 現状は <see cref="AuxWeightThreshold"/> と同値だが、Head 用途は副骨判定とは独立で
+    /// 将来別調整しうるため別定数として宣言する (semantic 分離 / 隠れ依存回避)。
+    /// </summary>
+    private const float HeadDominantThreshold = 0.30f;
+
+    /// <summary>
+    /// Head 主骨支配 vert 判定 (per-vert): cloth vert の 4-slot bw のうち
+    /// 主骨レベル (<see cref="HeadDominantThreshold"/> 以上) を持つ全 slot が Head bone なら true。
+    /// 主骨レベル slot が 1 つも無ければ false (= 弱い Head 影響だけでは保護対象にしない)。
+    /// 例:
+    ///   Head=1.0                        → true  (skip)
+    ///   Head=0.7 / Head_End=0.3          → true  (skip)
+    ///   Head=0.6 / Spine3=0.4            → false (Spine3 主骨 → 通常 push)
+    ///   Head=0.05 / Spine3=0.95          → false (Spine3 主骨)
+    ///   Head=0.20 / Head=0.20 / 他=0.60   → false (主骨レベル slot なし)
+    /// boneIndex 範囲外などで donorBoneIsHead が引けない場合は false (push 適用、safe side)。
+    /// </summary>
+    private static bool IsHeadDominantVert(BoneWeight bw, bool[] donorBoneIsHead)
+    {
+        if (donorBoneIsHead == null) return false;
+        int len = donorBoneIsHead.Length;
+        bool hasDominantSlot = false;
+        if (bw.weight0 >= HeadDominantThreshold)
+        {
+            if ((uint)bw.boneIndex0 >= (uint)len || !donorBoneIsHead[bw.boneIndex0]) return false;
+            hasDominantSlot = true;
+        }
+        if (bw.weight1 >= HeadDominantThreshold)
+        {
+            if ((uint)bw.boneIndex1 >= (uint)len || !donorBoneIsHead[bw.boneIndex1]) return false;
+            hasDominantSlot = true;
+        }
+        if (bw.weight2 >= HeadDominantThreshold)
+        {
+            if ((uint)bw.boneIndex2 >= (uint)len || !donorBoneIsHead[bw.boneIndex2]) return false;
+            hasDominantSlot = true;
+        }
+        if (bw.weight3 >= HeadDominantThreshold)
+        {
+            if ((uint)bw.boneIndex3 >= (uint)len || !donorBoneIsHead[bw.boneIndex3]) return false;
+            hasDominantSlot = true;
+        }
+        return hasDominantSlot;
     }
 
     // SampleSkinSurface の戻り値

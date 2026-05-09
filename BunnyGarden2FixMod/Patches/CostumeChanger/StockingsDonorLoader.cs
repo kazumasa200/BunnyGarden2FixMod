@@ -119,11 +119,11 @@ public class StockingsDonorLoader : MonoBehaviour
             if (lower != null && lower.sharedMesh != null)
             {
                 s_lowerMesh[i] = lower;
-                PatchLogger.LogInfo($"[StockingsDonorLoader] {id} Uniform mesh_skin_lower キャッシュ (verts={lower.sharedMesh.vertexCount}, shapes={lower.sharedMesh.blendShapeCount})");
+                PatchLogger.LogDebug($"[StockingsDonorLoader] {id} Uniform mesh_skin_lower キャッシュ (verts={lower.sharedMesh.vertexCount}, shapes={lower.sharedMesh.blendShapeCount})");
             }
 
             s_assetHandles.Add(h);
-            PatchLogger.LogInfo($"[StockingsDonorLoader] {id} Uniform mesh_stockings キャッシュ (verts={smr.sharedMesh.vertexCount}, bones={smr.bones?.Length ?? 0})");
+            PatchLogger.LogDebug($"[StockingsDonorLoader] {id} Uniform mesh_stockings キャッシュ (verts={smr.sharedMesh.vertexCount}, bones={smr.bones?.Length ?? 0})");
         }
 
         for (int t = 1; t <= 4; t++)
@@ -133,7 +133,7 @@ public class StockingsDonorLoader : MonoBehaviour
             if (h.IsValid() && h.Result != null)
             {
                 s_materials[t] = h.Result;
-                PatchLogger.LogInfo($"[StockingsDonorLoader] stocking material type {t} プリロード完了");
+                PatchLogger.LogDebug($"[StockingsDonorLoader] stocking material type {t} プリロード完了");
             }
             else
             {

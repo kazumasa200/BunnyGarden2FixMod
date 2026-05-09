@@ -112,7 +112,7 @@ public class KneeSocksLoader : MonoBehaviour
         if (s_kneeSocks == null)
             PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] mesh_kneehigh が見つかりませんでした。ニーソックスは使用できません。");
         else
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
 
         // Luna Casual の mesh_skin_lower から skin_kneehigh blendShape をドナーとしてキャッシュ
         var donorLowerSmr = parent.GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -120,7 +120,7 @@ public class KneeSocksLoader : MonoBehaviour
         if (donorLowerSmr != null && donorLowerSmr.sharedMesh != null)
         {
             s_donorSkinLower = donorLowerSmr.sharedMesh;
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_skin_lower ドナーをキャッシュしました (verts={s_donorSkinLower.vertexCount} shapes={s_donorSkinLower.blendShapeCount})。");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] mesh_skin_lower ドナーをキャッシュしました (verts={s_donorSkinLower.vertexCount} shapes={s_donorSkinLower.blendShapeCount})。");
         }
         else
         {
@@ -140,7 +140,7 @@ public class KneeSocksLoader : MonoBehaviour
                 {
                     yield return s_handle.ApplyStocking(t).ToCoroutine();
                     s_stockingMaterials[t] = stockingsMesh.sharedMaterial;
-                    PatchLogger.LogInfo($"[KneeSocksLoader] ストッキングマテリアル type {t} をプリロードしました。");
+                    PatchLogger.LogDebug($"[KneeSocksLoader] ストッキングマテリアル type {t} をプリロードしました。");
                 }
                 finally
                 {
@@ -167,7 +167,7 @@ public class KneeSocksLoader : MonoBehaviour
         int transplantedCount = s_transplantedLowerCache.Count;
         s_transplantedLowerCache.Clear();
 
-        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
+        PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
     }
 
     /// <summary>
@@ -229,7 +229,7 @@ public class KneeSocksLoader : MonoBehaviour
             })
             .ToArray();
         if (missingBones > 0)
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ボーン未対応 {missingBones}/{mappedBones.Length}: {character.name}（フォールバックボーン使用）");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] ボーン未対応 {missingBones}/{mappedBones.Length}: {character.name}（フォールバックボーン使用）");
         stockings.sharedMesh = s_kneeSocks.sharedMesh;
         int matIdx = StockingOverrideStore.KneeSocksStockingType(overrideType);
         if (matIdx > 0 && s_stockingMaterials[matIdx] == null)

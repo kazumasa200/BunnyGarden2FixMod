@@ -91,7 +91,7 @@ public static class SwimWearStockingPatch
         // s_backups.LowerOriginalMesh / LowerFootOriginalMesh はゲーム本体所有の sharedMesh のため
         // Destroy せず参照のみクリアする（Destroy するとゲーム側のメッシュが消えて破綻する）。
         s_backups.Clear();
-        PatchLogger.LogInfo($"[SwimWearStockingPatch] シーンアンロード: cache クリア (transplanted {transplantedCount} 件、resolved {resolvedCount} 件)");
+        PatchLogger.LogDebug($"[SwimWearStockingPatch] シーンアンロード: cache クリア (transplanted {transplantedCount} 件、resolved {resolvedCount} 件)");
     }
 
     /// <summary>
@@ -184,7 +184,7 @@ public static class SwimWearStockingPatch
         if (injected != null)
         {
             Object.Destroy(injected.gameObject);
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] 注入 mesh_stockings 削除: {handle.GetCharID()}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] 注入 mesh_stockings 削除: {handle.GetCharID()}");
         }
 
         // sharedMesh を元に戻す（SMR が破棄済みなら Unity == が true で skip される）
@@ -195,7 +195,7 @@ public static class SwimWearStockingPatch
             if (backup.LowerFootSmr != null && backup.LowerFootOriginalMesh != null)
                 backup.LowerFootSmr.sharedMesh = backup.LowerFootOriginalMesh;
             s_backups.Remove(key);
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] sharedMesh 復元: {handle.GetCharID()}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] sharedMesh 復元: {handle.GetCharID()}");
         }
     }
 
@@ -266,7 +266,7 @@ public static class SwimWearStockingPatch
         var swimLowerForRef = renderers.FirstOrDefault(m => m.name == "mesh_skin_lower");
         ApplyPenetrationResolve(smr, swimLowerForRef, renderers, isKneeSocks);
 
-        PatchLogger.LogInfo($"[SwimWearStockingPatch] 適用: {handle.GetCharID()} override={overrideType} knee={isKneeSocks} created={created} meshVerts={targetMesh.vertexCount} bones={smr.bones?.Length ?? 0}");
+        PatchLogger.LogDebug($"[SwimWearStockingPatch] 適用: {handle.GetCharID()} override={overrideType} knee={isKneeSocks} created={created} meshVerts={targetMesh.vertexCount} bones={smr.bones?.Length ?? 0}");
         return true;
     }
 
@@ -528,7 +528,7 @@ public static class SwimWearStockingPatch
             target.rootBone = fallback;
 
         if (missing > 0)
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] bone 未対応 {missing}/{src.Length}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] bone 未対応 {missing}/{src.Length}");
     }
 
     /// <summary>
@@ -547,7 +547,7 @@ public static class SwimWearStockingPatch
                 collisions++;
         }
         if (collisions > 0)
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] bone 名衝突 {collisions} 件を先勝ちで無視 (chara={chara.name})");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] bone 名衝突 {collisions} 件を先勝ちで無視 (chara={chara.name})");
         return dict;
     }
 }

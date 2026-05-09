@@ -157,7 +157,7 @@ internal static class MagicaClothRebuilder
             }
         }
         if (normalized > 0)
-            PatchLogger.LogInfo($"[MagicaClothRebuilder] normalize SMR mesh (customMesh→originalMesh): {character.name} (count={normalized})");
+            PatchLogger.LogDebug($"[MagicaClothRebuilder] normalize SMR mesh (customMesh→originalMesh): {character.name} (count={normalized})");
     }
 
     /// <summary>
@@ -185,7 +185,7 @@ internal static class MagicaClothRebuilder
             if (targetSkirt != null)
             {
                 SnapshotIfFirst(character, targetSkirt, magicaType);
-                PatchLogger.LogInfo($"[MagicaClothRebuilder] donor に skirt cloth 無 → target component を Destroy (物理 OFF): {character.name}");
+                PatchLogger.LogDebug($"[MagicaClothRebuilder] donor に skirt cloth 無 → target component を Destroy (物理 OFF): {character.name}");
                 UnityEngine.Object.DestroyImmediate(targetSkirt);
             }
             return;
@@ -209,7 +209,7 @@ internal static class MagicaClothRebuilder
                 var createdComp = TryCreateSkirtCloth(character, donorSkirt, magicaType);
                 if (createdComp == null)
                 {
-                    PatchLogger.LogInfo($"[MagicaClothRebuilder] target に skirt cloth 無 + 新規生成失敗 → no-op: {character.name}");
+                    PatchLogger.LogDebug($"[MagicaClothRebuilder] target に skirt cloth 無 + 新規生成失敗 → no-op: {character.name}");
                     return;
                 }
                 // 新規生成成功 → snapshot を CreatedByMod=true で登録。
@@ -255,7 +255,7 @@ internal static class MagicaClothRebuilder
             {
                 if (BuildFromConfig(skirtGo, character, magicaType, snap.SerData, snap.SerData2, snap.SrcRenderers, "recover", remapColliders: false))
                 {
-                    PatchLogger.LogInfo($"[MagicaClothRebuilder] destroyed skirt を snapshot から復元: {character.name}/{key.SkirtGoName}");
+                    PatchLogger.LogDebug($"[MagicaClothRebuilder] destroyed skirt を snapshot から復元: {character.name}/{key.SkirtGoName}");
                     any = true;
                 }
                 else
@@ -310,7 +310,7 @@ internal static class MagicaClothRebuilder
                     // 内部実装が null check しているため安全に呼べる。
                     if (existingComp != null) SafeDestroyPreservingSmrState(existingComp, null);
                     UnityEngine.Object.DestroyImmediate(skirtGoToDestroy);
-                    PatchLogger.LogInfo($"[MagicaClothRebuilder] CreatedByMod skirt cloth を Destroy: {character.name}/{key.SkirtGoName}");
+                    PatchLogger.LogDebug($"[MagicaClothRebuilder] CreatedByMod skirt cloth を Destroy: {character.name}/{key.SkirtGoName}");
                 }
                 s_snapshots.Remove(key);
                 continue;
@@ -493,7 +493,7 @@ internal static class MagicaClothRebuilder
             return null;
         }
 
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] target に skirt cloth を新規生成: {character.name}/{donorGoName} (srcRenderers={newSrcList.Count})");
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] target に skirt cloth を新規生成: {character.name}/{donorGoName} (srcRenderers={newSrcList.Count})");
         return newComp;
     }
 
@@ -512,7 +512,7 @@ internal static class MagicaClothRebuilder
             SrcRenderers = null,
             CreatedByMod = true,
         };
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] snapshot saved (CreatedByMod): {character.name}/{createdComp.gameObject.name}");
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] snapshot saved (CreatedByMod): {character.name}/{createdComp.gameObject.name}");
     }
 
     /// <summary>
@@ -562,7 +562,7 @@ internal static class MagicaClothRebuilder
             SerData2 = snapSer2,
             SrcRenderers = snapSrcList
         };
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] snapshot saved: {character.name}/{targetComp.gameObject.name} (srcRenderers={snapSrcList?.Count ?? -1})");
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] snapshot saved: {character.name}/{targetComp.gameObject.name} (srcRenderers={snapSrcList?.Count ?? -1})");
     }
 
     private static void RebuildFromComponent(Component targetComp, Component donorComp, GameObject character, Type magicaType)
@@ -967,7 +967,7 @@ internal static class MagicaClothRebuilder
         if (enabled)
         {
             s_preBuildEnabledField.SetValue(preBuildData, false);
-            PatchLogger.LogInfo("[MagicaClothRebuilder] disable PreBuild path: preBuildData.enabled false 化");
+            PatchLogger.LogDebug("[MagicaClothRebuilder] disable PreBuild path: preBuildData.enabled false 化");
         }
     }
 
@@ -1077,7 +1077,7 @@ internal static class MagicaClothRebuilder
             catch (Exception ex) { PatchLogger.LogWarning($"[MagicaClothRebuilder] ResetCloth 失敗 ({label}): {ex.Message}"); }
         }
 
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] {label} {(result ? "OK" : "失敗")}: {character.name}/{targetGo.name} (srcRenderers={sourceRenderers?.Count ?? -1})");
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] {label} {(result ? "OK" : "失敗")}: {character.name}/{targetGo.name} (srcRenderers={sourceRenderers?.Count ?? -1})");
 
         if (!result)
         {
@@ -1159,7 +1159,7 @@ internal static class MagicaClothRebuilder
             }
         }
 
-        PatchLogger.LogInfo($"[MagicaClothRebuilder] collider remap: {character.name} (colliderList: remapped={colRemapped} cloned={colCloned} injected={colInjected} dropped={colDropped}, collisionBones: remapped={boneRemapped} dropped={boneDropped})");
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] collider remap: {character.name} (colliderList: remapped={colRemapped} cloned={colCloned} injected={colInjected} dropped={colDropped}, collisionBones: remapped={boneRemapped} dropped={boneDropped})");
     }
 
     /// <summary>
@@ -1330,7 +1330,7 @@ internal static class MagicaClothRebuilder
         }
         if (destroyedMarkers > 0)
         {
-            PatchLogger.LogInfo($"[MagicaClothRebuilder] injected collider 掃除: {character.name} (markers={destroyedMarkers}, colliders={destroyedColliders}, gos={destroyedGos})");
+            PatchLogger.LogDebug($"[MagicaClothRebuilder] injected collider 掃除: {character.name} (markers={destroyedMarkers}, colliders={destroyedColliders}, gos={destroyedGos})");
         }
     }
 

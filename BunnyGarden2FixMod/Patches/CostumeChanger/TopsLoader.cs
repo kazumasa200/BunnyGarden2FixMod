@@ -172,38 +172,57 @@ public class TopsLoader : MonoBehaviour
         // RefreshAllByConfig で全 entry を refresh する。
         SkinShrinkCoordinator.InvalidateCache();
 
-        var env = GBSystem.Instance?.GetActiveEnvScene();
-        if (env == null) return;
+        // 同伴イベント等 (env != HoleScene) で live tune が走った場合、env.FindCharacter は env 側の char しか返さず、
+        // HoleScene preserved の Bar char は再 Apply 対象から外れる。InvalidateDistancePreserveCache /
+        // InvalidateCache で destroyed Mesh となった sharedMesh (mesh_costume / mesh_skin_*) を保持したまま
+        // Bar 復帰し SMR が消失する症状を防ぐため、env と HoleScene の両方で FindCharacter する。
+        var sys = GBSystem.Instance;
+        if (sys == null) return;
+        var env = sys.GetActiveEnvScene();
+        var holeScene = sys.GetHoleScene();
+        if (env == null && holeScene == null) return;
 
         // 列挙中の操作で例外が出ないよう ToList でスナップショット
         var snapshot = TopsOverrideStore.EnumerateOverrides().ToList();
         if (snapshot.Count == 0) return;
 
         int reapplied = 0;
+        // env と HoleScene の FindCharacter が同一 GameObject を返す場合 (Bar 滞在中の通常経路) に
+        // 二重 Apply を防ぐ。InstanceID が別なら両者をそのまま Apply する (companion event の Talk2DScene char と
+        // HoleScene preserved char は別 GameObject)。
+        var seen = new HashSet<int>();
         foreach (var kv in snapshot)
         {
             var target = kv.Key;
             var entry = kv.Value;
-            var charObj = env.FindCharacter(target);
-            if (charObj == null) continue;
-            try
-            {
-                // ApplyDirectly が内部で RestoreFor を呼ぶため事前 Restore は不要 (二重実行防止)。
-                // RestoreFor は GetComponentsInChildren + snapshot 全 key 線形列挙を伴うため、target 数 N で
-                // 2 倍コストになる。1 回に集約することで live tune 経路 (param 変更時に N 回ループ) のコストを半減。
-                ApplyDirectly(charObj, entry.DonorChar, entry.DonorCostume);
-                reapplied++;
-            }
-            catch (System.Exception ex)
-            {
-                PatchLogger.LogWarning($"[TopsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
-            }
+            TryReapply(env?.FindCharacter(target), target, entry, seen, ref reapplied);
+            if (!ReferenceEquals(env, holeScene))
+                TryReapply(holeScene?.FindCharacter(target), target, entry, seen, ref reapplied);
         }
         // Tops が register されていない (Bottoms 単独) target の cache を InvalidateCache で消したまま
         // にしないため、全 entry を refresh して整合を取る。Tops 側 ApplyDirectly で touch 済 entry も
         // 重ねて refresh されるが cache hit で軽量。
         SkinShrinkCoordinator.RefreshAllByConfig();
-        PatchLogger.LogInfo($"[TopsLoader] distance preserve param 変更 → {reapplied}/{snapshot.Count} target に再適用 (range={Configs.TopsDistancePreserveRange.Value:F4}m, minOffset={Configs.TopsSkinMinOffset.Value:F4}m, skinSampleR={Configs.TopsSkinSampleRadius.Value:F4}m, weightFalloff={Configs.TopsSkinWeightFalloff.Value:F4}m)");
+        PatchLogger.LogDebug($"[TopsLoader] distance preserve param 変更 → {reapplied} 個 再適用 (登録 {snapshot.Count}, range={Configs.TopsDistancePreserveRange.Value:F4}m, minOffset={Configs.TopsSkinMinOffset.Value:F4}m, skinSampleR={Configs.TopsSkinSampleRadius.Value:F4}m, weightFalloff={Configs.TopsSkinWeightFalloff.Value:F4}m)");
+    }
+
+    private static void TryReapply(GameObject charObj, CharID target, TopsOverrideStore.Entry entry,
+        HashSet<int> seen, ref int reapplied)
+    {
+        if (charObj == null) return;
+        if (!seen.Add(charObj.GetInstanceID())) return;
+        try
+        {
+            // ApplyDirectly が内部で RestoreFor を呼ぶため事前 Restore は不要 (二重実行防止)。
+            // RestoreFor は GetComponentsInChildren + snapshot 全 key 線形列挙を伴うため、target 数 N で
+            // 2 倍コストになる。1 回に集約することで live tune 経路 (param 変更時に N 回ループ) のコストを半減。
+            ApplyDirectly(charObj, entry.DonorChar, entry.DonorCostume);
+            reapplied++;
+        }
+        catch (System.Exception ex)
+        {
+            PatchLogger.LogWarning($"[TopsLoader] live tune 再適用失敗: target={target}, donor={entry.DonorChar}/{entry.DonorCostume}: {ex}");
+        }
     }
 
     /// <summary>
@@ -242,10 +261,36 @@ public class TopsLoader : MonoBehaviour
         if (s_inFlight.TryGetValue(key, out var pending))
             return pending;
 
-        // UniTask 多重 await のため Preserve()。
-        var task = PreloadDonorInternal(donor, costume).Preserve();
-        s_inFlight[key] = task;
-        return task;
+        // UniTaskCompletionSource は内部 continuation を multi-cast 保持するため
+        // pre-completion で複数の await/Forget/ContinueWith が安全。
+        // .Preserve() の MemoizeSource は OnCompleted を underlying source に forward するだけで
+        // 単一 continuation slot 制約を解消しないため使用不可。
+        var tcs = new UniTaskCompletionSource<bool>();
+        s_inFlight[key] = tcs.Task;
+        RunPreloadWorker(donor, costume, tcs).Forget();
+        return tcs.Task;
+    }
+
+    private static async UniTaskVoid RunPreloadWorker(CharID donor, CostumeType costume, UniTaskCompletionSource<bool> tcs)
+    {
+        var key = (donor, costume);
+        bool result = false;
+        try
+        {
+            result = await PreloadDonorInternal(donor, costume);
+        }
+        catch (Exception ex)
+        {
+            PatchLogger.LogWarning($"[TopsLoader] preload worker 例外: {donor}/{costume}: {ex}");
+        }
+        finally
+        {
+            // TrySetResult を先に呼ぶことで、同期的に発火する continuation 中も
+            // s_inFlight に entry が残り、再帰的な PreloadDonorAsync(同 key) は
+            // 完了済みの tcs.Task を即座に返すため二重 worker 起動を防ぐ。
+            tcs.TrySetResult(result);
+            s_inFlight.Remove(key);
+        }
     }
 
     private static async UniTask<bool> PreloadDonorInternal(CharID donor, CostumeType costume)
@@ -281,7 +326,7 @@ public class TopsLoader : MonoBehaviour
             var topsSmrs = allSmrs.Where(IsTopsCandidate).ToList();
             s_donors[key] = new DonorEntry { Handle = handle, AllSmrs = allSmrs, TopsSmrs = topsSmrs };
 
-            PatchLogger.LogInfo($"[TopsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, topsCandidates={topsSmrs.Count})");
+            PatchLogger.LogDebug($"[TopsLoader] lazy donor preloaded: {donor}/{costume} (allSMR={allSmrs.Count}, topsCandidates={topsSmrs.Count})");
             if (PatchLogger.IsDebugEnabled)
             {
                 PatchLogger.LogDebug($"[TopsLoader] donor={donor}/{costume} SMRs: {string.Join(", ", allSmrs.Select(s => s.name))}");
@@ -295,10 +340,6 @@ public class TopsLoader : MonoBehaviour
         {
             PatchLogger.LogWarning($"[TopsLoader] preload 失敗: {donor}/{costume}: {ex}");
             return false;
-        }
-        finally
-        {
-            s_inFlight.Remove(key);
         }
     }
 
@@ -385,7 +426,7 @@ public class TopsLoader : MonoBehaviour
         var chara = handle.Chara;
         var donorChar = entry.DonorChar;
         var donorCostume = entry.DonorCostume;
-        PatchLogger.LogInfo($"[TopsLoader] donor 未ロード、3 系統 preload 起動: {donorChar}/{donorCostume} target={id}");
+        PatchLogger.LogDebug($"[TopsLoader] donor 未ロード、3 系統 preload 起動: {donorChar}/{donorCostume} target={id}");
         PreloadAndReapplyAsync(chara, id, donorChar, donorCostume).Forget();
     }
 
@@ -411,13 +452,22 @@ public class TopsLoader : MonoBehaviour
     }
 
     /// <summary>
-    /// target GameObject から <see cref="CharacterHandle"/> を逆引きする。env.m_characters を線形検索。
-    /// 見つからなければ null を返す。
+    /// target GameObject から <see cref="CharacterHandle"/> を逆引きする。env と HoleScene の
+    /// 両 m_characters を線形検索する。見つからなければ null を返す。
+    /// 同伴イベント等 (env != HoleScene) で HoleScene preserved char に対し
+    /// <see cref="ApplyDirectly"/> が走るケースで env のみ走査だと targetCharID 解決失敗 → (d)
+    /// skin upper swap と (e) distance preservation が NUM/Babydoll 警告で skip される問題を解消。
     /// </summary>
     private static CharacterHandle ResolveTargetHandle(GameObject character)
     {
-        var env = GBSystem.Instance?.GetActiveEnvScene();
-        return env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
+        var sys = GBSystem.Instance;
+        if (sys == null) return null;
+        var env = sys.GetActiveEnvScene();
+        var handle = env?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
+        if (handle != null) return handle;
+        var holeScene = sys.GetHoleScene();
+        if (ReferenceEquals(holeScene, env)) return null;
+        return holeScene?.m_characters?.FirstOrDefault(x => x != null && x.Chara == character);
     }
 
     /// <summary>
@@ -471,7 +521,7 @@ public class TopsLoader : MonoBehaviour
             if (IsLoaded)
                 PatchLogger.LogWarning($"[TopsLoader] donor 未ロード: {donorChar}/{donorCostume}");
             else
-                PatchLogger.LogInfo($"[TopsLoader] preload 未完了のため Apply スキップ: {donorChar}/{donorCostume}（後続 setup を待機）");
+                PatchLogger.LogDebug($"[TopsLoader] preload 未完了のため Apply スキップ: {donorChar}/{donorCostume}（後続 setup を待機）");
             return;
         }
 
@@ -583,7 +633,7 @@ public class TopsLoader : MonoBehaviour
                 if (!kv.Value.gameObject.activeSelf) continue;
                 CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
                 kv.Value.gameObject.SetActive(false);
-                PatchLogger.LogInfo($"[TopsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
+                PatchLogger.LogDebug($"[TopsLoader] target の {kv.Key} を隠す: {character.name}（donor 側に無いため）");
                 didSomething = true;
             }
         }
@@ -672,7 +722,7 @@ public class TopsLoader : MonoBehaviour
                 if (!kv.Value.gameObject.activeSelf) continue;
                 CaptureSnapshotIfFirst((instanceId, kv.Key), wasInjected: false, smr: kv.Value, injectedGo: null);
                 kv.Value.gameObject.SetActive(false);
-                PatchLogger.LogInfo($"[TopsLoader] target の {kv.Key} を隠す: {character.name}（SwimWear donor 側に対応 SMR 無し）");
+                PatchLogger.LogDebug($"[TopsLoader] target の {kv.Key} を隠す: {character.name}（SwimWear donor 側に対応 SMR 無し）");
                 didSomething = true;
             }
         }
@@ -1044,7 +1094,7 @@ public class TopsLoader : MonoBehaviour
             smr.updateWhenOffscreen = reference.updateWhenOffscreen;
         }
 
-        PatchLogger.LogInfo($"[TopsLoader] {name} を注入: {character.name} (ref={referenceName})");
+        PatchLogger.LogDebug($"[TopsLoader] {name} を注入: {character.name} (ref={referenceName})");
         return smr;
     }
 

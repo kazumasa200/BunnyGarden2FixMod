@@ -64,7 +64,7 @@ internal static class BoneGrafter
                 var keysToRemove = targetBones.Where(kv => otherOwned.Contains(kv.Value)).Select(kv => kv.Key).ToList();
                 foreach (var k in keysToRemove) targetBones.Remove(k);
                 if (keysToRemove.Count > 0)
-                    PatchLogger.LogInfo($"[{logTag}/BoneGraft] 他 owner clone {keysToRemove.Count} 件を targetBones から除外");
+                    PatchLogger.LogDebug($"[{logTag}/BoneGraft] 他 owner clone {keysToRemove.Count} 件を targetBones から除外");
             }
         }
 
@@ -129,7 +129,7 @@ internal static class BoneGrafter
 
         if (normalizedResolved > 0 || rootsToClone.Count > 0 || rootFallback > 0)
         {
-            PatchLogger.LogInfo($"[{logTag}/BoneGraft] {character.name}: 正規化解決={normalizedResolved}, graft root={rootsToClone.Count} (clone bone={totalCloned}), root_fallback={rootFallback}");
+            PatchLogger.LogDebug($"[{logTag}/BoneGraft] {character.name}: 正規化解決={normalizedResolved}, graft root={rootsToClone.Count} (clone bone={totalCloned}), root_fallback={rootFallback}");
         }
         return (normalizedResolved, rootsToClone.Count, totalCloned, rootFallback);
     }
