@@ -9,8 +9,12 @@ namespace BunnyGarden2FixMod.Patches;
 
 /// <summary>
 /// ミニゲームのときにそよかぜを吹かせるパッチ
-///
 /// <para>
+/// FittineRoomクラスでのみ定義されている SetSkirtWeight を
+/// CharacterHandle.setup を呼び出す時に設定する
+/// 
+/// FittingRoomのときは無効化する
+///
 /// <b>使い方</b><br/>
 /// ミニゲーム中にHotKeyを押すとそよかぜが吹く
 /// </para>
@@ -56,7 +60,7 @@ public static class SwaySkirtPatch
     {
         private CharacterHandle target;
         private float currentWeight = 0f;
-        private float transitionSpeed = 5f;
+        private float transitionSpeed = 0.1f;
 
         private void Awake()
         {
@@ -86,7 +90,11 @@ public static class SwaySkirtPatch
             float targetWeight = Configs.SwaySkirt.IsHeld() ? 1.0f : 0.0f;
             if (currentWeight != targetWeight)
             {
-                currentWeight = Mathf.MoveTowards(currentWeight, targetWeight, transitionSpeed * Time.deltaTime);
+                float fpsRatio = Time.deltaTime * 60f;
+                currentWeight = Mathf.Lerp(currentWeight, targetWeight, 1.0f - Mathf.Pow(1.0f - transitionSpeed, fpsRatio));
+                if (Mathf.Abs(currentWeight - targetWeight)< 0.01)
+                    currentWeight = targetWeight;
+
                 target.SetSkirtWeight(currentWeight);
             }
         }
