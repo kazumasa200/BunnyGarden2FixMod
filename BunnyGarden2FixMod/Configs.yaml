@@ -200,6 +200,20 @@
       ui:
         kind: toggle
 
+    - name: FreeCamDisplayMode
+      label: フリーカメラの出力先
+      type: enum
+      enumType: BunnyGarden2FixMod.FreeCamDisplayMode
+      default: MainScreen
+      description: |
+        フリーカメラの映像をどこに表示するかを選択します。
+        排他的フルスクリーンモードの場合は、MainScreen が使用されます。
+        MainScreen: メイン画面（通常のフリーカメラ）
+        PiP: ピクチャー・イン・ピクチャー
+        Display2: サブモニター（モニター2台以上のときのみ）
+      ui:
+        kind: dropdown
+
 - section: Animation
   name: アニメーション
   configs:
@@ -631,6 +645,17 @@
       defaultKey: F6
       defaultButton: X
       description: フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。
+      controllerDescription: ControllerModifier と同時押しが必要です。
+      ui:
+        kind: keybinding
+
+    - name: FreeCamDisplayModeToggle
+      label: フリーカメラの出力先切替
+      key: ToggleFreeCamDisplayMode
+      type: hotkey
+      defaultKey: F4
+      defaultButton: None
+      description: FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。
       controllerDescription: ControllerModifier と同時押しが必要です。
       ui:
         kind: keybinding

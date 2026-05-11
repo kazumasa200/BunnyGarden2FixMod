@@ -31,6 +31,7 @@
 | `SlowSpeed` | `0.5` | フリーカメラの低速移動速度 (Ctrl 押下中) |
 | `HideGameUiInFreeCam` | `true` | フリーカメラ起動中にゲーム本体の Canvas を非表示 |
 | `ControllerEnabled` | `true` | フリーカメラ操作にゲームパッド入力を使用 |
+| `FreeCamDisplayMode` | `MainScreen` | フリーカメラの出力先<br>フリーカメラの映像をどこに表示するかを選択します。<br>排他的フルスクリーンモードの場合は、MainScreen が使用されます。<br>MainScreen: メイン画面（通常のフリーカメラ）<br>PiP: ピクチャー・イン・ピクチャー<br>Display2: サブモニター（モニター2台以上のときのみ） |
 
 フリーカメラは **F5** キーで ON/OFF、**F6** キーでカメラ固定のトグルができます。
 コントローラーの既定操作は **Select + Y** で ON/OFF、フリーカメラ中は **Select + X** で固定切り替え、**Select + B** で時間停止、**Select + A** でスクリーンショット保存です。
@@ -182,6 +183,8 @@ Wardrobe パネル表示中、以下のキーで操作できます。
 | `ToggleFreeCamButton` | `Y` | フリーカメラ ON/OFFのボタン<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleFixedFreeCamKey` | `F6` | 固定フリーカメラ ON/OFFのキーボードキー<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。 |
 | `ToggleFixedFreeCamButton` | `X` | 固定フリーカメラ ON/OFFのボタン<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
+| `ToggleFreeCamDisplayModeKey` | `F4` | フリーカメラの出力先切替のキーボードキー<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。 |
+| `ToggleFreeCamDisplayModeButton` | `None` | フリーカメラの出力先切替のボタン<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleOverlayKey` | `F12` | オーバーレイ表示切替のキーボードキー<br>フリーカメラの操作ガイドが対象です。 |
 | `ToggleOverlayButton` | `Start` | オーバーレイ表示切替のボタン<br>フリーカメラの操作ガイドが対象です。<br>ControllerModifier と同時押しが必要です。 |
 | `CaptureScreenshotKey` | `P` | スクリーンショット保存のキーボードキー<br>フリーカメラ中にゲーム UI・MOD オーバーレイを写さず BepInEx/screenshots フォルダへ PNG 出力します。 |
