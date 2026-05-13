@@ -65,6 +65,10 @@ public static class Configs
     public static ConfigEntry<bool> EndingChekiSlideshow;
     /// <summary>キャスト出勤順序変更（バー入店前に F1 で編集）</summary>
     public static ConfigEntry<bool> CastOrder;
+    /// <summary>キャスト出勤順序をランダム化</summary>
+    public static ConfigEntry<bool> RandomizeCastOrder;
+    /// <summary>キャストの衣装をランダム化</summary>
+    public static ConfigEntry<bool> RandomizeCostume;
     /// <summary>鉄骨渡りミニゲームで落下しなくなる（チート）</summary>
     public static ConfigEntry<bool> UltimateSurvivorEnabled;
     /// <summary>ギャンブルで負けなくなる（チート）</summary>
@@ -293,6 +297,16 @@ ImageFormat=JPG のときの品質（1〜100）。値が小さいほどサイズ
             false,
             @"キャスト出勤順序変更（バー入店前に F1 で編集）
 F1 で編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。");
+
+        RandomizeCastOrder = cfg.Bind("Cheat", "RandomizeCastOrder",
+            false,
+            @"キャスト出勤順序をランダム化
+毎日設定されるキャストの出勤順序をランダムにする");
+
+        RandomizeCostume = cfg.Bind("Cheat", "RandomizeCostume",
+            false,
+            @"キャストの衣装をランダム化
+キャストの衣装をランダムにする");
 
         UltimateSurvivorEnabled = cfg.Bind("Cheat", "UltimateSurvivor",
             false,
@@ -734,6 +748,22 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             Desc     = "F1 で編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => CastOrder),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "Cheat",
+            Label    = "キャスト出勤順序をランダム化",
+            Desc     = "毎日設定されるキャストの出勤順序をランダムにする",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => RandomizeCastOrder),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "Cheat",
+            Label    = "キャストの衣装をランダム化",
+            Desc     = "キャストの衣装をランダムにする",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => RandomizeCostume),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {

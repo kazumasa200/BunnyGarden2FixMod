@@ -326,6 +326,22 @@
       ui:
         kind: toggle
 
+    - name: RandomizeCastOrder
+      label: キャスト出勤順序をランダム化
+      type: bool
+      default: false
+      description: 毎日設定されるキャストの出勤順序をランダムにする
+      ui:
+        kind: toggle
+
+    - name: RandomizeCostume
+      label: キャストの衣装をランダム化
+      type: bool
+      default: false
+      description: キャストの衣装をランダムにする
+      ui:
+        kind: toggle
+
     - name: UltimateSurvivorEnabled
       label: 鉄骨渡りミニゲームで落下しなくなる（チート）
       key: UltimateSurvivor
