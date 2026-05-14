@@ -1,3 +1,4 @@
+using AsmResolver.PE.Code;
 using BunnyGarden2FixMod.Utils;
 using GB.Bar;
 using HarmonyLib;
@@ -47,10 +48,14 @@ public static class ExpandZoomRatio
         var codes = new List<CodeInstruction>(instructions);
         var camFOVField = AccessTools.Field(typeof(DrinkPurchase), nameof(DrinkPurchase.m_camFOV));
 
-        var ClampMethod = AccessTools.Method(typeof(Mathf), nameof(Mathf.Clamp01));
+        var Clamp01Method = AccessTools.Method(typeof(Mathf), nameof(Mathf.Clamp01));
         var zoomField = AccessTools.Field(typeof(DrinkPurchase), nameof(DrinkPurchase.m_zoom));
         var deltaTimeMethod = AccessTools.PropertyGetter(typeof(Time), nameof(Time.deltaTime));
         
+        var rotxField = AccessTools.Field(typeof(DrinkPurchase), nameof(DrinkPurchase.m_rotx));
+        var ClampMethod = AccessTools.Method(typeof(Mathf), nameof(Mathf.Clamp01));
+
+
         int patched = 0;
         for (int i = 0; i < codes.Count; i++)
         {
@@ -71,7 +76,7 @@ public static class ExpandZoomRatio
                 codes[i].LoadsField(zoomField) &&
                 codes[i+1].LoadsConstant(0.05f) &&
                 (codes[i+2].opcode == OpCodes.Sub || codes[i+2].opcode == OpCodes.Add) &&
-                codes[i+3].Calls(ClampMethod))
+                codes[i+3].Calls(Clamp01Method))
             {
                 codes[i+1].operand = zoomSpeed;
 
@@ -83,9 +88,28 @@ public static class ExpandZoomRatio
                 i += 5;
                 patched++;   
                 continue;
-            }            
+            }
+
+            //this.m_rotx = Mathf.Clamp(this.m_rotx + GBInput.CameraControll().y, -10f, 10f); を書き換え
+            //this.m_rotx = Mathf.Clamp(this.m_rotx + GBInput.CameraControll().y, -13f, 10f); にする
+            if(codes[i].LoadsField(rotxField))
+            {
+                for (int j = i+1; j < codes.Count; j++)
+                {
+                    if(codes[j].Calls(ClampMethod))
+                        break;
+
+                    if(codes[j].LoadsConstant(10f))
+                    {
+                        codes[j].operand = 13f;
+                        patched++;
+                        break;
+                    }
+                }
+                continue;
+            }
         }
-        if(patched != 3)
+        if(patched != 4)
         {
             PatchLogger.LogError($"[{nameof(ExpandZoomRatio)}] 修正対象のパターンが見つかりませんでした。ゲームのアップデートでパッチが機能していない可能性があります。");
         }
