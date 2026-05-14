@@ -32,6 +32,8 @@ public static class TalkReactionPatch
             MOTION.TAKE_VERY_HIGH_BOTTLE,
             MOTION.SHAKER,
             MOTION.SHAKER_HARD,
+            MOTION.PEPPER_MILL,
+            MOTION.BUKKAKE,
         ];
 
         private MOTION lastMotion = MOTION._DUMMY;
@@ -88,6 +90,8 @@ public static class TalkReactionPatch
                 MOTION.SHAKER_HARD => 9f,
                 MOTION.DRINK_COCKTAIL => 9f,
                 MOTION.DRINK_END => 5f,
+                MOTION.PEPPER_MILL => 9f,
+                MOTION.BUKKAKE => 9f,
                 MOTION.IDLE => Random.Range(3f, 5f), // 飲み終わり後の一息
                 _ => Random.Range(8f, 15f)
             };
