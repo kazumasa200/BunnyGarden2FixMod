@@ -334,6 +334,14 @@
       ui:
         kind: toggle
 
+    - name: RandomizeCostume
+      label: キャストの衣装をランダム化
+      type: bool
+      default: false
+      description: キャストの衣装をランダムにする
+      ui:
+        kind: toggle
+
     - name: UltimateSurvivorEnabled
       label: 鉄骨渡りミニゲームで落下しなくなる（チート）
       key: UltimateSurvivor
