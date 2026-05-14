@@ -31,8 +31,10 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 ///     rootBone へ fallback（KneeSocksLoader / BottomsLoader と同手順）。
 ///   - 注入された新 SMR の rootBone は reference SMR (mesh_skin_upper) の rootBone を流用。
 ///     既存 SMR の swap 時は target の元 rootBone を変更しない。
-///   - target が Bunnygirl 状態では Apply スキップ（フルボディスーツで構造差大）。
-///     SwimWear は Bottoms と異なり許可（脚部独立、Tops 領域で SwimWearStockingPatch と競合しない）。
+///   - target がフルボディ衣装 (Bunnygirl / フルボディ DLC) 状態では Apply スキップ
+///     （フルボディスーツで構造差大）。
+///     SwimWear は除外（donor=SwimWear のとき ApplySwimWearBottomsPhase で full-body swap が成立。
+///     Bottoms 領域も Tops 経由で扱うため SwimWearStockingPatch と競合しない）。
 ///   - mesh_costume_skirt* / mesh_costume_pants* は Bottoms 領域として除外（IsTopsCandidate）。
 ///   - 同名 SMR 重複は最初の 1 つだけ採用し警告ログ。2 つ目以降は swap / hide / inject いずれの
 ///     対象にもならず素のまま残る (Phase 0 ログで重複ゼロを確認済みの前提)。
@@ -285,7 +287,8 @@ public class TopsLoader : MonoBehaviour
 
     /// <summary>
     /// <see cref="CharacterHandle.setup"/> Postfix から呼ぶ。
-    /// Bunnygirl target ガードは <see cref="Apply"/> 内で行う（<see cref="ApplyDirectly"/> 経路でも同様にガードしたいため）。
+    /// フルボディ衣装 target ガード (Bunnygirl / フルボディ DLC, SwimWear 除く) は
+    /// <see cref="Apply"/> 内で行う（<see cref="ApplyDirectly"/> 経路でも同様にガードしたいため）。
     /// donor 自身の setup() Postfix は IsChildOf ガードで除外。
     ///
     /// donor が未 preload（ExSave ロード復元時など Wardrobe UI を経由しない場合）は
@@ -395,18 +398,22 @@ public class TopsLoader : MonoBehaviour
         var targetCharID = targetHandle?.GetCharID() ?? CharID.NUM;
 
         // base-aware additive モード:
-        //   target が SwimWear / Bunnygirl のときは target の mesh_costume をそのまま残し、
-        //   donor の Tops SMR を inject 経路で重ねる。target の素肌 / 元衣装を維持できる。
+        //   target がフルボディ衣装（SwimWear / Bunnygirl / 分離型でない DLC）のときは
+        //   target の mesh_costume をそのまま残し、donor の Tops SMR を inject 経路で重ねる。
+        //   target の素肌 / 元衣装を維持できる。
         //   donor=SwimWear (= "SwimWear に override する") のときは従来どおり swap で
         //   target.mesh_costume を donor のものに置換し下半身パートも (c2) で transplant する。
-        bool additiveMode = (targetCostume == CostumeType.SwimWear || targetCostume == CostumeType.Bunnygirl)
+        bool additiveMode = (targetCostume?.IsFullBodyCostume() ?? false)
                             && donorCostume != CostumeType.SwimWear;
 
-        // target が Bunnygirl 状態 + 通常モードでは Apply スキップ。フルボディスーツで構造差大のため
-        // Tops swap が中途半端に適用されると上半身だけ別衣装が乗る不整合が起きる。
+        // target がフルボディ衣装 (Bunnygirl / フルボディ DLC) + 通常モードでは Apply スキップ。
+        // フルボディスーツで構造差大のため Tops swap が中途半端に適用されると上半身だけ別衣装が乗る不整合が起きる。
         // additive モードでは inject のみで target を一切 touch しないため許可する。
+        // target=SwimWear は除外: donor=SwimWear のとき ApplySwimWearBottomsPhase で full-body swap が成立するため。
         // ApplyIfOverridden / ApplyDirectly 両経路で同じガードが効くよう Apply 側に置く。
-        if (targetCostume == CostumeType.Bunnygirl && !additiveMode)
+        if ((targetCostume?.IsFullBodyCostume() ?? false)
+            && targetCostume != CostumeType.SwimWear
+            && !additiveMode)
         {
             s_applied.Add(character.GetInstanceID()); // dedup ログを 1 回に抑える
             return;
@@ -751,8 +758,9 @@ public class TopsLoader : MonoBehaviour
     ///     d_donor / d_target を比較し、移植後も donor 元の浮き具合を target で再現する。
     ///     基準 mesh は (charID, Babydoll) の preload エントリから取得するため、
     ///     live target.mesh_skin_upper の swap 状態 (= (d) skip 有無) には依存しない。
-    ///     additive モードでも injected donor pair を同手順で補正する。Bunnygirl additive は
-    ///     live skin (variant) と Babydoll skin の頂点配置が乖離しユーザー判断でリスク受容
+    ///     additive モードでも injected donor pair を同手順で補正する。フルボディ衣装 additive
+    ///     (Bunnygirl / フルボディ DLC) は live skin (variant) と Babydoll skin の頂点配置が乖離し
+    ///     ユーザー判断でリスク受容
     ///     (実機で破綻が出たら別計画で skip ガード追加する。
     ///      参照: docs/superpowers/plans/2026-05-08-additive-tops-vertex-adjust.md)。
     ///     donor Babydoll preload 失敗 / mesh_skin_upper SMR 不在 / target 側不在のいずれかで skip (Apply 本体は続行)。
@@ -814,7 +822,8 @@ public class TopsLoader : MonoBehaviour
     ///     順次 push し直すため、Tops/Bottoms 同時適用や片方 Restore で他方が崩れない。
     ///     additive モードでは (d) skin_upper Babydoll swap が走らず RegisterTops の API 契約
     ///     (現 sharedMesh = Babydoll asset を OriginalSkinUpper として焼く) を満たせないため skip。
-    ///     SwimWear / Bunnygirl では mesh_costume が body を覆うため SkinShrink の視覚効果も限定的。
+    ///     フルボディ衣装 (SwimWear / Bunnygirl / フルボディ DLC) では mesh_costume が body を覆うため
+    ///     SkinShrink の視覚効果も限定的。
     ///     additive で SkinShrink を有効化する場合は Coordinator API の改修が必要 (別計画)。
     ///     swap 無し / Bottoms only donor 経路は contribution 不在 → UnregisterTops。
     /// </summary>

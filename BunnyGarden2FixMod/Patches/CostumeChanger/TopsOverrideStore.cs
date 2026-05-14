@@ -14,9 +14,9 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 ///
 /// 制約:
 ///   - target == donor は許可（自身の他コスチューム由来 tops を素体に移植する用途）
-///   - donor の costume が Bunnygirl は拒否（フルボディスーツで構造差大）
-///   - SwimWear は許可（Bottoms と方針が異なる、tops-transplant-c2-full §2.2）
-///   - target 側が Bunnygirl のキャラ状態のときは別途 Apply 段階でスキップする
+///   - donor の costume がフルボディ衣装 (Bunnygirl / フルボディ DLC) は拒否（構造差大）
+///   - SwimWear donor は許可（Bottoms と方針が異なる、tops-transplant-c2-full §2.2）
+///   - target 側がフルボディ衣装のキャラ状態のときは別途 Apply 段階でスキップする
 ///
 /// 投入経路: Wardrobe (F7) Tops タブの apply ハンドラから <see cref="Set"/> / <see cref="Clear"/>。
 /// シーン遷移をまたいで保持される（pickerHost が DontDestroyOnLoad）。
@@ -46,7 +46,7 @@ public static class TopsOverrideStore
     private static bool s_rehydrateFailed = false;
 
     /// <summary>
-    /// 無効な組み合わせは false を返す（target/donor 範囲外、costume == Num/Bunnygirl）。
+    /// 無効な組み合わせは false を返す（target/donor 範囲外、costume == Num / フルボディ衣装）。
     /// 既存 target を上書きする場合も true を返す（重複検出は呼出し側の責務）。
     /// SwimWear donor は許可する（Bottoms と異なり Tops 領域は SwimWearStockingPatch と独立想定）。
     /// donor == target も許可（自身の他コスチューム移植）。
@@ -105,7 +105,19 @@ public static class TopsOverrideStore
 
         int restored = 0;
         foreach (var kv in dict)
-            if (SetValidatedNoMirror((CharID)kv.Key, (CharID)kv.Value.DonorChar, (CostumeType)kv.Value.DonorCostume)) restored++;
+        {
+            var donorCostume = (CostumeType)kv.Value.DonorCostume;
+            if (SetValidatedNoMirror((CharID)kv.Key, (CharID)kv.Value.DonorChar, donorCostume))
+            {
+                restored++;
+            }
+            else
+            {
+                // reject 理由: full-body 扱い拡張 / 不正 CharID / costume == Num のいずれか。
+                // ExSave データの破損や旧 enum 値の検出にも使えるよう全 reject を 1 行ログ。
+                PatchLogger.LogWarning($"[TopsOverrideStore] rehydrate skip: target={(CharID)kv.Key}, donor={(CharID)kv.Value.DonorChar}/{donorCostume}");
+            }
+        }
         PatchLogger.LogInfo($"[TopsOverrideStore] rehydrate: {restored} 個復元");
 
         // rehydrate された donor を先行 preload（setup() Postfix と preload 完了の race を縮める）。
@@ -137,7 +149,9 @@ public static class TopsOverrideStore
     {
         if (target >= CharID.NUM || donor >= CharID.NUM) return false;
         if (costume == CostumeType.Num) return false;
-        if (costume == CostumeType.Bunnygirl) return false;
+        // フルボディ衣装 (Bunnygirl / フルボディ DLC) は構造差大で donor 不適。
+        // SwimWear donor は許可 (ApplySwimWearBottomsPhase で full-body 移植経路がある)。
+        if (costume != CostumeType.SwimWear && costume.IsFullBodyCostume()) return false;
         s_overrides[target] = new Entry(donor, costume);
         return true;
     }

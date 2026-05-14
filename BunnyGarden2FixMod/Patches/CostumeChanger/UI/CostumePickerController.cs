@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
@@ -386,11 +387,11 @@ public class CostumePickerController : MonoBehaviour
             m_stockingItems.Add((i, locked));
         }
 
-        // Bottoms: Bunnygirl / Shirt / SwimWear は除外。
+        // Bottoms: フルボディ衣装 (SwimWear / Bunnygirl / フルボディ DLC) / Shirt は除外。
         // - SwimWear: ワンピース型で skirt/pants 構造が無い (KANA は bikini bottom を持つが
         //             cross-char 適用で物理破綻するため撤退済。memory `project_kana_swimwear_bottoms_retreat.md` 参照)。
         //             SwimWear donor 全身は Tops 経由 (full-body) で扱う方針。
-        // - Bunnygirl: フルボディスーツで構造差大。
+        // - Bunnygirl / フルボディ DLC: フルボディスーツで構造差大。
         // - Shirt: 下半身に実体的な差分なし（Tops と対称）。
         // donor == target も許可（自身の他コスチューム由来の bottoms を素体に移植可能）。
         m_bottomsItems = new List<(CharID, CostumeType, bool)>();
@@ -401,9 +402,8 @@ public class CostumePickerController : MonoBehaviour
             for (int c = 0; c < (int)CostumeType.Num; c++)
             {
                 var costume = (CostumeType)c;
-                if (costume == CostumeType.Bunnygirl) continue;
+                if (costume.IsFullBodyCostume()) continue;
                 if (costume == CostumeType.Shirt) continue;
-                if (costume == CostumeType.SwimWear) continue;
                 if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
                 bool bLocked = !CostumeViewHistory.IsViewed(donor, costume);
                 if (bLocked && hasBottomsOverride
@@ -415,7 +415,10 @@ public class CostumePickerController : MonoBehaviour
             }
         }
 
-        // Tops: SwimWear donor を許可、Bunnygirl と Shirt は除外。
+        // Tops: SwimWear donor を許可（ApplySwimWearBottomsPhase で full-body 移植経路がある）、
+        // Bunnygirl / フルボディ DLC / Shirt は除外。
+        // フルボディ DLC は SwimWear と異なり specialized donor 経路を持たないため、
+        // Tops 経由の full-body 移植は未実装。安全側で除外する。
         // Shirt は mesh_costume_sleeve のみ実体的な Tops 差分で見栄えが薄いため UI から外す。
         // donor == target も許可（自身の他コスチューム由来の tops を素体に移植可能）。
         m_topsItems = new List<(CharID, CostumeType, bool)>();
@@ -426,7 +429,7 @@ public class CostumePickerController : MonoBehaviour
             for (int c = 0; c < (int)CostumeType.Num; c++)
             {
                 var costume = (CostumeType)c;
-                if (costume == CostumeType.Bunnygirl) continue;
+                if (costume.IsFullBodyCostume() && costume != CostumeType.SwimWear) continue;
                 if (costume == CostumeType.Shirt) continue;
                 if (costume.IsDLC() && !installedDlc.Contains(costume)) continue;
                 bool tLocked = !CostumeViewHistory.IsViewed(donor, costume);

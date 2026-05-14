@@ -344,13 +344,16 @@ public class BottomsLoader : MonoBehaviour
         if (character == null) return;
 
         // base-aware additive モード (TopsLoader.Apply と対称設計):
-        //   target が SwimWear / Bunnygirl のときは target の Bottoms 候補 SMR をそのまま温存し、
-        //   donor の Bottoms SMR を inject 経路で重ねる。target の元 frill 等を維持できる。
+        //   target がフルボディ衣装 (SwimWear / Bunnygirl / フルボディ DLC) のときは
+        //   target の Bottoms 候補 SMR をそのまま温存し、donor の Bottoms SMR を inject 経路で重ねる。
+        //   target の元 frill 等を維持できる。
         //   donor=SwimWear (Bottoms に SwimWear donor を当てるレアケース) は従来 (a)(b)(c) で処理。
+        //   (donorCostume != SwimWear ガードは現状維持: Tops 側の ApplySwimWearBottomsPhase と
+        //    対称な SwimWear-specialized 経路への振り分けのため、DLC donor 等には拡張しない。)
         // m_lastLoadArg が race 等で null の場合は additive=false (= 既存通常モード) にフォールバック。
         var targetHandle = Internal.CharacterResolver.ResolveHandle(character);
         var targetCostume = targetHandle?.m_lastLoadArg?.Costume;
-        bool additiveMode = (targetCostume == CostumeType.SwimWear || targetCostume == CostumeType.Bunnygirl)
+        bool additiveMode = (targetCostume?.IsFullBodyCostume() ?? false)
                             && donorCostume != CostumeType.SwimWear;
 
         if (!s_cache.TryGet((donorChar, donorCostume), out var donor))
