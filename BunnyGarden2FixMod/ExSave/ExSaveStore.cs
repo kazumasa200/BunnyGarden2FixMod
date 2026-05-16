@@ -34,6 +34,9 @@ namespace BunnyGarden2FixMod.ExSave;
 /// </summary>
 public static class ExSaveStore
 {
+    /// <summary>AllSlots 入替タイミングを区別するモード。</summary>
+    private enum AllSlotsReplaceMode { Loaded, Reset }
+
     private const string SidecarExtension = ".exmod";
 
     /// <summary>サイドカーを格納する BepInEx データフォルダ。</summary>
@@ -132,9 +135,9 @@ public static class ExSaveStore
         CurrentSession = new ExSaveSlotData();
         CurrentSaveSlot = -1;
         CurrentMainPath = null;
-        // 底データを入替えたので ViewHistory 側の dedup キャッシュも無効化する
-        // （次回 MarkViewed で新データに対して再登録が走るように）
-        InvalidateCommonCaches();
+        // 底データを入替えたので ViewHistory 側の dedup キャッシュも無効化し、
+        // OverrideStore の in-memory 状態もクリアする
+        OnAllSlotsReplaced(AllSlotsReplaceMode.Reset);
     }
 
     /// <summary>
@@ -195,7 +198,7 @@ public static class ExSaveStore
         {
             AllSlots = new ExSaveData();
             PatchLogger.LogInfo($"[ExSave] サイドカー無し、空データで開始: {path ?? "(null)"}");
-            InvalidateCommonCaches();
+            OnAllSlotsReplaced(AllSlotsReplaceMode.Loaded);
             return;
         }
         try
@@ -205,26 +208,48 @@ public static class ExSaveStore
             int totalEntries = 0;
             foreach (var kv in AllSlots.Slots)
                 totalEntries += kv.Value?.Count ?? 0;
-            PatchLogger.LogInfo($"[ExSave] ロード: {path} ({bytes.Length} bytes, {AllSlots.Slots.Count} slots, {totalEntries} entries)");
+            int commonEntries = AllSlots.Common?.Count ?? 0;
+            PatchLogger.LogInfo($"[ExSave] ロード: {path} ({bytes.Length} bytes, {AllSlots.Slots.Count} slots, {totalEntries} slot-entries, {commonEntries} common-entries)");
         }
         catch (Exception ex)
         {
             AllSlots = new ExSaveData();
             PatchLogger.LogWarning($"[ExSave] ロード失敗、空データで続行: {path} ({ex})");
         }
-        // ロード（成功/失敗問わず）で AllSlots が差替わったので dedup キャッシュ無効化。
-        InvalidateCommonCaches();
+        // ロード（成功/失敗問わず）で AllSlots が差替わったので dedup キャッシュ無効化・
+        // OverrideStore を ExSave 内容で rehydrate する。
+        OnAllSlotsReplaced(AllSlotsReplaceMode.Loaded);
     }
 
     /// <summary>
-    /// Common バケットに書き込む <see cref="ExSaveSlotData"/> 派生データの dedup キャッシュを
-    /// 無効化する。<see cref="AllSlots"/> 入替タイミング（Reset / LoadFromPath）で呼ぶ。
+    /// <see cref="AllSlots"/> が入れ替わった直後に呼ぶ。
+    /// ViewHistory の dedup キャッシュを無効化し、OverrideStore の状態を更新する。
+    /// <paramref name="mode"/> が <see cref="AllSlotsReplaceMode.Loaded"/> の場合は
+    /// 各 OverrideStore を ExSave 内容で復元（rehydrate）し、
+    /// <see cref="AllSlotsReplaceMode.Reset"/> の場合は in-memory 状態をクリアする。
     /// </summary>
-    private static void InvalidateCommonCaches()
+    private static void OnAllSlotsReplaced(AllSlotsReplaceMode mode)
     {
         CostumeViewHistory.ResetDedup();
         PantiesViewHistory.ResetDedup();
         StockingViewHistory.ResetDedup();
+
+        if (mode == AllSlotsReplaceMode.Loaded)
+        {
+            CostumeOverrideStore.RehydrateFromExSave();
+            TopsOverrideStore.RehydrateFromExSave();
+            BottomsOverrideStore.RehydrateFromExSave();
+            PantiesOverrideStore.RehydrateFromExSave();
+            StockingOverrideStore.RehydrateFromExSave();
+        }
+        else // Reset
+        {
+            CostumeOverrideStore.ClearMemory();
+            TopsOverrideStore.ClearMemory();
+            BottomsOverrideStore.ClearMemory();
+            PantiesOverrideStore.ClearMemory();
+            StockingOverrideStore.ClearMemory();
+        }
     }
 
     public static async Task SaveToPathAsync(string mainSavePath)

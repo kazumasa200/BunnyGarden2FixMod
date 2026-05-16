@@ -31,8 +31,8 @@ public class ExSaveData
     [IgnoreMember]
     public int Count => Slots.Count;
 
-    /// <summary>ゲーム本体と同じ LZ4BlockArray 圧縮オプション。</summary>
-    private static readonly MessagePackSerializerOptions s_options =
+    /// <summary>ゲーム本体と同じ LZ4BlockArray 圧縮オプション。各 OverrideStore からも参照可能。</summary>
+    internal static readonly MessagePackSerializerOptions s_options =
         MessagePackSerializerOptions.Standard
             .WithCompression(MessagePackCompression.Lz4BlockArray);
 

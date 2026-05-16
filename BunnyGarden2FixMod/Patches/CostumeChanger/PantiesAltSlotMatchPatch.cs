@@ -56,6 +56,8 @@ public static class PantiesAltSlotMatchPatch
     }
 
     // 将来 m_panties_skin/bunny を使う新コスが追加されたらここに足すこと（無いと cache 誤無効化で復元バグ）。
+    // フルボディ DLC (DLC01/06/09/10) は m_panties_skin/bunny を使うか未確認のため未追加。
+    // 実機で alt slot 使用を確認できたら IsFullBodyCostume へ統合または個別追加する。
     private static bool IsAltSlotCostume(CostumeType c) =>
         c == CostumeType.SwimWear || c == CostumeType.Bunnygirl;
 

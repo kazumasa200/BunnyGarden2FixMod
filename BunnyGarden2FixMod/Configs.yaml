@@ -413,6 +413,17 @@
       ui:
         kind: toggle
 
+    - name: PersistCostumeOverrides
+      label: 衣装変更状態を保存する
+      type: bool
+      default: true
+      description: |
+        Wardrobe で変更した衣装の状態を保存し、ゲーム再起動後も復元します。
+        OFF にすると以降の変更は保存されません（既存の保存内容は残るため、ON に戻すと復元されます）。
+        Steam Cloud 対象外。
+      ui:
+        kind: toggle
+
     - name: SwimWearStocking
       label: 水着+ストッキング適用
       type: bool
@@ -427,66 +438,200 @@
       default: 0
       range: [0, 0.01]
       description: |
-        水着+ストッキング適用時、stocking 頂点を肌より外側へ保つ最小距離（メートル）。
-        押し出すと水着の食い込み（タイトな演出）が再現できますが、stocking が水着を貫通します。
-        0 で無効化。デフォルト 0 (無効)。
+        水着+ストッキング適用時、ストッキングを肌よりどれだけ外側に出すかを指定します（メートル）。
+        値を増やすと水着の食い込みが再現できますが、ストッキングが水着を貫通します。0 で無効。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingSkinShrink
-      label: 肌 押込み量 (m)
+      label: ストッキング 肌押込み量 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        水着+ストッキング適用時、肌（mesh_skin_lower）の頂点を「stocking 押し出し後表面より内側」に
-        保つ目標距離（メートル）。stocking と肌が z-fighting している箇所では、まず肌を
-        stocking 表面まで引っ込めてから、さらにこの距離だけ内側に押し込みます。
-        押し込むと肌の貫通はなくなりますが、水着の食い込み（タイトな演出）が再現できません。
-        0 で無効化。デフォルト 0.001 (1mm)。
+        水着+ストッキング適用時、肌をストッキングよりどれだけ内側に押し込むかを指定します（メートル）。
+        肌のチラつき（肌とストッキングの干渉）が見える場合に大きくしてください。
+        ただし水着の食い込み演出は弱まります。0 で無効。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingSkinFalloffRadius
-      label: 肌押込み フェード半径 (m)
+      label: ストッキング 肌押込み フェード半径 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        肌の押し込み量を、隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
-        距離 0 で押し込み 0、半径以上で 100%。境界での段差を防ぎます。0 で無効化（一様押し込み）。
-        デフォルト 0.001 (1mm)。
+        肌の押し込みを、上半身などとの境界で滑らかにフェードさせる距離です（メートル）。
+        境界に段差が見える場合に大きくしてください。0 で無効（境界無視で一様に押し込む）。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
 
     - name: StockingShapeFalloffRadius
-      label: BlendShape フェード半径 (m)
+      label: ストッキング 肌形状フェード半径 (m)
       type: float
       default: 0.001
       range: [0, 0.01]
       description: |
-        skin_stocking 系 blendShape (skin_stocking / skin_socks / skin_stocking_lower) の delta 自体を、
-        隣接 mesh（mesh_skin_upper 等）からの距離で線形フェードさせる半径（メートル）。
-        距離 0 で blendShape 効果 0、半径以上で 100%。境界（ウエスト等）の段差を解消します。
-        0 で無効化（blendShape 効果は全頂点 100%）。デフォルト 0.001 (1mm)。
+        ストッキング由来の肌形状補正を、ウエストなどの境界で滑らかにフェードさせる距離です（メートル）。
+        境界の段差が気になる場合に大きくしてください。0 で無効（補正は全身一様）。
       ui:
         kind: slider
         step: 0.0001
         format: '{0:F4}'
+
+    - name: TopsDistancePreserveRange
+      label: 上衣 距離保存 検索範囲 (m)
+      type: float
+      default: 0.100
+      range: [0.010, 0.500]
+      description: |
+        別キャラ上衣を当てたときの体型補正の有効範囲です（メートル）。
+        小さくするとワンピース型衣装の下半身が補正されず、大きくしすぎると
+        服から遠い箇所まで体に張り付いて不自然になります。
+      ui:
+        kind: slider
+        step: 0.010
+        format: '{0:F3}'
+
+    - name: TopsSkinMinOffset
+      label: 上衣 肌からの最小距離 (m)
+      type: float
+      default: 0.005
+      range: [0.0, 0.010]
+      description: |
+        元キャラ側で衣装が肌にめり込んでいる箇所を補正する安全マージンです（メートル）。
+        当てた服の一部が肌にめり込んで見える場合に大きくしてください。
+        0 で無効（めり込みは未補正のまま反映されます）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinSampleRadius
+      label: 上衣 肌サンプル半径 (m)
+      type: float
+      default: 0.03
+      range: [0.0, 0.100]
+      description: |
+        体型補正で参照する肌のサンプリング半径です（メートル）。
+        鎖骨・肩甲骨など凹凸の多い箇所で補正がばらつく場合に大きくしてください。
+        0 で最小近傍 3 点を使用。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
+    - name: TopsSkinWeightFalloff
+      label: 上衣 肌 weight 転送 falloff (m)
+      type: float
+      default: 0.02
+      range: [0.0, 0.050]
+      description: |
+        関節を曲げたときに肌密着部の服が肌から剥離・突き抜けないよう、
+        肌の動きに追随させる範囲です（メートル）。
+        肩・肘などで服が肌から浮いて見える場合に大きくしてください。
+        0 で無効。推奨初期値: 0.020 m。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
+    - name: TopsSkinShrink
+      label: 上衣 肌押込み量 (m)
+      type: float
+      default: 0.005
+      range: [0, 0.01]
+      description: |
+        別キャラ上衣を当てたとき、肌が服を貫通する箇所を内側に押し込む距離です（メートル）。
+        肌のチラつき（肌と服の干渉）が見える場合に大きくしてください。0 で無効。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinShrinkFalloffRadius
+      label: 上衣 肌押込み フェード半径 (m)
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        肌の押し込みを、顔・首回りで滑らかにフェードさせる距離です（メートル）。
+        首元で押し込みが顔まで波及する場合に大きくしてください。
+        0 で無効（顔境界無視で一様に押し込む）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: TopsSkinShrinkSampleRadius
+      label: 上衣 肌押込み cloth サンプル半径 (m)
+      type: float
+      default: 0.0
+      range: [0, 0.1]
+      description: |
+        肌押込みの参照範囲です（メートル）。
+        フリル・袖などで押し込みがガタつく場合や、ウエストの縫い目で段差が見える場合に
+        大きくしてください。0 で 10mm 固定（狭い既定）。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
+
+    - name: BottomsSkinShrink
+      label: 下衣 肌押込み量 (m)
+      type: float
+      default: 0.005
+      range: [0, 0.01]
+      description: |
+        別キャラ下衣（スカート等）を当てたとき、肌がスカートを貫通する箇所を内側に押し込む距離です（メートル）。
+        腰・腿・膝下のチラつきが見える場合に大きくしてください。
+        0 で無効。最大 1cm 制限（過大値で脚が消える事故を防ぐため）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: BottomsSkinShrinkFalloffRadius
+      label: 下衣 肌押込み フェード半径 (m)
+      type: float
+      default: 0.001
+      range: [0, 0.01]
+      description: |
+        肌の押し込みを、顔・首回りで滑らかにフェードさせる距離です（メートル）。
+        首元で押し込みが顔まで波及する場合に大きくしてください。
+        0 で無効（顔境界無視で一様に押し込む）。
+      ui:
+        kind: slider
+        step: 0.0001
+        format: '{0:F4}'
+
+    - name: BottomsSkinShrinkSampleRadius
+      label: 下衣 肌押込み skirt サンプル半径 (m)
+      type: float
+      default: 0.05
+      range: [0, 0.1]
+      description: |
+        肌押込みの参照範囲です（メートル）。
+        スカートのフリルなどで押し込みがガタつく場合や、ウエストの縫い目で段差が見える場合に
+        大きくしてください。0 で 10mm 固定（狭い既定）。
+      ui:
+        kind: slider
+        step: 0.001
+        format: '{0:F3}'
 
     - name: PantiesAltSlotMatch
       label: 水着・バニーガール衣装でも下着を表示
       type: bool
       default: true
       description: |
-        ゲーム本体は通常衣装専用の panties slot にしか反応しないため、Mod 側で水着/バニー用スロットもフォールバック検出します。
-        差し替え後の Material は通常衣装用テクスチャなので、UV 不一致で見た目が崩れる場合は OFF にしてください。
+        水着・バニー衣装でもパンツが表示されるようにします（通常はゲーム側の制限で非表示）。
+        テクスチャは通常衣装用のため、UV 不一致で見た目が崩れる場合は OFF にしてください。
       ui:
         kind: toggle
 
@@ -495,8 +640,8 @@
       type: bool
       default: true
       description: |
-        ON  : Mod で下着を明示選択したキャストのみフォールバックを適用。他キャストはバニラ挙動（水着/バニーで肌色）。
-        OFF : 常時全キャストに適用。ゲーム本体由来の ReloadPanties でも水着/バニーに通常下着が出ます。
+        ON  : Mod で下着を選択したキャストのみ適用（他キャストは水着/バニー時に通常通り肌色）。
+        OFF : 全キャストに常時適用（水着/バニーでも通常下着が出ます）。
         PantiesAltSlotMatch=OFF のときはこの設定は無視されます。
       ui:
         kind: toggle

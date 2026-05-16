@@ -64,13 +64,13 @@ public static class SwimWearStockingPatch
 
     static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[SwimWearStockingPatch] 適用");
         return enabled;
     }
 
     /// <summary>
-    /// シーンアンロード時にキャッシュを一掃する。StockingsDonorLoader MonoBehaviour 側から呼ばれる。
+    /// シーンアンロード時にキャッシュを一掃する。
     /// 破棄済み SMR 参照を持ち越すと次シーンでの復元時に fake-null 例外 / InstanceID 再利用による
     /// 誤 hit が発生するため、毎シーンでリセットする。
     /// </summary>
@@ -91,23 +91,16 @@ public static class SwimWearStockingPatch
         // s_backups.LowerOriginalMesh / LowerFootOriginalMesh はゲーム本体所有の sharedMesh のため
         // Destroy せず参照のみクリアする（Destroy するとゲーム側のメッシュが消えて破綻する）。
         s_backups.Clear();
-        PatchLogger.LogInfo($"[SwimWearStockingPatch] シーンアンロード: cache クリア (transplanted {transplantedCount} 件、resolved {resolvedCount} 件)");
+        PatchLogger.LogDebug($"[SwimWearStockingPatch] シーンアンロード: cache クリア (transplanted {transplantedCount} 件、resolved {resolvedCount} 件)");
     }
 
     /// <summary>
-    /// チューニングスライダー等から ConfigStockingOffset/SkinShrink/FalloffRadius を変更した直後に呼び、
-    /// 次の env.ApplyStockings() で食い込み解消が新パラメータで再構築されるよう状態を整える。
+    /// ConfigStockingOffset/SkinShrink/FalloffRadius 変更直後に呼び、次の env.ApplyStockings() で
+    /// 食い込み解消が新パラメータで再構築されるよう状態を整える。
     ///
-    /// 復元手順:
-    ///   1. swim skin の sharedMesh を backup originalMesh に戻す（次の TransplantInto が
-    ///      vanilla skin から transplanted を構築できるようにする）
-    ///   2. s_resolvedAppliedIds をクリア（ApplyPenetrationResolve の二重補正防止 early-return を解除）
-    ///
-    /// s_resolvedCache / s_transplantedCache は破棄しない:
-    ///   - resolvedCache キーには量子化パラメータが含まれるので、別パラメータでは別エントリが作られる。
-    ///     同一パラメータに戻したときの再ヒットを許容するためそのまま保持する（OnSceneUnloaded で一括破棄）。
-    ///   - 注入 stockings smr の sharedMesh は ApplyStockingSync 冒頭で donor.sharedMesh に
-    ///     必ず差し戻されるため、ここで触らなくて良い。
+    /// 手順: (1) swim skin sharedMesh を backup originalMesh に戻す (TransplantInto が vanilla 起点で再構築できるよう)、
+    /// (2) s_resolvedAppliedIds をクリア (二重補正防止 early-return を解除)。
+    /// resolvedCache/transplantedCache は保持: 量子化 key で別エントリ化されるため、同一パラメータ復帰時の再ヒットを許容。
     /// </summary>
     internal static void InvalidateForReapply(CharID id)
     {
@@ -191,7 +184,7 @@ public static class SwimWearStockingPatch
         if (injected != null)
         {
             Object.Destroy(injected.gameObject);
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] 注入 mesh_stockings 削除: {handle.GetCharID()}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] 注入 mesh_stockings 削除: {handle.GetCharID()}");
         }
 
         // sharedMesh を元に戻す（SMR が破棄済みなら Unity == が true で skip される）
@@ -202,7 +195,7 @@ public static class SwimWearStockingPatch
             if (backup.LowerFootSmr != null && backup.LowerFootOriginalMesh != null)
                 backup.LowerFootSmr.sharedMesh = backup.LowerFootOriginalMesh;
             s_backups.Remove(key);
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] sharedMesh 復元: {handle.GetCharID()}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] sharedMesh 復元: {handle.GetCharID()}");
         }
     }
 
@@ -273,7 +266,7 @@ public static class SwimWearStockingPatch
         var swimLowerForRef = renderers.FirstOrDefault(m => m.name == "mesh_skin_lower");
         ApplyPenetrationResolve(smr, swimLowerForRef, renderers, isKneeSocks);
 
-        PatchLogger.LogInfo($"[SwimWearStockingPatch] 適用: {handle.GetCharID()} override={overrideType} knee={isKneeSocks} created={created} meshVerts={targetMesh.vertexCount} bones={smr.bones?.Length ?? 0}");
+        PatchLogger.LogDebug($"[SwimWearStockingPatch] 適用: {handle.GetCharID()} override={overrideType} knee={isKneeSocks} created={created} meshVerts={targetMesh.vertexCount} bones={smr.bones?.Length ?? 0}");
         return true;
     }
 
@@ -290,9 +283,9 @@ public static class SwimWearStockingPatch
         // ニーハイは形状・カバー範囲が異なり本補正の前提（尻まわりの z-fighting）と合わないため対象外
         if (isKneeSocks) return;
 
-        float minOffset = Configs.StockingOffset?.Value ?? 0f;
-        float skinPushAmount = Configs.StockingSkinShrink?.Value ?? 0f;
-        float falloffRadius = Configs.StockingSkinFalloffRadius?.Value ?? 0f;
+        float minOffset = Configs.StockingOffset.Value;
+        float skinPushAmount = Configs.StockingSkinShrink.Value;
+        float falloffRadius = Configs.StockingSkinFalloffRadius.Value;
         if (minOffset <= 0f && skinPushAmount <= 0f) return;
 
         var currentDonor = stockingsSmr.sharedMesh;
@@ -353,7 +346,7 @@ public static class SwimWearStockingPatch
         float shapeFalloffRadius = 0f;
         if (!isKneeSocks)
         {
-            shapeFalloffRadius = Configs.StockingShapeFalloffRadius?.Value ?? 0f;
+            shapeFalloffRadius = Configs.StockingShapeFalloffRadius.Value;
             if (shapeFalloffRadius > 0f) shapeAnchorVerts = CollectShrinkAnchorVerts(renderers);
         }
 
@@ -500,6 +493,9 @@ public static class SwimWearStockingPatch
 
         var go = new GameObject(InjectedName);
         go.transform.SetParent(parentTransform, false);
+        // Unity Layer は SetParent で継承されないため明示設定（layer mismatch で本体 lighting
+        // から外れて grey 描画になる bug 対応、Bottoms/Tops と対称適用）。
+        go.layer = referenceSmr != null ? referenceSmr.gameObject.layer : chara.layer;
 
         return go.AddComponent<SkinnedMeshRenderer>();
     }
@@ -532,7 +528,7 @@ public static class SwimWearStockingPatch
             target.rootBone = fallback;
 
         if (missing > 0)
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] bone 未対応 {missing}/{src.Length}");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] bone 未対応 {missing}/{src.Length}");
     }
 
     /// <summary>
@@ -551,7 +547,7 @@ public static class SwimWearStockingPatch
                 collisions++;
         }
         if (collisions > 0)
-            PatchLogger.LogInfo($"[SwimWearStockingPatch] bone 名衝突 {collisions} 件を先勝ちで無視 (chara={chara.name})");
+            PatchLogger.LogDebug($"[SwimWearStockingPatch] bone 名衝突 {collisions} 件を先勝ちで無視 (chara={chara.name})");
         return dict;
     }
 }

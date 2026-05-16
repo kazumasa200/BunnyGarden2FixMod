@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
 using BunnyGarden2FixMod.Utils;
 using Cysharp.Threading.Tasks;
 using GB;
@@ -31,7 +32,6 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 ///
 /// ニーソックス override を解除するときは Restore() で副作用を復元してから
 /// env.ApplyStockings を呼ぶことでリロード不要。
-/// CostumePickerController.DecideActiveTab / ApplyStocking が担う。
 /// </summary>
 public class KneeSocksLoader : MonoBehaviour
 {
@@ -113,7 +113,7 @@ public class KneeSocksLoader : MonoBehaviour
         if (s_kneeSocks == null)
             PatchLogger.LogWarning($"[{nameof(KneeSocksLoader)}] mesh_kneehigh が見つかりませんでした。ニーソックスは使用できません。");
         else
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] mesh_kneehigh をプリロードしました。");
 
         // Luna Casual の mesh_skin_lower から skin_kneehigh blendShape をドナーとしてキャッシュ
         var donorLowerSmr = parent.GetComponentsInChildren<SkinnedMeshRenderer>(true)
@@ -121,7 +121,7 @@ public class KneeSocksLoader : MonoBehaviour
         if (donorLowerSmr != null && donorLowerSmr.sharedMesh != null)
         {
             s_donorSkinLower = donorLowerSmr.sharedMesh;
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] mesh_skin_lower ドナーをキャッシュしました (verts={s_donorSkinLower.vertexCount} shapes={s_donorSkinLower.blendShapeCount})。");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] mesh_skin_lower ドナーをキャッシュしました (verts={s_donorSkinLower.vertexCount} shapes={s_donorSkinLower.blendShapeCount})。");
         }
         else
         {
@@ -141,7 +141,7 @@ public class KneeSocksLoader : MonoBehaviour
                 {
                     yield return s_handle.ApplyStocking(t).ToCoroutine();
                     s_stockingMaterials[t] = stockingsMesh.sharedMaterial;
-                    PatchLogger.LogInfo($"[KneeSocksLoader] ストッキングマテリアル type {t} をプリロードしました。");
+                    PatchLogger.LogDebug($"[KneeSocksLoader] ストッキングマテリアル type {t} をプリロードしました。");
                 }
                 finally
                 {
@@ -168,7 +168,7 @@ public class KneeSocksLoader : MonoBehaviour
         int transplantedCount = s_transplantedLowerCache.Count;
         s_transplantedLowerCache.Clear();
 
-        PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
+        PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] シーンアンロード: snapshot クリア、transplanted cache クリア (mesh {transplantedCount} 件)。");
     }
 
     /// <summary>
@@ -230,7 +230,7 @@ public class KneeSocksLoader : MonoBehaviour
             })
             .ToArray();
         if (missingBones > 0)
-            PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ボーン未対応 {missingBones}/{mappedBones.Length}: {character.name}（フォールバックボーン使用）");
+            PatchLogger.LogDebug($"[{nameof(KneeSocksLoader)}] ボーン未対応 {missingBones}/{mappedBones.Length}: {character.name}（フォールバックボーン使用）");
         stockings.sharedMesh = s_kneeSocks.sharedMesh;
         int matIdx = StockingOverrideStore.KneeSocksStockingType(overrideType);
         if (matIdx > 0 && s_stockingMaterials[matIdx] == null)
@@ -298,13 +298,25 @@ public class KneeSocksLoader : MonoBehaviour
         PatchLogger.LogInfo($"[{nameof(KneeSocksLoader)}] ニーソックスを適用しました: {character.name}");
     }
 
-    /// <summary>
-    /// setup/setupPantiesOnly Postfix から呼ばれる。ニーソックス override が設定されていれば Apply する。
-    /// </summary>
     public static void ApplyIfOverridden(CharacterHandle handle)
     {
         if (IsPreloading) return; // プリロード中の dummy handle への誤適用を防ぐ
         if (handle?.Chara == null) return;
+        // TopsLoader / BottomsLoader が preload した donor character の setup() でも本 patch は発火する。
+        // donor preload に override 適用すると skin SMR の状態が破壊され、後続 target Apply の swap source
+        // を巻き込む。同 CharID で override 設定があれば誤適用されるため、preload host 配下は skip。
+        if (DonorPreloadRegistry.IsAnyHostParent(handle.Chara)) return;
+        // FittingRoom 動作中 / 本体 CostumeOverride 中 / ExtraScene 中は skip (CostumeChangerPatch.Prefix と揃える)。
+        // setup() Postfix は Preload Prefix と独立経路なので、ここでも同じ guard が要る。
+        // ExtraScene (Album / Cheki / MiniGame 等) は本体 FittingRoom が衣装を制御するため、
+        // RespectGameCostumeOverride 有効時は MOD 適用しない (FR 退出後も FR の選択を保持)。
+        if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return;
+        if (Configs.RespectGameCostumeOverride.Value)
+        {
+            if (GBSystem.Instance != null
+                && GBSystem.Instance.GetCostumeOverride() != GBSystem.CostumeOverride.None) return;
+            if (GBSystem.GetCurrentSceneName() == "ExtraScene") return;
+        }
         // 水着は SwimWearStockingPatch が専用ロジックで処理するためスキップ
         if (handle.m_lastLoadArg != null && handle.m_lastLoadArg.Costume == CostumeType.SwimWear) return;
         var id = handle.GetCharID();
@@ -377,7 +389,7 @@ internal static class KneeSocksSetupPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPatch] 適用");
         return enabled;
     }
@@ -393,7 +405,7 @@ internal static class KneeSocksSetupPantiesOnlyPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksSetupPantiesOnlyPatch] 適用");
         return enabled;
     }
@@ -411,7 +423,7 @@ internal static class KneeSocksApplyStockingPatch
 {
     private static bool Prepare()
     {
-        bool enabled = Configs.CostumeChangerEnabled?.Value ?? true;
+        bool enabled = Configs.CostumeChangerEnabled.Value;
         if (enabled) PatchLogger.LogInfo("[KneeSocksApplyStockingPatch] 適用");
         return enabled;
     }

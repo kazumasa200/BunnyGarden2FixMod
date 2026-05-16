@@ -1,3 +1,6 @@
+using BunnyGarden2FixMod.ExSave;
+using BunnyGarden2FixMod.Patches.CostumeChanger.Internal;
+using BunnyGarden2FixMod.Utils;
 using GB.Game;
 using System.Collections.Generic;
 
@@ -5,11 +8,20 @@ namespace BunnyGarden2FixMod.Patches.CostumeChanger;
 
 /// <summary>
 /// キャラごとのストッキング override（int: 0=なし, 1=黒, 2=白, 3=網黒, 4=網白,
-/// 5=ニーハイ, 6=ニーハイ(黒), 7=ニーハイ(白)）を保持するプロセス内セッションストア。永続化しない。
+/// 5=ニーハイ, 6=ニーハイ(黒), 7=ニーハイ(白)）を保持するプロセス内セッションストア。
+/// 永続化は ExSave (CommonData) の <c>stocking.override.all</c> キーに行う。
 /// </summary>
 public static class StockingOverrideStore
 {
+    private const string ExSaveKey = "stocking.override.all";
+
     private static readonly Dictionary<CharID, int> s_overrides = new();
+
+    /// <summary>
+    /// rehydrate が例外で失敗したことを記録するフラグ。
+    /// true の間は WriteToExSave を抑止し、破損データによる旧データ上書きを防ぐ。
+    /// </summary>
+    private static bool s_rehydrateFailed = false;
 
     public const int Min = 0;
     public const int Max = 7;
@@ -40,13 +52,68 @@ public static class StockingOverrideStore
 
     public static void Set(CharID id, int stocking)
     {
-        if (id >= CharID.NUM) return;
-        if (stocking < Min || stocking > Max) return;
-        s_overrides[id] = stocking;
+        if (SetValidatedNoMirror(id, stocking))
+            WriteToExSave();
     }
 
-    public static void Clear(CharID id) => s_overrides.Remove(id);
+    public static void Clear(CharID id)
+    {
+        if (s_overrides.Remove(id))
+            WriteToExSave();
+    }
 
     public static bool TryGet(CharID id, out int stocking) =>
         s_overrides.TryGetValue(id, out stocking);
+
+    /// <summary>
+    /// ExSave から override 状態を読み込み、s_overrides を再構築する。
+    /// ExSaveStore.LoadFromPath 後に呼ばれる。
+    /// </summary>
+    public static void RehydrateFromExSave()
+    {
+        s_overrides.Clear();
+        if (!OverrideStorePersistence.TryReadFromExSave<byte>(
+                ExSaveKey, "[StockingOverrideStore]", Configs.PersistCostumeOverrides.Value,
+                out var dict, out s_rehydrateFailed))
+        {
+            return;
+        }
+
+        foreach (var kv in dict)
+            SetValidatedNoMirror((CharID)kv.Key, (int)kv.Value);
+        PatchLogger.LogInfo($"[StockingOverrideStore] rehydrate: {s_overrides.Count} 個復元");
+    }
+
+    /// <summary>in-memory の s_overrides をクリアする（Reset 時に呼ばれる）。</summary>
+    public static void ClearMemory()
+    {
+        s_overrides.Clear();
+        s_rehydrateFailed = false;
+    }
+
+    /// <summary>バリデーション後に dict へ投入する（ExSave mirror を行わない）。無効入力は false を返す。</summary>
+    private static bool SetValidatedNoMirror(CharID id, int stocking)
+    {
+        if (id >= CharID.NUM) return false;
+        if (stocking < Min || stocking > Max) return false;
+        s_overrides[id] = stocking;
+        return true;
+    }
+
+    /// <summary>s_overrides の全内容を ExSave の CommonData に書き込む。</summary>
+    private static void WriteToExSave()
+    {
+        OverrideStorePersistence.WriteToExSave(
+            ExSaveKey, "[StockingOverrideStore]", Configs.PersistCostumeOverrides.Value,
+            s_rehydrateFailed, BuildSerializableDict);
+    }
+
+    /// <summary>s_overrides を Dictionary&lt;int, byte&gt; に変換する（MessagePack 直列化用）。</summary>
+    private static Dictionary<int, byte> BuildSerializableDict()
+    {
+        var dict = new Dictionary<int, byte>(s_overrides.Count);
+        foreach (var kv in s_overrides)
+            dict[(int)kv.Key] = (byte)kv.Value;
+        return dict;
+    }
 }

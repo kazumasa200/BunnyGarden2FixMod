@@ -138,12 +138,31 @@ internal sealed class SpatialGridIndex
     {
         if (_points.Length == 0 || radius <= 0f) return;
 
+        float radSq = radius * radius;
+
+        // brute-force fallback: cellSize が AABB に対して退化（小 mesh + 大 radius）すると
+        // (2*cellRadius+1)^3 が _cells.Count を大きく上回り、空 dict ヒットが支配する。
+        // この場合は全頂点直走査の方が速い（_cells lookup の overhead 無し）。
+        // 係数 4 は経験則: dict TryGetValue の overhead は浮動小数点距離計算より概ね数倍重く、
+        // 4x 以上空 cell が混じる時点で全点走査が prevail するため。
+        const long BruteForceCellMultiplier = 4L;
+        int cellRadius = Mathf.Max(1, (int)Mathf.Ceil(radius * _invCellSize));
+        long cellsToScan = (long)(2 * cellRadius + 1) * (2 * cellRadius + 1) * (2 * cellRadius + 1);
+        if (cellsToScan > (long)_cells.Count * BruteForceCellMultiplier)
+        {
+            for (int i = 0; i < _points.Length; i++)
+            {
+                var p = _points[i];
+                float ex = p.x - q.x, ey = p.y - q.y, ez = p.z - q.z;
+                float sq = ex * ex + ey * ey + ez * ez;
+                if (sq <= radSq) results.Add(i);
+            }
+            return;
+        }
+
         int qx = (int)Mathf.Floor((q.x - _origin.x) * _invCellSize);
         int qy = (int)Mathf.Floor((q.y - _origin.y) * _invCellSize);
         int qz = (int)Mathf.Floor((q.z - _origin.z) * _invCellSize);
-
-        int cellRadius = Mathf.Max(1, (int)Mathf.Ceil(radius * _invCellSize));
-        float radSq = radius * radius;
 
         for (int dx = -cellRadius; dx <= cellRadius; dx++)
         for (int dy = -cellRadius; dy <= cellRadius; dy++)
