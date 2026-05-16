@@ -868,22 +868,24 @@ internal static class MagicaClothRebuilder
         if (newSerData2 == null) return;
         var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-        // resolve は 1 回だけ。途中で field 未解決なら警告を出して flag は true のまま放置する
+        // resolve は 1 回だけ。途中で field 未解決ならエラーを出して flag は true のまま放置する
         // (= fix が永続的に no-op になる) のは意図通り。MagicaCloth の仕様変更時にログ連発を避け、
         // 残りの rebuild path は SafeDestroyPreservingSmrState の SMR.sharedMesh 再注入に縮退委譲する。
+        // LogError 級にしてある: MagicaCloth2 バージョンアップで fix が永続停止する重大事象のため、
+        // BepInEx コンソールでも視認できるよう警告を昇格している。
         if (!s_originalMeshNullifyResolved)
         {
             s_originalMeshNullifyResolved = true;
             s_initDataField = newSerData2.GetType().GetField("initData", bf);
             if (s_initDataField == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: initData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
+                PatchLogger.LogError("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: initData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
                 return;
             }
             s_clothSetupDataListField = s_initDataField.FieldType.GetField("clothSetupDataList", bf);
             if (s_clothSetupDataListField == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList field 未解決");
+                PatchLogger.LogError("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList field 未解決");
                 return;
             }
             var listType = s_clothSetupDataListField.FieldType;
@@ -892,13 +894,13 @@ internal static class MagicaClothRebuilder
                 : null;
             if (elemType == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList の要素型が解決できず");
+                PatchLogger.LogError("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: clothSetupDataList の要素型が解決できず");
                 return;
             }
             s_setupOriginalMeshField = elemType.GetField("originalMesh", bf);
             if (s_setupOriginalMeshField == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: originalMesh field 未解決");
+                PatchLogger.LogError("[MagicaClothRebuilder] NullOutCachedOriginalMeshes: originalMesh field 未解決");
                 return;
             }
         }
@@ -946,19 +948,21 @@ internal static class MagicaClothRebuilder
         if (newSerData2 == null) return;
         var bf = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
+        // NullOutCachedOriginalMeshes と同様、resolve 失敗時の永続 no-op を視認しやすくするため
+        // LogError 級に格上げ。MagicaCloth 仕様変更時の早期検知用。
         if (!s_preBuildDisableResolved)
         {
             s_preBuildDisableResolved = true;
             s_preBuildDataField = newSerData2.GetType().GetField("preBuildData", bf);
             if (s_preBuildDataField == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
+                PatchLogger.LogError("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData field 未解決 (MagicaCloth 仕様変更の可能性、fix 無効化)");
                 return;
             }
             s_preBuildEnabledField = s_preBuildDataField.FieldType.GetField("enabled", bf);
             if (s_preBuildEnabledField == null)
             {
-                PatchLogger.LogWarning("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData.enabled field 未解決");
+                PatchLogger.LogError("[MagicaClothRebuilder] DisablePreBuildIfPresent: preBuildData.enabled field 未解決");
                 return;
             }
         }
