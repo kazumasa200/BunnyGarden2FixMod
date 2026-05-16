@@ -26,6 +26,9 @@ public static class ExpandZoomRatio
     // 画角増に合わせてスピードを変更。0.0372は1/1.618倍（黄金比）に相当
     private const float zoomSpeed = 0.05f; //0.0327f; フルズームまでの時間は変えない
 
+    // 首振りの角度
+    private const float rotY = 13f; // ちょっと下まで首振り可能にする
+
     [HarmonyTargetMethod]
     private static MethodBase TargetMethod()
     {
@@ -65,7 +68,7 @@ public static class ExpandZoomRatio
                 codes[i].LoadsField(camFOVField) &&
                 codes[i+1].LoadsConstant(15f))
             {
-                codes[i + 1].operand = maxZoom;
+                codes[i+1].operand = maxZoom;
                 patched++;
                 continue; 
             }
@@ -91,18 +94,21 @@ public static class ExpandZoomRatio
             }
 
             //this.m_rotx = Mathf.Clamp(this.m_rotx + GBInput.CameraControll().y, -10f, 10f); を書き換え
-            //this.m_rotx = Mathf.Clamp(this.m_rotx + GBInput.CameraControll().y, -13f, 10f); にする
-            if(codes[i].LoadsField(rotxField))
+            //this.m_rotx = Mathf.Clamp(this.m_rotx + GBInput.CameraControll().y, -10f, rotY); にする
+            if (i+1 < codes.Count &&
+                codes[i].LoadsField(rotxField))
             {
                 for (int j = i+1; j < codes.Count; j++)
                 {
-                    if(codes[j].Calls(ClampMethod))
+                    if (codes[j].Calls(ClampMethod))
                         break;
 
-                    if(codes[j].LoadsConstant(10f))
+                    if (codes[j].LoadsConstant(10f))
                     {
-                        codes[j].operand = 13f;
+                        codes[j].operand = rotY;
                         patched++;
+
+                        i = j;
                         break;
                     }
                 }
