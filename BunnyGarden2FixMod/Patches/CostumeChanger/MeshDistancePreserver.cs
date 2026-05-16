@@ -384,6 +384,27 @@ internal static class MeshDistancePreserver
 
             var v = donorVerts[i];
 
+            // ---- target skin での signed distance (donor sample より先に実施) ----
+            // target OOR / invert で continue した場合に Pass 4 (newBoneWeights[i] 書き換え) を
+            // 実行させないため、target sample を donor sample より先に行う。
+            // Pass 4 は直後の donor sample で neighbors に書き込まれた KNN 結果を流用するので、
+            // 「最後に呼ぶ sample = donor」の関係を保つ必要がある。
+            float d_target;
+            Vector3 snAvgTarget;
+            {
+                int outcome = SampleSkinSurface(targetSkinGrid, tSkinVerts, tSkinNormals, v,
+                    skinSampleRadius, maxNeighborDistSq, neighborK, weightEps, neighbors,
+                    out var sAvg, out var snAvg);
+                if (outcome == SAMPLE_OUT_OF_RANGE) { outOfRangeTarget++; continue; }
+                if (outcome == SAMPLE_K_FALLBACK) targetFallback++;
+
+                snAvgTarget = snAvg;
+                d_target = Vector3.Dot(v - sAvg, snAvg);
+                // d_target の絶対値ベースの動的ガード
+                float targetGuard = Mathf.Min(invertGuardFloor, -Mathf.Abs(d_target) * invertGuardMul);
+                if (d_target < targetGuard) { skippedInverted++; continue; }
+            }
+
             // ---- donor skin (補正版) での signed distance ----
             float d_donor_eff;
             {
@@ -431,23 +452,6 @@ internal static class MeshDistancePreserver
                     auxSkippedTotal += auxSkipped;
                     weightTransferred++;
                 }
-            }
-
-            // ---- target skin での signed distance ----
-            float d_target;
-            Vector3 snAvgTarget;
-            {
-                int outcome = SampleSkinSurface(targetSkinGrid, tSkinVerts, tSkinNormals, v,
-                    skinSampleRadius, maxNeighborDistSq, neighborK, weightEps, neighbors,
-                    out var sAvg, out var snAvg);
-                if (outcome == SAMPLE_OUT_OF_RANGE) { outOfRangeTarget++; continue; }
-                if (outcome == SAMPLE_K_FALLBACK) targetFallback++;
-
-                snAvgTarget = snAvg;
-                d_target = Vector3.Dot(v - sAvg, snAvg);
-                // d_target の絶対値ベースの動的ガード
-                float targetGuard = Mathf.Min(invertGuardFloor, -Mathf.Abs(d_target) * invertGuardMul);
-                if (d_target < targetGuard) { skippedInverted++; continue; }
             }
 
             // ---- push 量計算 ----
