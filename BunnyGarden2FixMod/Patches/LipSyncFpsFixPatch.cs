@@ -58,7 +58,7 @@ public static class LipSyncFpsFixPatch
             }
 
             // lerpの書き換え
-            if (codes[i].opcode == OpCodes.Call && codes[i].operand is MethodInfo method && method == originalMethod)
+            if (codes[i].Calls(originalMethod))
             {
                 codes[i].operand = replacedMethod;
                 patched++;

@@ -326,6 +326,22 @@
       ui:
         kind: toggle
 
+    - name: RandomizeCastOrder
+      label: キャスト出勤順序をランダム化
+      type: bool
+      default: false
+      description: 毎日設定されるキャストの出勤順序をランダムにする
+      ui:
+        kind: toggle
+
+    - name: RandomizeCostume
+      label: キャストの衣装をランダム化
+      type: bool
+      default: false
+      description: キャストの衣装をランダムにする
+      ui:
+        kind: toggle
+
     - name: UltimateSurvivorEnabled
       label: 鉄骨渡りミニゲームで落下しなくなる（チート）
       key: UltimateSurvivor
@@ -364,6 +380,14 @@
       type: bool
       default: false
       description: BUNNY_TRAP / BUNNY_MAX / BUNNY_PUNCH を進行状況に関わらず常時注文可能にします。
+      ui:
+        kind: toggle
+
+    - name: SwaySkirtEnabled
+      label: ミニゲーム時にそよかぜを吹かせる
+      type: bool
+      default: false
+      description: ミニゲーム時にそよかぜを吹かせます（デフォルトキー J）
       ui:
         kind: toggle
 
@@ -860,6 +884,15 @@
       key: Show
       type: hotkey
       defaultKey: F7
+      defaultButton: None
+      ui:
+        kind: keybinding
+
+    - name: SwaySkirt
+      label: そよかぜを吹かせる（ミニゲームのみ）
+      key: SwaySkirtHotKey
+      type: hotkey
+      defaultKey: J
       defaultButton: None
       ui:
         kind: keybinding
