@@ -12,7 +12,7 @@ namespace BunnyGarden2FixMod.Patches;
 internal static class RandomizeCostume
 {
     // 私服にする確率
-    private const float CasualProbability = 0.33f;
+    private const float CasualProbability = 0.2f;
     private static void Postfix()
     {
         if (GBSystem.Instance == null)

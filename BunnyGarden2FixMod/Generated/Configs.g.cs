@@ -67,7 +67,7 @@ public static class Configs
     public static ConfigEntry<bool> CastOrder;
     /// <summary>キャスト出勤順序をランダム化</summary>
     public static ConfigEntry<bool> RandomizeCastOrder;
-    /// <summary>キャストの初期衣装を変更（Random / Casual / Default）</summary>
+    /// <summary>キャストの初期衣装を変更</summary>
     public static ConfigEntry<BunnyGarden2FixMod.RandomCostumeMode> RandomizeCostume;
     /// <summary>鉄骨渡りミニゲームで落下しなくなる（チート）</summary>
     public static ConfigEntry<bool> UltimateSurvivorEnabled;
@@ -331,12 +331,11 @@ F1 で編集モードを開始し、数字キー（1〜5）でキャストを選
 
         RandomizeCostume = cfg.Bind("Cheat", "RandomizeCostume",
             BunnyGarden2FixMod.RandomCostumeMode.Default,
-            @"キャストの初期衣装を変更（Random / Casual / Default）
+            @"キャストの初期衣装を変更
 Random： キャストの初期衣装をランダムにする
-Casual： 1/3の確率で私服にする
+Casual： 1/5の確率で私服にする
 Default： 通常状態
-（注意）GBSystem.Instance.m_costumeOverride を上書きするので
-デフォルト以外は衣装変更が効かなくなる");
+（注意）GBSystem.Instance.m_costumeOverride を上書きするのでデフォルト以外は衣装変更が効かなくなる");
 
         UltimateSurvivorEnabled = cfg.Bind("Cheat", "UltimateSurvivor",
             false,
@@ -893,8 +892,8 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Cheat",
-            Label    = "キャストの初期衣装を変更（Random / Casual / Default）",
-            Desc     = "Random： キャストの初期衣装をランダムにする\nCasual： 1/3の確率で私服にする\nDefault： 通常状態\n（注意）GBSystem.Instance.m_costumeOverride を上書きするので\nデフォルト以外は衣装変更が効かなくなる\n",
+            Label    = "キャストの初期衣装を変更",
+            Desc     = "Random： キャストの初期衣装をランダムにする\nCasual： 1/5の確率で私服にする\nDefault： 通常状態\n（注意）GBSystem.Instance.m_costumeOverride を上書きするのでデフォルト以外は衣装変更が効かなくなる\n",
             Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Dropdown,
             DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.RandomCostumeMode)),
             Accessor        = new global::BunnyGarden2FixMod.Patches.Settings.EnumAccessor<global::BunnyGarden2FixMod.RandomCostumeMode>(() => RandomizeCostume),

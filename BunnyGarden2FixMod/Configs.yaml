@@ -341,10 +341,9 @@
       default: Default
       description: |
         Random： キャストの初期衣装をランダムにする
-        Casual： 1/3の確率で私服にする
+        Casual： 1/5の確率で私服にする
         Default： 通常状態
-        （注意）GBSystem.Instance.m_costumeOverride を上書きするので
-        デフォルト以外は衣装変更が効かなくなる
+        （注意）GBSystem.Instance.m_costumeOverride を上書きするのでデフォルト以外は衣装変更が効かなくなる
       ui:
         kind: dropdown
 
