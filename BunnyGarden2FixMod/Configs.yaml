@@ -335,12 +335,18 @@
         kind: toggle
 
     - name: RandomizeCostume
-      label: キャストの衣装をランダム化
-      type: bool
-      default: false
-      description: キャストの衣装をランダムにする
+      label: キャストの初期衣装を変更
+      type: enum
+      enumType: BunnyGarden2FixMod.RandomCostumeMode
+      default: Default
+      description: |
+        Random： キャストの初期衣装をランダムにする
+        Casual： 1/3の確率で私服にする
+        Default： 通常状態
+        （注意）GBSystem.Instance.m_costumeOverride を上書きするので
+        デフォルト以外は衣装変更が効かなくなる
       ui:
-        kind: toggle
+        kind: dropdown
 
     - name: UltimateSurvivorEnabled
       label: 鉄骨渡りミニゲームで落下しなくなる（チート）

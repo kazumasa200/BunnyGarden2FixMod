@@ -1,7 +1,7 @@
+using GB;
 using GB.Game;
 using HarmonyLib;
 using UnityEngine;
-using static GB.GBSystem;
 
 namespace BunnyGarden2FixMod.Patches;
 
@@ -11,21 +11,26 @@ namespace BunnyGarden2FixMod.Patches;
 [HarmonyPatch(typeof(GameData), nameof(GameData.UpdateTodaysCastOrder))]
 internal static class RandomizeCostume
 {
+    // 私服にする確率
+    private const float CasualProbability = 0.33f;
     private static void Postfix()
     {
-        ref var costume = ref Instance.m_costumeOverride;
-        if (!Configs.RandomizeCostume.Value)
-        {
-            if (costume != CostumeOverride.None)
-            {
-                costume = CostumeOverride.None;
-                Plugin.Logger.LogInfo($"[RandomizeCostume] 衣装がデフォルトに設定されました： {costume}");
-            }
+        if (GBSystem.Instance == null)
             return;
-        }
 
-        costume = (CostumeOverride)Random.RandomRangeInt((int)CostumeOverride.ForceCasual, (int)CostumeOverride.Num);
-        Plugin.Logger.LogInfo($"[RandomizeCostume] 衣装がランダムに設定されました： {costume}");
+        var setCostume = Configs.RandomizeCostume.Value switch
+        {
+          RandomCostumeMode.Random => (GBSystem.CostumeOverride)Random.RandomRangeInt(0, (int)GBSystem.CostumeOverride.ForceUniform),
+          // ForceUniform は None扱いにしたいので Rangeを 0:None ~ 7:ForceUniform にした。（7は選択されない）
+          RandomCostumeMode.Casual => Random.Range(0f,1f) < CasualProbability ? GBSystem.CostumeOverride.ForceCasual : GBSystem.CostumeOverride.None,
+          _ => GBSystem.CostumeOverride.None, // default
+        };
+
+        if (GBSystem.Instance.m_costumeOverride != setCostume)
+        {
+            GBSystem.Instance.m_costumeOverride = setCostume;
+            Plugin.Logger.LogInfo($"[RandomizeCostume] 衣装が設定されました： {setCostume}");
+        }
         return;
     }
 }

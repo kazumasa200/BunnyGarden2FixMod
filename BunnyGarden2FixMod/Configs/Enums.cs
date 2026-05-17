@@ -26,11 +26,24 @@ public enum ChekiImageFormat
 public enum FreeCamDisplayMode
 {
     /// <summary>フリーカメラをメインディスプレイに出力</summary>
-    MainScreen = 0,
+    MainScreen,
 
     /// <summary>フリーカメラをサブモニター(PiP)に出力</summary>
-    PiP = 1,
+    PiP,
 
     /// <summary>フリーカメラをサブモニター(Display2)に出力（フルスクリーン時のみ）</summary>
-    Display2 = 2,
+    Display2,
+}
+
+/// <summary>
+/// キャストの初期衣装をランダムに選ぶかのモード
+/// </summary>
+public enum RandomCostumeMode
+{
+    // 完全ランダム
+    Random,
+    // 時々私服
+    Casual,
+    // 何もしない
+    Default,
 }
