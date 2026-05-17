@@ -36,12 +36,20 @@ public static class TalkReactionPatch
             MOTION.BUKKAKE,
         ];
 
-        private MOTION lastMotion = MOTION._DUMMY;
+        private static readonly MOTION[] FirstActions =
+        [
+            MOTION.BOW,
+            MOTION.TALK_REACTION,
+            MOTION.KNEEL_DOWN_START,
+        ];
+
+        private MOTION lastMotion = MOTION._DUMMY; //初回判定のためにDUMMYを用いる
 
         public MOTION GetNextMotion()
         {
             lastMotion = lastMotion switch
             {
+                MOTION._DUMMY => FirstActions[Random.RandomRangeInt(0, FirstActions.Length)], //初回のみ
                 MOTION.KNEEL_DOWN_START => MOTION.KNEEL_DOWN_END,
                 MOTION.TAKE_CHEAP_BOTTLE => MOTION.DRINK,
                 MOTION.TAKE_EXPENSIVE_BOTTLE => MOTION.DRINK,
@@ -49,6 +57,7 @@ public static class TalkReactionPatch
                 MOTION.DRINK => MOTION.DRINK_END,
                 MOTION.SHAKER => MOTION.DRINK_COCKTAIL,
                 MOTION.SHAKER_HARD => MOTION.DRINK_COCKTAIL,
+                MOTION.BOW => MOTION.TALK_REACTION,
                 MOTION.IDLE => MOTION.TALK_REACTION,
                 MOTION.TALK_REACTION => TalkReactionMotions[Random.RandomRangeInt(0, TalkReactionMotions.Length)],
                 _ => MOTION.IDLE,
@@ -72,6 +81,13 @@ public static class TalkReactionPatch
             return false;
         }
 
+        // 初回読み込み時に必ずrunさせるためにResetTImeに初期値格納
+        if (__instance.m_chara.GetComponent<Data>() == null)
+        {
+            __instance.m_talkReactionMotionResetTime = Random.Range(0f, 2f); //初回起動ラグ
+            __instance.m_talkReactionMotionTimer = 0f;
+        }
+
         __instance.m_talkReactionMotionTimer += Time.deltaTime;
         if (__instance.m_talkReactionMotionTimer >= __instance.m_talkReactionMotionResetTime)
         {
@@ -92,7 +108,11 @@ public static class TalkReactionPatch
                 MOTION.DRINK_END => 5f,
                 MOTION.PEPPER_MILL => 9f,
                 MOTION.BUKKAKE => 9f,
+                MOTION.BOW => 3f,
+                MOTION.KNEEL_DOWN_END => 3f,
+                MOTION.KNEEL_DOWN_START => Random.Range(8f, 15f),
                 MOTION.IDLE => Random.Range(3f, 5f), // 飲み終わり後の一息
+                MOTION.TALK_REACTION => Random.Range(8f, 15f),
                 _ => Random.Range(8f, 15f)
             };
         }
