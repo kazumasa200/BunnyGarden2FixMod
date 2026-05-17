@@ -84,7 +84,7 @@ public static class TalkReactionPatch
         // 初回読み込み時に必ずrunさせるためにResetTImeに初期値格納
         if (__instance.m_chara.GetComponent<Data>() == null)
         {
-            __instance.m_talkReactionMotionResetTime = Random.Range(0f, 2f); //初回起動ラグ
+            __instance.m_talkReactionMotionResetTime = Random.Range(0f, 4f); //初回起動ラグ
             __instance.m_talkReactionMotionTimer = 0f;
         }
 
