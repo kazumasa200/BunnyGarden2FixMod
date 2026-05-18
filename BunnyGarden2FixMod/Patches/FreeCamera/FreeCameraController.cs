@@ -66,17 +66,17 @@ public class FreeCameraController : MonoBehaviour
             else if (Keyboard.current.leftCtrlKey.isPressed || Keyboard.current.rightCtrlKey.isPressed)
                 speed = Configs.SlowSpeed.Value;
 
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
+            if (Keyboard.current.eKey.isPressed)
                 transform.position += speed * deltaTime * transform.forward;
-            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
+            if (Keyboard.current.qKey.isPressed)
                 transform.position -= speed * deltaTime * transform.forward;
             if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed)
                 transform.position -= speed * deltaTime * transform.right;
             if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
                 transform.position += speed * deltaTime * transform.right;
-            if (Keyboard.current.qKey.isPressed)
+            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
                 transform.position += speed * deltaTime * transform.up;
-            if (Keyboard.current.eKey.isPressed)
+            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
                 transform.position += speed * deltaTime * -transform.up;
         }
 
