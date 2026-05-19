@@ -65,6 +65,8 @@ public static class Configs
     public static ConfigEntry<bool> EndingChekiSlideshow;
     /// <summary>キャスト出勤順序変更（バー入店前に F1 で編集）</summary>
     public static ConfigEntry<bool> CastOrder;
+    /// <summary>選んだパンツのみを有効にする</summary>
+    public static ConfigEntry<bool> UseSelectedPantiesEnabled;
     /// <summary>鉄骨渡りミニゲームで落下しなくなる（チート）</summary>
     public static ConfigEntry<bool> UltimateSurvivorEnabled;
     /// <summary>ギャンブルで負けなくなる（チート）</summary>
@@ -315,6 +317,11 @@ ImageFormat=JPG のときの品質（1〜100）。値が小さいほどサイズ
             false,
             @"キャスト出勤順序変更（バー入店前に F1 で編集）
 F1 で編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。");
+
+        UseSelectedPantiesEnabled = cfg.Bind("Cheat", "UseSelectedPantiesEnabled",
+            false,
+            @"選んだパンツのみを有効にする
+選んだパンツのみを有効にする");
 
         UltimateSurvivorEnabled = cfg.Bind("Cheat", "UltimateSurvivor",
             false,
@@ -847,6 +854,14 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             Desc     = "F1 で編集モードを開始し、数字キー（1〜5）でキャストを選択・入れ替えます。",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => CastOrder),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "Cheat",
+            Label    = "選んだパンツのみを有効にする",
+            Desc     = "選んだパンツのみを有効にする\n",
+            Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
+            Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => UseSelectedPantiesEnabled),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {

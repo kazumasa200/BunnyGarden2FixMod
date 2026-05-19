@@ -326,6 +326,15 @@
       ui:
         kind: toggle
 
+    - name: UseSelectedPantiesEnabled
+      label: 選んだパンツのみを有効にする
+      type: bool
+      default: false
+      description: |
+        選んだパンツのみを有効にする
+      ui:
+        kind: toggle
+
     - name: UltimateSurvivorEnabled
       label: 鉄骨渡りミニゲームで落下しなくなる（チート）
       key: UltimateSurvivor
