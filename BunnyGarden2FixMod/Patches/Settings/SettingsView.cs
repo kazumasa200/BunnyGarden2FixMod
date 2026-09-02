@@ -713,6 +713,7 @@ public class SettingsView : MonoBehaviour
         // 開くたびに最新のゲーム言語を解決して UI 文字列の訳を選び直す（多言語対応, issue #52）。
         Loc.Refresh();
         PopulateHeader(); // ヘッダは Awake 構築時に Loc 未解決のことがあるため開く度に再生成する。
+        BuildSidebar(); // サイドバーも同様に Loc 未解決のことがあるため開く度に再生成する。
         // PanelSettings.scale は Awake 時の値を保持するため、開く度に Configs.UIScale を反映する。
         if (m_settings != null) m_settings.scale = Configs.UIScale.Value;
         // 毎回先頭カテゴリ・先頭行から開始する。
