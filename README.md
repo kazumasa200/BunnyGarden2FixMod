@@ -76,10 +76,11 @@ MOD の UI は日本語（内蔵）と英語を同梱しており、ゲームの
 **ビルド不要**で翻訳の追加・上書きができます。次の場所に外部言語ファイルを置いてください:
 
 ```
-BepInEx/plugins/BunnyGarden2FixMod/lang/<code>.json
+BepInEx/plugins/lang/<code>.json
 ```
 
 - `<code>` は `en` / `zhCN` / `zhtw` のいずれか（`ja` は内蔵の既定）。
+- `lang` フォルダは MOD の DLL（`net.noeleve.BunnyGarden2FixMod.dll`）と同じ階層に置きます。DLL をサブフォルダに入れている場合は、そのフォルダの中に `lang` を作ってください。
 - ファイルは「元の日本語文字列 → 訳文」のフラットな JSON 辞書です。キーが無い場合は日本語にフォールバックします。
 - 外部ファイルは同梱訳より優先されるため、既存訳の微修正にも使えます。
 

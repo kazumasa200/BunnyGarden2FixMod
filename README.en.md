@@ -76,10 +76,11 @@ The mod UI ships with Japanese (built-in) and English. It picks a language autom
 You can add or override translations **without rebuilding** by placing an external language file at:
 
 ```
-BepInEx/plugins/BunnyGarden2FixMod/lang/<code>.json
+BepInEx/plugins/lang/<code>.json
 ```
 
 - `<code>` is one of `en` / `zhCN` / `zhtw` (and `ja` is the built-in default).
+- The `lang` folder must sit next to the mod DLL (`net.noeleve.BunnyGarden2FixMod.dll`). If you keep the DLL in a subfolder, create `lang` inside that subfolder instead.
 - The file is a flat JSON dictionary mapping the original Japanese string to the translated string. If a key is missing, it falls back to Japanese.
 - The external file takes priority over the bundled translation, so you can also tweak existing translations.
 
