@@ -10,7 +10,7 @@ A BepInEx 5 mod for [Bunny Garden 2](https://store.steampowered.com/app/3443820/
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b4e45f40-5420-4811-8500-4a0c3b4d1e69" />
 <img width="1920" height="1000" alt="screenshot" src="https://github.com/user-attachments/assets/f6c86e6b-2ad5-4b5f-bfa8-6ff66fcaf43b" />
 
-## Supported versions (as of mod v1.0.11)
+## Supported versions (as of mod v1.0.12)
 - Supports game versions 1.0.5 and 1.0.6
 
 ## Features
