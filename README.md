@@ -10,7 +10,7 @@
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b4e45f40-5420-4811-8500-4a0c3b4d1e69" />
 <img width="1920" height="1000" alt="スクリーンショット 2026-04-16 191718-e" src="https://github.com/user-attachments/assets/f6c86e6b-2ad5-4b5f-bfa8-6ff66fcaf43b" />
 
-## 対応バージョン(MODバージョンv1.0.11現在)
+## 対応バージョン(MODバージョンv1.0.12現在)
 - ゲームバージョン1.0.5および1.0.6に対応  
 
 ## 機能
@@ -76,10 +76,11 @@ MOD の UI は日本語（内蔵）と英語を同梱しており、ゲームの
 **ビルド不要**で翻訳の追加・上書きができます。次の場所に外部言語ファイルを置いてください:
 
 ```
-BepInEx/plugins/BunnyGarden2FixMod/lang/<code>.json
+BepInEx/plugins/lang/<code>.json
 ```
 
 - `<code>` は `en` / `zhCN` / `zhtw` のいずれか（`ja` は内蔵の既定）。
+- `lang` フォルダは MOD の DLL（`net.noeleve.BunnyGarden2FixMod.dll`）と同じ階層に置きます。DLL をサブフォルダに入れている場合は、そのフォルダの中に `lang` を作ってください。
 - ファイルは「元の日本語文字列 → 訳文」のフラットな JSON 辞書です。キーが無い場合は日本語にフォールバックします。
 - 外部ファイルは同梱訳より優先されるため、既存訳の微修正にも使えます。
 

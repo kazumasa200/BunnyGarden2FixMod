@@ -307,9 +307,8 @@ public class CostumePickerController : MonoBehaviour
     {
         charId = CharID.NUM;
         var sys = GBSystem.Instance;
-        if (sys == null || !sys.IsIngame) return false;
-        var env = sys.GetActiveEnvScene();
-        if (env == null) return false;
+        if (sys == null) return false;
+        if (GetLiveEnvScene() == null) return false;
 
         if (CostumeChangerPatch.IsFittingRoomActiveExternal()) return false;
 
@@ -481,9 +480,8 @@ public class CostumePickerController : MonoBehaviour
         if (m_loading) return;  // ローディング中は追従しない
 
         var sys = GBSystem.Instance;
-        if (sys == null || !sys.IsIngame) return;
-        var env = sys.GetActiveEnvScene();
-        if (env == null) return;
+        if (sys == null) return;
+        if (GetLiveEnvScene() == null) return;
         var gameData = sys.RefGameData();
         if (gameData == null) return;
 
@@ -542,15 +540,36 @@ public class CostumePickerController : MonoBehaviour
     }
 
     /// <summary>
+    /// ピッカーの開閉・追従判定に使う「生きた EnvScene」を返す。取得できなければ null。
+    ///
+    /// 以前はここで <c>GBSystem.IsIngame</c> も併せて要求していたが、この値は本編プレイ中
+    /// (<c>TitleScene</c> の「はじめから」/ <c>LoadMenu</c> のロード) でしか true にならない。
+    /// おまけ (<c>ExtraScene</c>) のミニゲームは <c>MiniGameBase.SetupEnvSceneForExtra()</c>
+    /// で EnvScene とキャストを読み込むだけで <c>GBSystem.EnterIngame()</c> を通らないため、
+    /// IsIngame == false のままとなり F7 が無反応（「シーン条件不一致」ログ）になっていた。
+    ///
+    /// ピッカーが実際に必要とするのは「キャストが立っている EnvScene があること」だけなので、
+    /// EnvScene の生存のみを条件にする。タイトルや Album などキャストが居ない状況は
+    /// <see cref="GetVisibleCastIds"/> が空を返すことで従来どおり弾かれ、試着室は
+    /// <see cref="CanOpen"/> 側の FittingRoom ガードで引き続き除外される。
+    /// </summary>
+    private static EnvSceneBase GetLiveEnvScene()
+    {
+        var sys = GBSystem.Instance;
+        if (sys == null) return null;
+        var env = sys.GetActiveEnvScene();
+        // Unity の == null は Destroy 済み参照 (fake-null) も null と判定する
+        return env == null ? null : env;
+    }
+
+    /// <summary>
     /// 現在の EnvScene から「Preload 済み + activeInHierarchy」のキャスト一覧を result に詰める。
     /// 呼び出し元は事前に result.Clear() が済んでいることを保証する必要はない（内部で Clear する）。
     /// </summary>
     private static void GetVisibleCastIds(List<CharID> result)
     {
         result.Clear();
-        var sys = GBSystem.Instance;
-        if (sys == null || !sys.IsIngame) return;
-        var env = sys.GetActiveEnvScene();
+        var env = GetLiveEnvScene();
         if (env == null) return;
         for (int i = (int)CharID.KANA; i < (int)CharID.NUM; i++)
         {

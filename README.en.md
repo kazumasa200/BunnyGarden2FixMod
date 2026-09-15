@@ -10,7 +10,7 @@ A BepInEx 5 mod for [Bunny Garden 2](https://store.steampowered.com/app/3443820/
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b4e45f40-5420-4811-8500-4a0c3b4d1e69" />
 <img width="1920" height="1000" alt="screenshot" src="https://github.com/user-attachments/assets/f6c86e6b-2ad5-4b5f-bfa8-6ff66fcaf43b" />
 
-## Supported versions (as of mod v1.0.11)
+## Supported versions (as of mod v1.0.12)
 - Supports game versions 1.0.5 and 1.0.6
 
 ## Features
@@ -76,10 +76,11 @@ The mod UI ships with Japanese (built-in) and English. It picks a language autom
 You can add or override translations **without rebuilding** by placing an external language file at:
 
 ```
-BepInEx/plugins/BunnyGarden2FixMod/lang/<code>.json
+BepInEx/plugins/lang/<code>.json
 ```
 
 - `<code>` is one of `en` / `zhCN` / `zhtw` (and `ja` is the built-in default).
+- The `lang` folder must sit next to the mod DLL (`net.noeleve.BunnyGarden2FixMod.dll`). If you keep the DLL in a subfolder, create `lang` inside that subfolder instead.
 - The file is a flat JSON dictionary mapping the original Japanese string to the translated string. If a key is missing, it falls back to Japanese.
 - The external file takes priority over the bundled translation, so you can also tweak existing translations.
 
