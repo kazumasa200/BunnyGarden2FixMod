@@ -215,6 +215,7 @@ internal static class MagicaClothRebuilder
                 // 新規生成成功 → snapshot を CreatedByMod=true で登録。
                 // 通常 RebuildFromComponent 経路には進まず、ここで完了 (BuildFromConfig は TryCreateSkirtCloth 内で実行済)。
                 SnapshotAsCreated(character, createdComp);
+                ReapplySceneTuning(character);
                 return;
             }
         }
@@ -223,6 +224,7 @@ internal static class MagicaClothRebuilder
         {
             SnapshotIfFirst(character, targetSkirt, magicaType);
             RebuildFromComponent(targetSkirt, donorSkirt, character, magicaType);
+            ReapplySceneTuning(character);
         }
         catch (Exception ex)
         {
@@ -295,6 +297,7 @@ internal static class MagicaClothRebuilder
             CleanupInjectedColliders(character);
         }
 
+        bool anyRestored = false;
         foreach (var key in keys)
         {
             if (!s_snapshots.TryGetValue(key, out var snap)) continue;
@@ -337,8 +340,33 @@ internal static class MagicaClothRebuilder
                 PatchLogger.LogError($"[MagicaClothRebuilder] restore 例外 ({key.SkirtGoName}): {ex}");
             }
             // build 成功時のみ snapshot 消費。失敗時は次回 Restore で retry できるよう保持。
-            if (buildSucceeded) s_snapshots.Remove(key);
+            if (buildSucceeded)
+            {
+                s_snapshots.Remove(key);
+                anyRestored = true;
+            }
         }
+        if (anyRestored) ReapplySceneTuning(character);
+    }
+
+    /// <summary>
+    /// 作り直し／復元した直後のスカート布へ、ゲーム自身の布チューニングを再適用する。
+    ///
+    /// ゲームは VIP ルーム（カラオケ含む）でのみ布物理を有効化し、その際
+    /// <c>CharacterHandle.EnableMagicaCloth(true)</c> でスカート布に角度制限 OFF・最大距離 0.02 の拘束・
+    /// テレポート Keep を入れている。作り直した布はドナー／スナップショットの設定（プレハブ既定値）に
+    /// 戻るためこの拘束が無く、VIP ルームではスカートが骨から離れて落ちていく。
+    /// バーでは布ルート自体が無効（<c>EnableMagicaCloth(false)</c>）なので何もしない。
+    /// <c>EnableMagicaCloth(true)</c> はルートを有効化してしまうため、この判定は必須。
+    /// </summary>
+    private static void ReapplySceneTuning(GameObject character)
+    {
+        var root = character.transform.Find("MagicaCloth");
+        if (root == null || !root.gameObject.activeSelf) return;
+        var handle = Internal.CharacterResolver.ResolveHandle(character);
+        if (handle == null) return;
+        handle.EnableMagicaCloth(true);
+        PatchLogger.LogDebug($"[MagicaClothRebuilder] scene tuning 再適用 (EnableMagicaCloth): {character.name}");
     }
 
     /// <summary>

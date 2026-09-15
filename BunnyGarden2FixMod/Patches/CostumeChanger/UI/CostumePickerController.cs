@@ -1347,48 +1347,35 @@ public class CostumePickerController : MonoBehaviour
         var index = env.FindCharacterIndex(id);
         if (index < 0) return;
 
-        // Costume 差し替え前の Animator 状態を Layer 0/1/2 (Facial/Eye/Motion) で取得
-        int motionHash = 0, facialHash = 0, eyeHash = 0;
-        float motionTime = 0f;
-        var oldChar = env.FindCharacter(id);
-        var oldAnim = oldChar != null ? oldChar.GetComponent<Animator>() : null;
-        if (oldAnim != null)
+        // LoadArg は「ゲーム既定 + 前回の Animator 指定」で組む。衣装・パンツ・靴下は既定値のまま
+        // Preload フックが override store から上書きするので、トグル OFF で既定へ戻す経路も保たれる。
+        // AnimatorType / AnimDLCID を引き継がないと、カラオケ中はダンス用 AnimatorController が
+        // 通常のものに戻り、モーションの state 自体が無くなってポーズを復元できない。
+        var arg = new CharacterHandle.LoadArg();
+        env.SetCharacterLoadArgDefault(arg, id);
+        var last = env.m_characters[index]?.m_lastLoadArg;
+        if (last != null)
         {
-            var m = oldAnim.GetCurrentAnimatorStateInfo(2);
-            motionHash = m.fullPathHash;
-            motionTime = m.normalizedTime;
-            facialHash = oldAnim.GetCurrentAnimatorStateInfo(0).fullPathHash;
-            eyeHash = oldAnim.GetCurrentAnimatorStateInfo(1).fullPathHash;
+            arg.AnimatorType = last.AnimatorType;
+            arg.AnimDLCID = last.AnimDLCID;
         }
+
+        // 差し替え前に全キャラのポーズ・表情・親・位置を記録する。
+        // ゲーム側の ShowCharacter は表情を LAUGH に戻し（SetActive）、VipRoomScene では
+        // モーションも IDLE に戻すため、復元は ShowCharacter の後でないと上書きされる。
+        var pose = CharacterPoseSnapshot.Capture(env);
+        var karaoke = KaraokeRebinder.Begin(env, id);
 
         // 裏側で新モデル + 衣装 + アタッチを Preload。この間は旧キャラが見えたまま。
         // LoadCharacter は IsPreloadDone まで待って返る。active 化はまだしない。
-        await env.LoadCharacter(index, id, null);
+        await env.LoadCharacter(index, id, arg);
 
-        // ShowCharacter (SetActive=true + SetupMagicaCloth) の前に Animator をシードする。
-        // GameObject が非 active でも Animator.Play は state を仕込め、Animator.Update(0f) で
-        // bone transform を正解ポーズに更新できる。これにより active 化フレームで T ポーズが
-        // 見えず、SetupMagicaCloth も正解ポーズ基準で揺れもの初期化できる。
-        // Unity バージョン差分で Update(0f) が disabled Animator 上で警告/例外を投げる
-        // 可能性があるため try/catch でガードし、失敗時も ShowCharacter 呼出しを止めない。
-        var newChar = env.FindCharacter(id);
-        var newAnim = newChar != null ? newChar.GetComponent<Animator>() : null;
-        if (newAnim != null && motionHash != 0)
-        {
-            try
-            {
-                newAnim.Play(motionHash, 2, motionTime);
-                if (facialHash != 0) newAnim.Play(facialHash, 0, 0f);
-                if (eyeHash != 0) newAnim.Play(eyeHash, 1, 0f);
-                newAnim.Update(0f);
-            }
-            catch (Exception ex)
-            {
-                PatchLogger.LogWarning($"[CostumePicker] Animator 先行シード失敗（T ポーズ可能性あり）: {ex.Message}");
-            }
-        }
-
+        // 親・位置は表示前に戻す（MagicaCloth が正しい場所で初期化される）。
+        // Animator は ShowCharacter が表情/モーションを上書きするため、その後に戻す。
+        pose.RestoreTransforms();
         env.ShowCharacter();
+        pose.RestoreAnimation();
+        karaoke?.Complete(env, id);
     }
 
     private void HandleSettingsClicked()
