@@ -19,24 +19,19 @@ namespace BunnyGarden2FixMod;
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 public class Plugin : BaseUnityPlugin
 {
-    private static Plugin Instance;
+    private static Plugin s_instance;
 
     internal static event Action GUICallback;
 
     private Patches.FreeCamera.FreeCameraManager freeCamera;
     private bool isOverlayVisible = true;
-    private bool isCapturingScreenshot;
-    private static float suppressGameInputUntilUnscaledTime = -1f;
-    private const float ControllerShortcutSuppressDuration = 0.18f;
-
-    private static readonly string ScreenshotDirectory = Path.Combine(Paths.BepInExRootPath, "screenshots",
-        MyPluginInfo.PLUGIN_GUID);
+    private bool hideOverlayForShot;
 
     internal new static ManualLogSource Logger;
 
     private void Awake()
     {
-        Instance = this;
+        s_instance = this;
         Logger = base.Logger;
         PatchLogger.Initialize(Logger);
         ConfigMigration.Migrate(Config);
@@ -82,13 +77,14 @@ public class Plugin : BaseUnityPlugin
 
     private void OnDestroy()
     {
-        if (ReferenceEquals(Instance, this))
-            Instance = null;
+        if (s_instance == this)
+            s_instance = null;
     }
 
     private void Update()
     {
-        if (Keyboard.current?[Key.F4].wasPressedThisFrame == true)
+        var kb = Keyboard.current;
+        if (kb != null && kb[Key.F4].wasPressedThisFrame)
             Config.Reload();
 
         if (Configs.OverlayToggle.IsTriggered())
@@ -100,7 +96,7 @@ public class Plugin : BaseUnityPlugin
 
     private void OnGUI()
     {
-        if (!isOverlayVisible || isCapturingScreenshot)
+        if (!isOverlayVisible || hideOverlayForShot)
             return;
 
         GUILayout.BeginArea(new Rect(10, 10, Screen.width / 2, Screen.height - 10));
@@ -108,28 +104,13 @@ public class Plugin : BaseUnityPlugin
         GUILayout.EndArea();
     }
 
-    internal static void DisableFreeCamForSystemUiIfNeeded(string reason)
+    internal static void ReleaseFreeCameraFor(string uiName)
     {
-        Instance?.freeCamera?.Deactivate();
+        s_instance?.freeCamera?.Deactivate();
 
-        PatchLogger.LogInfo($"フリーカメラを自動解除しました: {reason}");
+        PatchLogger.LogInfo($"システム UI が開いたためフリーカメラを終了します: {uiName}");
     }
 
-    /// <summary>
-    /// 一定時間 (0.18 秒) ゲーム本体側の入力およびホットキー判定を抑止する。
-    /// コントローラーショートカット発火後の連続発火防止と、KeyBinding キャプチャ確定後の
-    /// 同一キー再評価防止に使用。
-    /// </summary>
-    public static void SuppressGameInputTemporarily()
-    {
-        suppressGameInputUntilUnscaledTime = Time.unscaledTime + ControllerShortcutSuppressDuration;
-    }
-
-    /// <summary>SuppressGameInputTemporarily 期間中なら true。</summary>
-    internal static bool ShouldSuppressGameInput()
-    {
-        return Time.unscaledTime < suppressGameInputUntilUnscaledTime;
-    }
 
     internal static Camera FindCurrentCamera()
     {
@@ -169,28 +150,29 @@ public class Plugin : BaseUnityPlugin
         if (captureCam == null)
             yield break;
 
-        isCapturingScreenshot = true;
+        hideOverlayForShot = true;
 
         try
         {
-            Directory.CreateDirectory(ScreenshotDirectory);
-            string path = Path.Combine(ScreenshotDirectory, $"bg2_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
+            var dir = Path.Combine(Paths.BepInExRootPath, "screenshots", MyPluginInfo.PLUGIN_GUID);
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, $"bg2_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png");
             ScreenCapture.CaptureScreenshot(path, Configs.ScreenshotScale.Value);
             PatchLogger.LogInfo($"スクリーンショットを保存しました: {path}");
         }
-        catch (Exception ex)
+        catch (Exception e)
         {
-            PatchLogger.LogError($"スクリーンショット保存失敗: {ex.Message}");
+            PatchLogger.LogError($"スクリーンショット保存失敗: {e.Message}");
         }
 
         // スクリーンショットがキャプチャされる前にオーバーレイを再表示しないよう、1フレーム待機します
         yield return null;
-        isCapturingScreenshot = false;
+        hideOverlayForShot = false;
     }
 }
 
 [HarmonyPatch(typeof(GBSystem), "IsInputDisabled")]
-public class FreeCamInputDisablePatch
+public static class FreeCamGameInputDisablePatch
 {
     private static void Postfix(ref bool __result)
     {
@@ -200,108 +182,11 @@ public class FreeCamInputDisablePatch
 }
 
 [HarmonyPatch(typeof(GBSystem), "confirmQuit")]
-public class FreeCamDisableOnQuitConfirmPatch
+public static class QuitConfirmFreeCamReleasePatch
 {
     private static void Prefix()
     {
-        Plugin.DisableFreeCamForSystemUiIfNeeded("終了確認ダイアログ");
-    }
-}
-
-[HarmonyPatch]
-public class FreeCamControllerShortcutInputSuppressionPatch
-{
-    [HarmonyPatch(typeof(GBInput), "isTriggered")]
-    [HarmonyPrefix]
-    private static bool SuppressTriggered(InputAction button, ref bool __result)
-    {
-        return TrySuppress(button, ref __result);
-    }
-
-    [HarmonyPatch(typeof(GBInput), "isPressing")]
-    [HarmonyPrefix]
-    private static bool SuppressPressing(InputAction button, ref bool __result)
-    {
-        return TrySuppress(button, ref __result);
-    }
-
-    [HarmonyPatch(typeof(GBInput), "isReleased")]
-    [HarmonyPrefix]
-    private static bool SuppressReleased(InputAction button, ref bool __result)
-    {
-        return TrySuppress(button, ref __result);
-    }
-
-    [HarmonyPatch(typeof(GBInput), "isTriggeredR")]
-    [HarmonyPrefix]
-    private static bool SuppressTriggeredRepeat(ref bool __result)
-    {
-        // キャプチャ中はゲーム側の全リピート入力を遮断する
-        if (Patches.Settings.SettingsController.IsAnyCapturing)
-        {
-            __result = false;
-            return false;
-        }
-        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
-            return true;
-
-        __result = false;
-        return false;
-    }
-
-    [HarmonyPatch(typeof(GBInput), "GetStickValue")]
-    [HarmonyPrefix]
-    private static bool SuppressStick(InputAction stick, ref Vector2 __result)
-    {
-        // キャプチャ中はゲーム側のスティック入力を遮断する
-        if (Patches.Settings.SettingsController.IsAnyCapturing)
-        {
-            __result = Vector2.zero;
-            return false;
-        }
-        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
-            return true;
-
-        if (stick?.activeControl?.device is not Gamepad)
-            return true;
-
-        __result = Vector2.zero;
-        return false;
-    }
-
-    [HarmonyPatch(typeof(GBInput), "CameraControll")]
-    [HarmonyPrefix]
-    private static bool SuppressCameraControl(ref Vector2 __result)
-    {
-        // キャプチャ中はゲーム側のカメラ操作入力を遮断する
-        if (Patches.Settings.SettingsController.IsAnyCapturing)
-        {
-            __result = Vector2.zero;
-            return false;
-        }
-        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
-            return true;
-
-        __result = Vector2.zero;
-        return false;
-    }
-
-    private static bool TrySuppress(InputAction button, ref bool result)
-    {
-        // キャプチャ中はゲーム側の全ボタン入力を遮断する
-        if (Patches.Settings.SettingsController.IsAnyCapturing)
-        {
-            result = false;
-            return false;
-        }
-        if (!Patches.FreeCamera.FreeCameraManager.IsActive || !Plugin.ShouldSuppressGameInput())
-            return true;
-
-        if (button?.activeControl?.device is not Gamepad)
-            return true;
-
-        result = false;
-        return false;
+        Plugin.ReleaseFreeCameraFor("終了確認");
     }
 }
 
