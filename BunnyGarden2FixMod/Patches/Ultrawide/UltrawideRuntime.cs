@@ -1,4 +1,5 @@
 using GB;
+using GB.Bar.MiniGame;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -16,7 +17,8 @@ namespace BunnyGarden2FixMod.Patches.Ultrawide;
 /// <para>有効条件（すべて満たすとき）:</para>
 /// <list type="bullet">
 ///   <item>設定 FullscreenUltrawideEnabled が ON</item>
-///   <item>本編プレイ中かつバー入店中（BarScene ロード済み or GameData.IsInBar）</item>
+///   <item>本編プレイ中かつバー入店中（BarScene ロード済み or GameData.IsInBar）、
+///         またはミニゲーム実行中（エクストラモードのカラオケ等を含む）</item>
 ///   <item>表示モードに応じた候補解像度が 16:9 より横長（許容誤差 0.05 超）。
 ///         フルスクリーンでは Width/Height が横長ならそれ、そうでなければメインディスプレイのネイティブ。
 ///         ウィンドウでは拡張解像度 (ExtraWidth×ExtraHeight) を選択中で、それが横長のときだけ。</item>
@@ -160,6 +162,11 @@ internal static class UltrawideRuntime
 
     private static bool IsPlayingInBar()
     {
+        // エクストラモードのミニゲーム（カラオケ等）は EnterIngame を通らず IsIngame が false のまま
+        // 本編と同じシーンで動くため、ミニゲーム実行中なら本編扱いにする。
+        if (MiniGameBase.s_instance != null)
+            return true;
+
         var sys = GBSystem.Instance;
         if (sys == null || !sys.IsIngame)
             return false;
