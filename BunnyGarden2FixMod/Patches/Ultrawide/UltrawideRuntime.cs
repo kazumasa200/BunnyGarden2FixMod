@@ -10,16 +10,21 @@ namespace BunnyGarden2FixMod.Patches.Ultrawide;
 /// <para>
 /// 判定はフレーム単位でキャッシュする。ゲーム側 16:9 チェックの Transpiler・毎フレームの
 /// UI 補正・解像度計算がそれぞれ何度も問い合わせてくるため、シーン走査を含む判定を
-/// 呼び出しごとに繰り返さないための設計（旧実装は呼び出しの度にフル判定していた）。
+/// 呼び出しごとに繰り返さないための設計。
 /// </para>
 ///
 /// <para>有効条件（すべて満たすとき）:</para>
 /// <list type="bullet">
 ///   <item>設定 FullscreenUltrawideEnabled が ON</item>
-///   <item>フルスクリーン表示中</item>
 ///   <item>本編プレイ中かつバー入店中（BarScene ロード済み or GameData.IsInBar）</item>
-///   <item>採用候補の解像度が 16:9 より横長（許容誤差 0.05 超）</item>
+///   <item>表示モードに応じた候補解像度が 16:9 より横長（許容誤差 0.05 超）。
+///         フルスクリーンでは Width/Height が横長ならそれ、そうでなければメインディスプレイのネイティブ。
+///         ウィンドウでは拡張解像度 (ExtraWidth×ExtraHeight) を選択中で、それが横長のときだけ。</item>
 /// </list>
+/// <para>
+/// フルスクリーンとウィンドウで挙動を揃えるため、どちらも「本編中だけ横長・それ以外は 16:9」になる。
+/// 切り替えはゲーム側の毎フレームのアスペクトチェック（Transpiler で動的化）が拾って解像度を再適用する。
+/// </para>
 /// </summary>
 internal static class UltrawideRuntime
 {
@@ -34,19 +39,19 @@ internal static class UltrawideRuntime
     private static int s_wideWidth;
     private static int s_wideHeight;
 
-    /// <summary>ウルトラワイド表示を適用すべき状態か。</summary>
+    /// <summary>ウルトラワイド表示を適用すべき状態か（現在の表示モード基準）。</summary>
     internal static bool Active
     {
         get { Refresh(); return s_active; }
     }
 
-    /// <summary>採用するネイティブ解像度の幅。</summary>
+    /// <summary>採用する横長解像度の幅（Active のときのみ意味を持つ）。</summary>
     internal static int WideWidth
     {
         get { Refresh(); return s_wideWidth; }
     }
 
-    /// <summary>採用するネイティブ解像度の高さ。</summary>
+    /// <summary>採用する横長解像度の高さ（Active のときのみ意味を持つ）。</summary>
     internal static int WideHeight
     {
         get { Refresh(); return s_wideHeight; }
@@ -78,39 +83,76 @@ internal static class UltrawideRuntime
     /// </summary>
     internal static float AspectForEngineChecks() => CurrentAspect;
 
+    /// <summary>
+    /// フルスクリーンへ切り替える／解像度を再計算するときに使う判定。
+    /// 現在の表示モードに依らず「フルスクリーンにしたら横長にすべきか」を答える。
+    /// </summary>
+    internal static bool WantsFullscreenWide(out int width, out int height)
+    {
+        width = height = 0;
+        return Configs.FullscreenUltrawideEnabled.Value
+            && TryPickFullscreen(out width, out height)
+            && IsPlayingInBar();
+    }
+
+    /// <summary>
+    /// 拡張解像度ウィンドウを適用するときに使う判定。
+    /// 現在の表示モードに依らず「拡張解像度ウィンドウにしたら横長にすべきか」を答える。
+    /// </summary>
+    internal static bool WantsWindowWide(out int width, out int height)
+    {
+        width = height = 0;
+        return Configs.FullscreenUltrawideEnabled.Value
+            && TryPickWindow(out width, out height)
+            && IsPlayingInBar();
+    }
+
+    /// <summary>拡張解像度の設定値そのものが横長で、ウルトラワイド表示の対象になるか（メニュー表示用）。</summary>
+    internal static bool ExtraSizeIsWide
+        => Configs.FullscreenUltrawideEnabled.Value
+        && ExceedsBaseAspect(Configs.ExtraWidth.Value, Configs.ExtraHeight.Value);
+
     private static void Refresh()
     {
         if (Time.frameCount == s_stampedFrame)
             return;
         s_stampedFrame = Time.frameCount;
 
-        (s_wideWidth, s_wideHeight) = PickWideResolution();
-
         // 安い条件から順に評価し、シーン走査を伴う判定は最後に回す
         s_active = Configs.FullscreenUltrawideEnabled.Value
-                && Screen.fullScreen
-                && ExceedsBaseAspect(s_wideWidth, s_wideHeight)
+                && (Screen.fullScreen
+                        ? TryPickFullscreen(out s_wideWidth, out s_wideHeight)
+                        : TryPickWindow(out s_wideWidth, out s_wideHeight))
                 && IsPlayingInBar();
     }
 
     /// <summary>
-    /// ウルトラワイド時に使う解像度の候補を選ぶ。
-    /// 優先順: 設定値が横長ならそれ → メインディスプレイのネイティブが横長ならそれ
-    /// → 現在の画面解像度。
+    /// フルスクリーン時の横長解像度候補。
+    /// 優先順: 設定値 Width/Height が横長ならそれ → メインディスプレイのネイティブが横長ならそれ。
     /// </summary>
-    private static (int w, int h) PickWideResolution()
+    private static bool TryPickFullscreen(out int w, out int h)
     {
-        int cw = Configs.Width.Value;
-        int ch = Configs.Height.Value;
-        if (ExceedsBaseAspect(cw, ch))
-            return (cw, ch);
+        w = Configs.Width.Value;
+        h = Configs.Height.Value;
+        if (ExceedsBaseAspect(w, h))
+            return true;
 
         var main = Display.main;
-        if (main != null && ExceedsBaseAspect(main.systemWidth, main.systemHeight))
-            return (main.systemWidth, main.systemHeight);
+        if (main != null)
+        {
+            w = main.systemWidth;
+            h = main.systemHeight;
+            return ExceedsBaseAspect(w, h);
+        }
+        return false;
+    }
 
-        var now = Screen.currentResolution;
-        return (now.width, now.height);
+    /// <summary>ウィンドウ時の横長解像度候補。拡張解像度を選択中で、その値が横長のときだけ。</summary>
+    private static bool TryPickWindow(out int w, out int h)
+    {
+        w = Configs.ExtraWidth.Value;
+        h = Configs.ExtraHeight.Value;
+        return Configs.ExtraActive.Value && ExceedsBaseAspect(w, h);
     }
 
     private static bool ExceedsBaseAspect(int w, int h)

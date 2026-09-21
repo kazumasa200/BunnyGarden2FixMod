@@ -29,13 +29,13 @@
       default: 2560
       description: |
         ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。
-        16:9 以外の値は自動的に最大 16:9 に変換されます。
+        ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。
 
     - name: ExtraHeight
       label: 拡張解像度高さ
       type: int
       default: 1440
-      description: 16:9 以外の値は自動的に最大 16:9 に変換されます。
+      description: ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。
 
     - name: FrameRate
       label: FPS 上限
@@ -97,11 +97,11 @@
         kind: toggle
 
     - name: FullscreenUltrawideEnabled
-      label: フルスクリーンでウルトラワイド比率を使う
+      label: ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）
       type: bool
       default: false
       description: |
-        ゲームプレイ中のみモニターのネイティブ比率で表示します。
+        ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。
         タイトル画面やメニュー画面は従来どおり 16:9 のままです。
       ui:
         kind: toggle

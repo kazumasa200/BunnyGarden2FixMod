@@ -33,9 +33,11 @@ public class CalcFullScreenResolutionPatch
         int configH = Configs.Height.Value;
         Resolution mon = Screen.currentResolution;
 
-        if (UltrawideRuntime.Active)
+        // ウィンドウ→フルスクリーン切替の瞬間は Screen.fullScreen がまだ false なので、
+        // 現在モードに依らない判定を使う
+        if (UltrawideRuntime.WantsFullscreenWide(out var wideW, out var wideH))
         {
-            __result = ValueTuple.Create(UltrawideRuntime.WideWidth, UltrawideRuntime.WideHeight, true);
+            __result = ValueTuple.Create(wideW, wideH, true);
             return false;
         }
 

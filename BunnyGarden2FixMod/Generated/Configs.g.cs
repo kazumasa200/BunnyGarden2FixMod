@@ -31,7 +31,7 @@ public static class Configs
     public static ConfigEntry<bool> DisableChromaticAberration;
     /// <summary>被写界深度(画面の一部がぼやける効果)を無効化</summary>
     public static ConfigEntry<bool> DisableDepthOfField;
-    /// <summary>フルスクリーンでウルトラワイド比率を使う</summary>
+    /// <summary>ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）</summary>
     public static ConfigEntry<bool> FullscreenUltrawideEnabled;
     /// <summary>拡張解像度の使用状態（内部）</summary>
     public static ConfigEntry<bool> ExtraActive;
@@ -263,12 +263,12 @@ public static class Configs
             2560,
             @"拡張解像度幅
 ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。
-16:9 以外の値は自動的に最大 16:9 に変換されます。");
+ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。");
 
         ExtraHeight = cfg.Bind("Graphics", "ExtraHeight",
             1440,
             @"拡張解像度高さ
-16:9 以外の値は自動的に最大 16:9 に変換されます。");
+ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。");
 
         FrameRate = cfg.Bind("Graphics", "FrameRate",
             60,
@@ -307,8 +307,8 @@ Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x。
 
         FullscreenUltrawideEnabled = cfg.Bind("Graphics", "FullscreenUltrawideEnabled",
             false,
-            @"フルスクリーンでウルトラワイド比率を使う
-ゲームプレイ中のみモニターのネイティブ比率で表示します。
+            @"ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）
+ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。
 タイトル画面やメニュー画面は従来どおり 16:9 のままです。");
 
         ExtraActive = cfg.Bind("Internal", "ExtraActive",
@@ -1140,8 +1140,8 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Graphics",
-            Label    = "フルスクリーンでウルトラワイド比率を使う",
-            Desc     = "ゲームプレイ中のみモニターのネイティブ比率で表示します。\nタイトル画面やメニュー画面は従来どおり 16:9 のままです。\n",
+            Label    = "ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）",
+            Desc     = "ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。\nタイトル画面やメニュー画面は従来どおり 16:9 のままです。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => FullscreenUltrawideEnabled),
         },

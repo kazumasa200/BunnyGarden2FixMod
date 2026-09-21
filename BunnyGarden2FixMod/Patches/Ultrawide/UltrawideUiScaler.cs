@@ -197,8 +197,7 @@ internal static class UltrawideUiDriverPatch
 
     private static void Postfix(GBSystem __instance)
     {
-        if (!Screen.fullScreen)
-            return;
+        // ウィンドウ（拡張解像度）でも動かす。有効判定は Tick 内の UltrawideRuntime.Active に任せる
         if (!IsSystemReady(__instance))
             return;
 

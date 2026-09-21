@@ -1,3 +1,4 @@
+using BunnyGarden2FixMod.Patches.Ultrawide;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using GB.Save;
@@ -92,7 +93,10 @@ public static class ExtraResolutionPatch
         if (__instance.m_select != ExtraUiIndex) return;
         if (__instance.m_text == null) return;
 
-        var (w, h) = NormalizeAspect(Configs.ExtraWidth.Value, Configs.ExtraHeight.Value);
+        // ウルトラワイド対象の横長設定はそのまま表示する（適用時に本編中だけ横長になる）
+        var (w, h) = UltrawideRuntime.ExtraSizeIsWide
+            ? (Configs.ExtraWidth.Value, Configs.ExtraHeight.Value)
+            : NormalizeAspect(Configs.ExtraWidth.Value, Configs.ExtraHeight.Value);
         __instance.m_text.SetWithoutMSGID($"{w}×{h}");
     }
 
@@ -140,7 +144,11 @@ public static class ExtraResolutionPatch
             return true;
         }
 
-        var (w, h) = NormalizeAspect(rawW, rawH);
+        // 本編中は横長のまま、それ以外は 16:9 に正規化する（フルスクリーンのウルトラワイドと同じ振る舞い）。
+        // 本編への出入りはゲーム側の毎フレームのアスペクトチェックが拾い、SetDisplaySize を再適用してくる。
+        var (w, h) = UltrawideRuntime.WantsWindowWide(out var wideW, out var wideH)
+            ? (wideW, wideH)
+            : NormalizeAspect(rawW, rawH);
         Screen.SetResolution(w, h, fullscreen: false);
         __instance.m_displaySize = size;
         PatchLogger.LogInfo($"拡張解像度を適用: {w}x{h} (window)");
