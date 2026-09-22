@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using GB;
 using UnityEngine;
@@ -14,9 +15,8 @@ public class FreeCameraManager : MonoBehaviour
     private Camera originalCam;
     private GameObject freeCamObject;
     private FreeCameraController controller;
-    private readonly Dictionary<EventSystem, bool> eventSystemNavigationStates = [];
-    private readonly Dictionary<Canvas, bool> canvasEnabledStates = [];
-    private bool isGameUiSuppressed;
+    private readonly List<Action> uiRestoreSteps = [];
+    private bool uiHidden;
     private RenderTexture pipRenderTexture;
     private GameObject pipUIObject;
     private GameObject pipCanvasObject;
@@ -88,7 +88,7 @@ public class FreeCameraManager : MonoBehaviour
         IsFixed = !IsFixed;
         if (controller != null)
             controller.enabled = !IsFixed;
-        RefreshGameUiSuppression(force: true);
+        UpdateGameUiVisibility(force: true);
         Plugin.Logger.LogInfo($"フリーカメラ固定モード: {(IsFixed ? "ON" : "OFF")}");
     }
 
@@ -161,7 +161,7 @@ public class FreeCameraManager : MonoBehaviour
         IsFixed = false;
 
         Plugin.Logger.LogInfo("フリーカメラを作成しました");
-        RefreshGameUiSuppression(force: true);
+        UpdateGameUiVisibility(force: true);
     }
 
     public void Deactivate()
@@ -189,7 +189,7 @@ public class FreeCameraManager : MonoBehaviour
 
         IsActive = false;
         IsFixed = false;
-        RefreshGameUiSuppression(force: true);
+        UpdateGameUiVisibility(force: true);
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -347,90 +347,114 @@ public class FreeCameraManager : MonoBehaviour
         dstData.volumeTrigger = srcData.volumeTrigger;
     }
 
-    public void RefreshGameUiSuppression(bool force = false)
+    /// <summary>
+    /// フリーカメラ表示中にゲーム本体の UI を伏せる／元へ戻す。
+    /// 有効化・固定切り替え・解除のタイミングで呼ぶ。
+    ///
+    /// <para>
+    /// 触ったコンポーネントごとに「元へ戻す手順」を控えに積み、解除時は逆順に実行する。
+    /// Canvas は enabled、EventSystem はナビゲーションの可否と戻し方が違うため、
+    /// 値そのものではなく手順の形で覚えておく。
+    /// </para>
+    /// </summary>
+    public void UpdateGameUiVisibility(bool force = false)
     {
-        bool useDisplay2InFreeCam = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.Display2 && Display.displays.Length > 1;
-        bool usePiPInFreeCam = Configs.FreeCamDisplayMode.Value == FreeCamDisplayMode.PiP;
-        bool isMainScreenOccupied = !usePiPInFreeCam && !useDisplay2InFreeCam;  // メインディスプレイにフリーカメラで占有されているかどうか
-
-        bool shouldSuppress = isMainScreenOccupied && IsActive && !IsFixed && !ShouldExposeGameUiDuringFreeCam();
-        if (!force && shouldSuppress == isGameUiSuppressed)
+        bool hide = WantsGameUiHidden();
+        if (!force && hide == uiHidden)
             return;
 
-        isGameUiSuppressed = shouldSuppress;
+        uiHidden = hide;
 
-        EventSystem[] eventSystems = FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-        if (!shouldSuppress)
-        {
-            foreach (var pair in eventSystemNavigationStates)
-            {
-                if (pair.Key != null)
-                    pair.Key.sendNavigationEvents = pair.Value;
-            }
-
-            eventSystemNavigationStates.Clear();
-
-            foreach (var pair in canvasEnabledStates)
-            {
-                if (pair.Key != null)
-                    pair.Key.enabled = pair.Value;
-            }
-
-            canvasEnabledStates.Clear();
-            return;
-        }
-
-        foreach (var eventSystem in eventSystems)
-        {
-            if (eventSystem == null)
-                continue;
-
-            if (!eventSystemNavigationStates.ContainsKey(eventSystem))
-                eventSystemNavigationStates[eventSystem] = eventSystem.sendNavigationEvents;
-
-            eventSystem.sendNavigationEvents = false;
-            eventSystem.SetSelectedGameObject(null);
-        }
-
-        if (!Configs.HideGameUiInFreeCam.Value)
+        // 積み直す前に必ず元へ戻す。控えが二重に積まれるのを防ぐ。
+        RestoreTouchedUi();
+        if (!hide)
             return;
 
-        foreach (var canvas in canvases)
-        {
-            if (!ShouldHideCanvas(canvas))
-                continue;
-
-            if (!canvasEnabledStates.ContainsKey(canvas))
-                canvasEnabledStates[canvas] = canvas.enabled;
-
-            canvas.enabled = false;
-        }
+        MuteUiNavigation();
+        if (Configs.HideGameUiInFreeCam.Value)
+            HideScreenCanvases();
     }
 
-    private bool ShouldHideCanvas(Canvas canvas)
+    /// <summary>フリーカメラの映像が画面を占有していて、ゲーム UI が邪魔になる状態か。</summary>
+    private bool WantsGameUiHidden()
     {
-        if (canvas == null)
+        if (!IsActive || IsFixed)
             return false;
 
-        if (freeCamObject != null && canvas.transform.IsChildOf(freeCamObject.transform))
+        // PiP やサブモニターへ出しているならゲーム画面はそのまま見えているので伏せない
+        var output = Configs.FreeCamDisplayMode.Value;
+        if (output == FreeCamDisplayMode.PiP)
+            return false;
+        if (output == FreeCamDisplayMode.Display2 && Display.displays.Length > 1)
             return false;
 
-        return canvas.renderMode != RenderMode.WorldSpace;
+        return !IsSystemDialogOpen();
     }
 
-    private static bool ShouldExposeGameUiDuringFreeCam()
+    /// <summary>終了確認・ポーズメニュー・確認ダイアログのいずれかが開いているか。</summary>
+    private static bool IsSystemDialogOpen()
     {
-        var gbSystem = GBSystem.Instance;
-        if (gbSystem == null)
+        var system = GBSystem.Instance;
+        if (system == null)
             return false;
 
-        if (gbSystem.IsInConfirmQuit || gbSystem.IsPauseMenuActive())
+        if (system.IsInConfirmQuit || system.IsPauseMenuActive())
             return true;
 
-        var confirmDialog = gbSystem.GetConfirmDialog();
-        return confirmDialog != null && confirmDialog.IsActive();
+        var dialog = system.GetConfirmDialog();
+        return dialog != null && dialog.IsActive();
+    }
+
+    /// <summary>カメラ操作のキーが UI へ流れないよう、全 EventSystem のナビゲーションを止める。</summary>
+    private void MuteUiNavigation()
+    {
+        foreach (var system in FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (system == null)
+                continue;
+
+            var target = system;
+            bool wasSending = target.sendNavigationEvents;
+            uiRestoreSteps.Add(() =>
+            {
+                if (target != null)
+                    target.sendNavigationEvents = wasSending;
+            });
+
+            target.sendNavigationEvents = false;
+            target.SetSelectedGameObject(null);
+        }
+    }
+
+    /// <summary>画面に貼り付く Canvas を伏せる。3D 空間に置かれたものと MOD 自身の表示は残す。</summary>
+    private void HideScreenCanvases()
+    {
+        foreach (var canvas in FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+        {
+            if (canvas == null || canvas.renderMode == RenderMode.WorldSpace)
+                continue;
+            if (freeCamObject != null && canvas.transform.IsChildOf(freeCamObject.transform))
+                continue;
+
+            var target = canvas;
+            bool wasEnabled = target.enabled;
+            uiRestoreSteps.Add(() =>
+            {
+                if (target != null)
+                    target.enabled = wasEnabled;
+            });
+
+            target.enabled = false;
+        }
+    }
+
+    /// <summary>控えてある復元手順を逆順に実行し、控えを空にする。</summary>
+    private void RestoreTouchedUi()
+    {
+        for (int i = uiRestoreSteps.Count - 1; i >= 0; i--)
+            uiRestoreSteps[i]();
+
+        uiRestoreSteps.Clear();
     }
 
     private void GUICallback()
@@ -439,8 +463,10 @@ public class FreeCameraManager : MonoBehaviour
             return;
 
         GUI.color = Color.white;
-        GUILayout.Label(
-            "Move: Arrow/WASD or Left Stick, Up/Down: E/Q or ZR/ZL, Look: Mouse or Right Stick, Speed: Shift/Ctrl or R/L");
+        GUILayout.Label("Move: WASD / arrow keys / left stick");
+        GUILayout.Label("Up and down: Q and E / ZL and ZR");
+        GUILayout.Label("Look: mouse / right stick");
+        GUILayout.Label("Speed: hold Shift or Ctrl / L or R");
         GUI.color = Color.green;
         GUILayout.Label($"Free Camera: ON ({Configs.FreeCamToggle}=OFF)");
         GUI.color = Color.yellow;
