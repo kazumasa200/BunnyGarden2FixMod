@@ -27,6 +27,10 @@ public class Plugin : BaseUnityPlugin
     private bool isOverlayVisible = true;
     private bool hideOverlayForShot;
 
+    /// <summary>MOD のオーバーレイを表示してよいか（F12 で切り替え、撮影中は伏せる）。</summary>
+    internal static bool IsOverlayVisible =>
+        s_instance != null && s_instance.isOverlayVisible && !s_instance.hideOverlayForShot;
+
     internal new static ManualLogSource Logger;
 
     private void Awake()
@@ -68,6 +72,7 @@ public class Plugin : BaseUnityPlugin
         Patches.CostumeChanger.CostumeReflectionCoordinator.Initialize(gameObject);
         freeCamera = Patches.FreeCamera.FreeCameraManager.Initialize(gameObject);
         Patches.TimeController.Initialize(gameObject);
+        Patches.Overlay.ModOverlayView.Initialize(gameObject);
         SceneManager.sceneUnloaded += Patches.CostumeChanger.PantiesAltSlotMatchPatch.OnSceneUnloaded;
         SceneManager.sceneUnloaded += _ => Patches.CostumeChanger.Internal.NativeSmrRegistry.ClearScene();
         PatchLogger.LogInfo($"プラグイン起動: {MyPluginInfo.PLUGIN_GUID} v{MyPluginInfo.PLUGIN_VERSION}");

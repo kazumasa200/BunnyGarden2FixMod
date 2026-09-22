@@ -265,5 +265,17 @@
   "General": "General",
   "HideUI": "Hide UI",
   "Hotkey": "Hotkeys",
-  "Migration": "Migration"
+  "Migration": "Migration",
+  "時間停止": "Time Stop",
+  "上下": "Up / Down",
+  "視点": "Look",
+  "速度": "Speed",
+  "固定モード": "Fixed mode",
+  "出力先": "Output",
+  "コマ送り": "Frame step",
+  "早送り": "Fast forward",
+  "左スティック": "Left stick",
+  "右スティック": "Right stick",
+  "マウス": "Mouse",
+  "解除": "Off"
 }

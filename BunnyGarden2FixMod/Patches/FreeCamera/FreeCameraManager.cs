@@ -24,14 +24,8 @@ public class FreeCameraManager : MonoBehaviour
     public static FreeCameraManager Initialize(GameObject parent)
         => parent.AddComponent<FreeCameraManager>();
 
-    private void OnEnable()
-    {
-        Plugin.GUICallback += GUICallback;
-    }
-
     private void OnDisable()
     {
-        Plugin.GUICallback -= GUICallback;
         Deactivate();
     }
 
@@ -457,23 +451,4 @@ public class FreeCameraManager : MonoBehaviour
         uiRestoreSteps.Clear();
     }
 
-    private void GUICallback()
-    {
-        if (!IsActive)
-            return;
-
-        GUI.color = Color.white;
-        GUILayout.Label("Move: WASD / arrow keys / left stick");
-        GUILayout.Label("Up and down: Q and E / ZL and ZR");
-        GUILayout.Label("Look: mouse / right stick");
-        GUILayout.Label("Speed: hold Shift or Ctrl / L or R");
-        GUI.color = Color.green;
-        GUILayout.Label($"Free Camera: ON ({Configs.FreeCamToggle}=OFF)");
-        GUI.color = Color.yellow;
-        GUILayout.Label($"Fixed Mode: {(IsFixed ? "ON" : "OFF")} ({Configs.FixedFreeCamToggle}=TOGGLE)");
-        GUI.color = Color.cyan;
-        GUILayout.Label($"Display Mode: {Configs.FreeCamDisplayMode.Value} ({Configs.FreeCamDisplayModeToggle}=TOGGLE)");
-        GUI.color = Color.white;
-
-    }
 }
