@@ -1314,6 +1314,43 @@
         step: 0.05
         format: '{0:F2}'
 
+- section: SoundTest
+  name: サウンドテスト
+  configs:
+    - name: SoundTestEnabled
+      label: サウンドテストを拡張する（要再起動）
+      key: Enabled
+      type: bool
+      default: true
+      description: |
+        エクストラと自宅のサウンドテストを Mod の画面に置き換えます。
+        歌詞の同期表示、曲の使用場所、通常は選べないエンディング曲やカラオケのゲームサイズ版・酔い版が追加されます。
+        OFF にするとゲーム本来のサウンドテストに戻ります。変更は再起動後に反映されます。
+
+    - name: SoundTestVolume
+      label: 音量（%）
+      key: Volume
+      type: int
+      default: 100
+      range: [0, 200]
+      description: |
+        サウンドテストでの再生音量。ゲームの BGM 音量設定に対する割合です。
+        100 を超える値は音を増幅するので、大きくしすぎると音が割れます。
+
+    - name: SoundTestRepeat
+      label: リピート
+      key: Repeat
+      type: enum
+      enumType: BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode
+      default: One
+      description: |
+        曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。
+        One: 同じ曲を繰り返す
+        All: 次の曲へ進む（一覧を一周）
+        None: 止まる
+      ui:
+        kind: dropdown
+
 - section: General
   name: 全般
   configs:

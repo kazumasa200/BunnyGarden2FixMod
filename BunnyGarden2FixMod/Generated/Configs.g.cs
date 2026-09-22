@@ -207,6 +207,12 @@ public static class Configs
     public static ConfigEntry<float> LunaBreastJiggle;
     /// <summary>慣性倍率</summary>
     public static ConfigEntry<float> LunaBreastInertia;
+    /// <summary>サウンドテストを拡張する（要再起動）</summary>
+    public static ConfigEntry<bool> SoundTestEnabled;
+    /// <summary>音量（%）</summary>
+    public static ConfigEntry<int> SoundTestVolume;
+    /// <summary>リピート</summary>
+    public static ConfigEntry<BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode> SoundTestRepeat;
     /// <summary>Steam 経由起動を強制</summary>
     public static ConfigEntry<bool> SteamLaunchCheck;
     /// <summary>MOD UI スケール</summary>
@@ -948,6 +954,29 @@ flat 量が 0 のときは無効。揺れを残すほど衣装が肌を突き抜
                 @"慣性倍率
 瑠那 の胸の慣性の強さ。1.0 で標準、0.0 で慣性を無視します。大きくしても一定値で頭打ちになります。",
                 new AcceptableValueRange<float>(0.0f, 2.0f)));
+
+        SoundTestEnabled = cfg.Bind("SoundTest", "Enabled",
+            true,
+            @"サウンドテストを拡張する（要再起動）
+エクストラと自宅のサウンドテストを Mod の画面に置き換えます。
+歌詞の同期表示、曲の使用場所、通常は選べないエンディング曲やカラオケのゲームサイズ版・酔い版が追加されます。
+OFF にするとゲーム本来のサウンドテストに戻ります。変更は再起動後に反映されます。");
+
+        SoundTestVolume = cfg.Bind("SoundTest", "Volume",
+            100,
+            new ConfigDescription(
+                @"音量（%）
+サウンドテストでの再生音量。ゲームの BGM 音量設定に対する割合です。
+100 を超える値は音を増幅するので、大きくしすぎると音が割れます。",
+                new AcceptableValueRange<int>(0, 200)));
+
+        SoundTestRepeat = cfg.Bind("SoundTest", "Repeat",
+            BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode.One,
+            @"リピート
+曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。
+One: 同じ曲を繰り返す
+All: 次の曲へ進む（一覧を一周）
+None: 止まる");
 
         SteamLaunchCheck = cfg.Bind("General", "SteamLaunchCheck",
             true,
@@ -2103,6 +2132,15 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             SliderStep = 0.05f,
             Format     = "{0:F2}",
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => LunaBreastInertia, 0.05f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "SoundTest",
+            Label    = "リピート",
+            Desc     = "曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。\nOne: 同じ曲を繰り返す\nAll: 次の曲へ進む（一覧を一周）\nNone: 止まる\n",
+            Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Dropdown,
+            DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode)),
+            Accessor        = new global::BunnyGarden2FixMod.Patches.Settings.EnumAccessor<global::BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode>(() => SoundTestRepeat),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
