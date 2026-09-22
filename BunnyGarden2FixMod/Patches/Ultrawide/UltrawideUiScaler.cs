@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BunnyGarden2FixMod.Patches;
 using BunnyGarden2FixMod.Utils;
 using GB;
 using HarmonyLib;
@@ -197,10 +198,15 @@ internal static class UltrawideUiDriverPatch
 
     private static void Postfix(GBSystem __instance)
     {
+        // ウィンドウの中心保持は本体の初期化状態に依らないので先に処理する
+        WindowCenterKeeper.Tick();
+
         // ウィンドウ（拡張解像度）でも動かす。有効判定は Tick 内の UltrawideRuntime.Active に任せる
         if (!IsSystemReady(__instance))
             return;
 
+        // サイリウムの描画テクスチャはウルトラワイドの有無に関わらず画面へ追従させる
+        UltrawidePsylliumFitter.Tick();
         UltrawideUiScaler.Tick();
     }
 
