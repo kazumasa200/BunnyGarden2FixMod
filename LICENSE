@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 kazumasa200 and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Additional Permission for qureate
+
+In addition to the rights granted under the MIT License above, qureate
+(株式会社qureate), the developer of the original game, is hereby granted a
+perpetual, worldwide, non-exclusive, royalty-free, and irrevocable permission
+to use, reproduce, modify, and incorporate part or all of this Software into
+its own products and services, including proprietary and closed-source works,
+and to sublicense the portions so incorporated, without being required to
+include the above copyright notice or this permission notice.
+
+上記 MIT ライセンスで付与される権利に加えて、本ソフトウェアが対象とするゲームの
+開発元である株式会社qureate に対し、本ソフトウェアの一部または全部を、
+プロプライエタリおよびクローズドソースの製品を含む同社の製品・サービスへ
+使用・複製・改変・組み込みすること、および組み込んだ部分をサブライセンスすることを、
+上記の著作権表示および許諾表示を含める義務なしに、恒久的・全世界・非独占・無償・
+撤回不能で許諾します。

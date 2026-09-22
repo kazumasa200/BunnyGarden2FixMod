@@ -208,6 +208,11 @@ dotnet test BunnyGarden2FixMod.Tests/BunnyGarden2FixMod.Tests.csproj
 [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)をご確認ください。バグや改善点、ほしい機能ありましたら[Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues)もしくは[X](https://x.com/kazumasa200)までお願いします。  
 要望の際は右上のNew Issueから個別のissueを作ってください。
 
+## ライセンス
+この Mod は **MIT ライセンス**で公開しています。詳しくは [LICENSE](LICENSE) をご覧ください。  
+加えて、原作の開発元である**株式会社qureate**に対しては、この Mod のソースコードの一部または全部を
+（クローズドソースの本編を含む）製品へ組み込むことを、著作権表示の義務なしで許諾しています。
+
 ## お問い合わせ
 X(旧Twitter):@kazumasa200  
 このModを導入してのライブ配信、スクショ、動画撮影はご自由にどうぞ。ただし、ゲーム自体のガイドラインに従ってください。また、クレジット表記も不要です。

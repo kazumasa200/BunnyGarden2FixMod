@@ -208,6 +208,12 @@ Examples: `SpatialGridIndexTests.cs` (links and tests `SpatialGridIndex.cs`), `S
 Please check the [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues). If you find bugs, have improvements, or want a feature, please reach out via [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues) or [X](https://x.com/kazumasa200).
 When requesting something, please create a separate issue from "New Issue" in the top right.
 
+## License
+This mod is released under the **MIT License**. See [LICENSE](LICENSE) for details.  
+In addition, **qureate**, the developer of the original game, is granted permission to incorporate part or
+all of this mod's source code into its own products (including proprietary, closed-source ones) without
+being required to include the copyright notice.
+
 ## Contact
 X (formerly Twitter): @kazumasa200
 Feel free to use this mod for live streaming, screenshots, and video recording. However, please follow the game's own guidelines. Credit is not required.
