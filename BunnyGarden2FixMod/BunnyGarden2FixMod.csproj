@@ -60,6 +60,8 @@
     <EmbeddedResource Include="Resources\settings.png" />
     <EmbeddedResource Include="Resources\arrow-big-left.png" />
     <EmbeddedResource Include="Resources\lang\en.json" />
+    <EmbeddedResource Include="Resources\lang\zhCN.json" />
+    <EmbeddedResource Include="Resources\lang\zhtw.json" />
     <EmbeddedResource Include="Resources\soundtest\DLC001_full.lrc" />
     <EmbeddedResource Include="Resources\soundtest\repeat_one.png" />
     <EmbeddedResource Include="Resources\soundtest\repeat_all.png" />
