@@ -1,0 +1,201 @@
+# master への push（git flow の release / hotfix finish）で BepInEx 5 / 6 の DLL をビルドし、
+# Releases に下書きを作る。セットアップと使い方は docs/release-automation.md を参照。
+#
+#   prepare (GitHub のサーバー) : csproj からバージョンを読み、公開済みならここで止める
+#   build   (自分の PC)         : ゲームの DLL をコピーしてビルドとテスト。トークンは読み取り専用
+#   release (GitHub のサーバー) : zip にまとめて下書きを作る（既に下書きがあれば zip だけ差し替え）
+name: Release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      create_draft:
+        description: 'リリースの下書きも作る（オフならビルドして Artifacts に置くだけ）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    # フォークで Actions を有効にされても、存在しない PC のランナーを待ち続けないようにする
+    if: github.repository == 'kazumasa200/BunnyGarden2FixMod'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      build: ${{ steps.plan.outputs.build }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATE_DRAFT: ${{ inputs.create_draft }}
+        run: |
+          version=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' BunnyGarden2FixMod/BunnyGarden2FixMod.csproj | head -n1)
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "::error::csproj の <Version> を読めませんでした: '$version'"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          published=false
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$version" > /dev/null 2>&1; then
+            published=true
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            build=true
+            release=$CREATE_DRAFT
+            if [[ "$release" == "true" && "$published" == "true" ]]; then
+              echo "::error::v$version は公開済みです。csproj の <Version> を上げてください。"
+              exit 1
+            fi
+          elif [[ "$published" == "true" ]]; then
+            # バージョンを上げずに master へ push した場合。公開済みのリリースは触らない
+            echo "::notice::v$version は公開済みのため、ビルドと下書きの作成をスキップしました。"
+            build=false
+            release=false
+          else
+            build=true
+            release=true
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.build == 'true'
+    runs-on: [self-hosted, Windows, bg2]
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DOTNET_CLI_UI_LANGUAGE: en
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # csproj が HintPath で参照している DLL を、PC のゲームの Managed フォルダからコピーする。
+      # 場所は PC の環境変数 BG2_MANAGED_DIR で指定する（テストの csproj と同じ変数）。
+      - name: Copy game assemblies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $managed = $env:BG2_MANAGED_DIR
+          if (-not $managed -or -not (Test-Path (Join-Path $managed 'Assembly-CSharp.dll'))) {
+            Write-Output "::error::BG2_MANAGED_DIR is not set on the runner PC, or Assembly-CSharp.dll is not in it: '$managed'"
+            exit 1
+          }
+          $dest = 'BunnyGarden2FixMod\Assembly'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          $names = Select-String -Path 'BunnyGarden2FixMod\BunnyGarden2FixMod.csproj' -Pattern '<HintPath>Assembly\\([^<]+)</HintPath>' -AllMatches |
+            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }
+          foreach ($name in $names) {
+            Copy-Item (Join-Path $managed $name) $dest
+          }
+          Write-Output "Copied $($names.Count) assemblies"
+
+      - name: Build (BepInEx 5)
+        run: |
+          dotnet build BunnyGarden2FixMod/BunnyGarden2FixMod.csproj -c Release -o out/BepInEx5
+
+      - name: Build (BepInEx 6)
+        run: |
+          dotnet build BunnyGarden2FixMod/BunnyGarden2FixMod.csproj -c Release_BIE6 -o out/BepInEx6
+
+      - name: Test
+        run: |
+          dotnet test BunnyGarden2FixMod.Tests/BunnyGarden2FixMod.Tests.csproj -c Release "-p:UnityManagedDir=$env:BG2_MANAGED_DIR"
+
+      # ビルド時に ConfigGen が再生成したファイルがコミット済みのものと違えば警告する（止めはしない）
+      - name: Check generated files
+        run: |
+          git diff --stat --exit-code -- BunnyGarden2FixMod/Generated docs/configs.md
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::warning::Generated/Configs.g.cs or docs/configs.md differs from the committed version. Rebuild locally and commit it."
+          }
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BunnyGarden2FixMod_v${{ env.VERSION }}_BepInEx5
+          path: out/BepInEx5/net.noeleve.BunnyGarden2FixMod.dll
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BunnyGarden2FixMod_v${{ env.VERSION }}_BepInEx6
+          path: out/BepInEx6/net.noeleve.BunnyGarden2FixMod.dll
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # リリースノート用に前回のタグからの履歴が要る
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: BunnyGarden2FixMod_v*
+          path: artifacts
+
+      # 手作業のときと同じく、zip の直下に DLL が 1 つだけ入った形にする
+      - name: Package
+        run: |
+          mkdir -p dist
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            zip -j -X "dist/$name.zip" "$dir/net.noeleve.BunnyGarden2FixMod.dll"
+          done
+          ls -l dist
+
+      - name: Create or update draft release
+        run: |
+          draft_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq ".[] | select(.draft and .tag_name == \"$VERSION\") | .id" | head -n1)
+
+          if [[ -z "$draft_id" ]]; then
+            python3 .github/scripts/release_notes.py "$VERSION" --out notes.md
+            gh release create "$VERSION" dist/*.zip --draft \
+              --title "v$VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+            echo "::notice::v$VERSION のリリースの下書きを作りました。Releases で本文を確認して公開してください。"
+          else
+            # 下書きの本文は手で書き直している途中かもしれないので、zip とコミットだけ差し替える
+            for zip in dist/*.zip; do
+              name=$(basename "$zip")
+              old_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/$draft_id/assets" \
+                --jq ".[] | select(.name == \"$name\") | .id")
+              if [[ -n "$old_id" ]]; then
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old_id"
+              fi
+              curl -sSf -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Content-Type: application/zip" \
+                --data-binary "@$zip" \
+                "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$draft_id/assets?name=$name" > /dev/null
+            done
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" -f target_commitish="$GITHUB_SHA" > /dev/null
+            echo "::notice::既存の v$VERSION の下書きの zip を差し替えました（本文はそのままです）。"
+          fi

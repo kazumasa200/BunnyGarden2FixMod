@@ -204,6 +204,9 @@ dotnet test BunnyGarden2FixMod.Tests/BunnyGarden2FixMod.Tests.csproj
 Examples: `SpatialGridIndexTests.cs` (links and tests `SpatialGridIndex.cs`), `SmokeTest.cs` (toolchain check).
 </details>
 
+## For developers: releases
+Pushing to `master` makes GitHub Actions build the BepInEx 5 / 6 DLLs and create a draft on Releases. See [docs/release-automation.md](docs/release-automation.md) (Japanese) for setup and usage.
+
 ## Known issues
 Please check the [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues). If you find bugs, have improvements, or want a feature, please reach out via [Issues](https://github.com/kazumasa200/BunnyGarden2FixMod/issues) or [X](https://x.com/kazumasa200).
 When requesting something, please create a separate issue from "New Issue" in the top right.
