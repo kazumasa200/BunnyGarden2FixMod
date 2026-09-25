@@ -7,6 +7,9 @@ BepInEx 5 / 6 の DLL をビルドし、Releases に**下書き**を作ります
 ビルドにはゲームの DLL が必要なので、ビルドとテストはゲームが入っている自分の PC で動かします
 （self-hosted runner）。zip の作成と下書きの作成は GitHub のサーバーで動きます。どちらも無料です。
 
+PC の runner は**常駐させず、リリースするときだけ起動します**。公開リポジトリの self-hosted runner は、
+外部のコードが自分の PC で動く入口になり得るので、開いている時間を最小にするためです。
+
 ```
 master へ push
   └─ prepare  (GitHub)  csproj の <Version> を読む。公開済みのバージョンならここで終了
@@ -37,11 +40,11 @@ master へ push
 2. 表示される PowerShell のコマンドを順に実行する。フォルダは `C:\actions-runner` のような短いパスがおすすめです。
 3. `config.cmd` を実行すると、いくつか質問されます。
    - **labels**: `bg2` と入力する（ワークフローはこのラベルが付いた runner を探します）
-   - **run the runner as service?**: `Y` にすると、PC の起動中はいつでも動くようになります
-     - 実行するアカウントは既定の `NT AUTHORITY\NETWORK SERVICE` で構いません。ただし Steam のフォルダを読める必要があります
+   - **run the runner as service?**: **`N`**（常駐させない。リリースのときだけ `run.cmd` で起動します）
    - それ以外は Enter で構いません
 
-サービスにしない場合は、リリースの前に `C:\actions-runner\run.cmd` を起動しておけば同じように動きます。
+どうしてもサービスにする場合は、実行アカウントを既定の `NT AUTHORITY\NETWORK SERVICE` のままにしてください。
+自分のアカウントで動かすと、ブラウザや Steam のログイン情報まで読める状態になります。
 
 ### 3. ゲームの Managed フォルダの場所を runner に伝える
 
@@ -52,7 +55,7 @@ runner のフォルダ（`C:\actions-runner`）に `.env` という名前のフ�
 BG2_MANAGED_DIR=E:\Games\Steam\steamapps\common\BUNNY GARDEN 2\BUNNY GARDEN 2_Data\Managed
 ```
 
-書いたら runner を再起動します（サービスの場合は PowerShell を管理者で開いて `Restart-Service "actions.runner.*"`）。
+`run.cmd` は起動するたびに `.env` を読むので、書いたあとに起動すれば反映されます。
 
 ビルドのたびに、csproj の `<HintPath>Assembly\...` に書かれている DLL をこのフォルダから `BunnyGarden2FixMod/Assembly/` にコピーします。
 ゲームがアップデートされても、自動的に新しい DLL でビルドされます。
@@ -61,19 +64,22 @@ BG2_MANAGED_DIR=E:\Games\Steam\steamapps\common\BUNNY GARDEN 2\BUNNY GARDEN 2_Da
 
 このリポジトリは公開されています。フォークからの PR にワークフローを追加されると、それが自分の PC 上で動くおそれがあります。
 
-**Settings → Actions → General** の、フォークからの pull request のワークフローの承認設定を
-**「すべての外部コントリビューター（outside collaborators）に承認を要求する」** にしてください。
+**Settings → Actions → General** の「Approval for running fork pull request workflows from contributors」を
+**「Require approval for all external contributors」** にしてください（2026-09-25 に設定済み）。
+既定の「初めての人だけ承認が必要」だと、過去に PR がマージされた人は承認なしでワークフローを動かせます。
 
-このリポジトリには PR をきっかけに動くワークフローはありません。PR に「ワークフローの実行を承認しますか」と表示されたら、
-その PR がワークフローを追加・変更しているということです。中身を読むまでは承認しないでください。
+**PR に「Approve and run workflows」ボタンが出ても押さないでください。**
+このリポジトリには PR をきっかけに動くワークフローが無いので、ボタンが出るのはその PR がワークフローを
+持ち込んでいるときだけです。出た時点で怪しいと判断して構いません。
 
 ## 使い方
 
-1. いつもどおり `git flow release start x.y.z` → csproj の `<Version>` を上げる → `git flow release finish x.y.z`
-2. `git push origin master develop --tags`
-3. PC の電源が入っていて runner が動いていれば、数分で **Releases** に `vx.y.z` の下書きができます
-   - PC が止まっていると、build ジョブは runner を待ったままになります（最大 24 時間）。間に合わなかったら Actions タブから Re-run してください
-4. 下書きを開いて本文を書き、**Publish release** を押す
+1. `C:\actions-runner\run.cmd` を起動する（`Listening for Jobs` と出れば待機中）
+2. いつもどおり `git flow release start x.y.z` → csproj の `<Version>` を上げる → `git flow release finish x.y.z`
+3. `git push origin master develop --tags`
+4. 数分で **Releases** に `vx.y.z` の下書きができる。できたら `run.cmd` のウィンドウで Ctrl+C を押して閉じる
+   - runner を起動し忘れても、build ジョブは最大 24 時間待っています。その間に `run.cmd` を起動すれば続きから動きます
+5. 下書きを開いて本文を書き、**Publish release** を押す
 
 公開すると、Mod の更新チェック（`UpdateChecker`）がそのタグを最新版として扱います。
 
