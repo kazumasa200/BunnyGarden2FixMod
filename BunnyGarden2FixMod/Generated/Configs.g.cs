@@ -1057,7 +1057,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
 
         FreeCamDisplayModeToggle = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
             "Hotkey", "ToggleFreeCamDisplayMode",
-            global::UnityEngine.InputSystem.Key.F4,
+            global::UnityEngine.InputSystem.Key.F3,
             global::BunnyGarden2FixMod.Utils.ControllerButton.None,
             @"フリーカメラの出力先切替",
             @"FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。",
