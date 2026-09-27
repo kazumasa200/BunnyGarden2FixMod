@@ -56,11 +56,14 @@ public class FreeCameraManager : MonoBehaviour
         if (!IsActive || isExclusiveFullScreen) // 排他フルスクリーンモードの場合は、フリーカメラの表示モードを切り替えない
             return;
 
-        // モードを切り替え
+        // モードを切り替え。Display2 は、フルスクリーンで、ディスプレイが 2 つ以上あるときだけ候補にする
+        // （以前は、ディスプレイが 1 つでも Display2 に切り替わり、設定は Display2 なのに、実際は MainScreen で表示されていた。
+        // Activate も、ディスプレイが 1 つなら Display2 を使わない）
+        bool canUseDisplay2 = isFullScreen && Display.displays.Length > 1;
         Configs.FreeCamDisplayMode.Value = Configs.FreeCamDisplayMode.Value switch
         {
             FreeCamDisplayMode.MainScreen => FreeCamDisplayMode.PiP,
-            FreeCamDisplayMode.PiP => isFullScreen ? FreeCamDisplayMode.Display2 : FreeCamDisplayMode.MainScreen,
+            FreeCamDisplayMode.PiP => canUseDisplay2 ? FreeCamDisplayMode.Display2 : FreeCamDisplayMode.MainScreen,
             _ => FreeCamDisplayMode.MainScreen
         };
 

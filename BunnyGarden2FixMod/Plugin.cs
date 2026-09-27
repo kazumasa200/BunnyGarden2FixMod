@@ -12,6 +12,7 @@ using GB;
 using HarmonyLib;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace BunnyGarden2FixMod;
@@ -120,6 +121,13 @@ public class Plugin : BaseUnityPlugin
 
     internal static Camera FindCurrentCamera()
     {
+        // 実際に画面に見えているカメラを優先する。画面に直接描き、描く前に画面を塗り直す Base カメラのうち、一番後に描く
+        // （depth が最大の）ものの映像が、それより前のカメラの映像を上書きするので、それが見えている。
+        // 平日の道での出会い（Talk2DScene）では、Main Camera（depth -1）の後に GameCamera（depth 0）が画面全体を描いていて、
+        // Camera.main を元にしたフリーカメラ（とスクリーンショット）は、GameCamera に塗りつぶされて見えなかった
+        var visibleCam = FindVisibleScreenCamera();
+        if (visibleCam != null) return visibleCam;
+
         var mainCam = Camera.main;
         if (mainCam != null)
         {
@@ -137,6 +145,38 @@ public class Plugin : BaseUnityPlugin
         Plugin.Logger.LogInfo($"代替カメラを使用: {cam.name}");
 
         return cam;
+    }
+
+    // 画面（ディスプレイ 1）に直接描き、描く前に画面を塗り直す（Skybox・SolidColor）URP の Base カメラのうち、depth が最大のもの。
+    // 無ければ null
+    private static Camera FindVisibleScreenCamera()
+    {
+        Camera visible = null;
+        foreach (var c in Camera.allCameras)
+        {
+            // 画面（ディスプレイ 1）に直接描くか（RenderTexture に描くカメラは除く）
+            bool drawsToScreen = (c.targetTexture == null) && (c.targetDisplay == 0);
+
+            // 描く前に画面を塗り直すか（Depth・Nothing は、前のカメラの絵の上に重ねるだけなので除く）
+            bool clearsScreen = (c.clearFlags == CameraClearFlags.Skybox) || (c.clearFlags == CameraClearFlags.SolidColor);
+
+            // URP の Base カメラか（Overlay カメラは、Base カメラの絵の上に重ねるだけなので除く）。
+            // GetUniversalAdditionalCameraData() は、データが無いカメラにデータを足してしまうので使わない。
+            // データが無いカメラは、URP の既定どおり Base とみなす
+            bool hasUrpData = c.TryGetComponent<UniversalAdditionalCameraData>(out var urpData);
+            bool isBase = (!hasUrpData) || (urpData.renderType == CameraRenderType.Base);
+
+            bool isCandidate = drawsToScreen && clearsScreen && isBase;
+            if (!isCandidate) continue;
+
+            // 一番後に描く（depth が最大の）カメラの絵が、最後に画面に残る
+            bool drawsLater = (visible == null) || (c.depth > visible.depth);
+            if (drawsLater)
+            {
+                visible = c;
+            }
+        }
+        return visible;
     }
 
     private void ToggleOverlay()
