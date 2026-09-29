@@ -7,10 +7,10 @@
 </div>
 
 [バニーガーデン2](https://store.steampowered.com/app/3443820/2/)(海外名:Bunny Garden2)用の解像度修正やフレームレート上限変更などを行うBepInEx5用Modです。
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/b4e45f40-5420-4811-8500-4a0c3b4d1e69" />
-<img width="1920" height="1000" alt="スクリーンショット 2026-04-16 191718-e" src="https://github.com/user-attachments/assets/f6c86e6b-2ad5-4b5f-bfa8-6ff66fcaf43b" />
+<img width="1920" height="1080" alt="image" src="docs/images/readme/hero.webp" />
+<img width="1920" height="1000" alt="スクリーンショット 2026-04-16 191718-e" src="docs/images/readme/screenshot.webp" />
 
-## 対応バージョン(MODバージョンv1.0.12.1現在)
+## 対応バージョン(MODバージョンv1.1.0現在)
 - ゲームバージョン1.0.5および1.0.6に対応  
 
 ## 機能
@@ -19,6 +19,8 @@
 - アンチエイリアスを設定し、さらに画面のガビガビ感(ジャギー)を減らすことができる。
 - フリーカメラ機能。キーボード／コントローラー操作、時間停止、表示オーバーレイの切り替えに対応。フリーカメラの映像をメイン画面・PiP・サブモニターに出力先選択できる。
 - スクリーンショット保存機能（フリーカメラ対応）。ゲーム UI や MOD のオーバーレイ抜きの PNG が撮れる。
+- サウンドテストを刷新。カラオケ曲の歌詞の同期表示、曲が使われる場面の説明、通常は聴けないスタッフロール曲、カラオケのゲームサイズ版・酔い版、音量（0〜200%）、リピート（1曲／全曲／なし）に対応。エクストラと自宅の音楽アプリから開ける。(デフォルトでは有効)
+- ウルトラワイドモニター対応。バーやミニゲームを 16:9 より横長の画面で遊べる。フルスクリーンのほか、拡張解像度のウィンドウでも使える。(デフォルトでは無効)
 - ドリンク、フード、会話選択肢の正解を表示させることが出来る。(デフォルトでは無効)
 - ストッキングを強制的に非表示にすることができる。(デフォルトでは無効)
 - バーに入る前にキャストの出勤順序を変更できる。(デフォルトでは無効)
@@ -30,9 +32,12 @@
 
 MOD 独自の UI（F9 設定パネル・衣装チェンジャー等）は、ゲームの言語設定（日本語／英語／簡体字／繁体字）に自動で追従します。言語の追加は下記「[翻訳（多言語対応）](#翻訳多言語対応)」を参照してください。
 
+<img width="2000" height="1125" alt="サウンドテスト" src="docs/images/readme/soundtest.webp" />
+↑ 新しくなったサウンドテスト。カラオケ曲は歌詞が曲に合わせて流れます。
+
 ## 導入方法(Steam Deckも対応)
 1. [Releases](https://github.com/kazumasa200/BunnyGarden2FixMod/releases/latest)から最新のzipファイルをダウンロードする。(BunnyGarden2FixMod_v1.0.6.1_BepInEx5.zipみたいな感じ)ブラウザによってはブロックするかもしれないので注意。<br>導入時の最新バージョンを入れてください。
-<img width="983" height="709" alt="image" src="https://github.com/user-attachments/assets/1ce21405-2b6b-47b4-a32f-d9fce95f76c5" />
+<img width="983" height="709" alt="image" src="docs/images/readme/install-1-download.webp" />
 
 上の画像はv1.0.6.1の場合の例です。導入時の最新バージョンを選択してください。  
 > [!NOTE]
@@ -42,18 +47,18 @@ MOD 独自の UI（F9 設定パネル・衣装チェンジャー等）は、ゲ�
 2. [BepInEx5](https://github.com/bepinex/bepinex/releases)をダウンロードする。Windowsの場合もSteam Deckの場合も```BepInEx_win_x64_{バージョン名}.zip```をダウンロードする。
 
 3. ゲームのexeがあるディレクトリにBepInEx5のZipの中身を全て展開。フォルダ以外のファイルもお忘れなく。つまり、ゲームのexeとBepInExフォルダやdoorstop_configとかが同じ階層にある状態が正しいということ。
-<img width="1535" height="1069" alt="image" src="https://github.com/user-attachments/assets/3a1985df-6f79-4c7d-9a66-31ca5ffa312a" />  
+<img width="1535" height="1069" alt="image" src="docs/images/readme/install-3-bepinex.webp" />  
 
 4. (Steam Deckの場合のみ実行) Steamでバニーガーデン2 → 右クリック → 「プロパティ」→「一般」→「起動オプション」に```WINEDLLOVERRIDES="winhttp=n,b" %command%```を入力。
 
 5. 一度Steamのプレイボタンからゲームを起動した後、[Releases](https://github.com/kazumasa200/BunnyGarden2FixMod/releases/latest)からダウンロードしたZipを展開し、中にある```net.noeleve.BunnyGarden2FixMod.dll```をBepinExフォルダの中のPluginsの中に入れる。
-<img width="1490" height="383" alt="image" src="https://github.com/user-attachments/assets/f24310e1-c5f1-4a08-9195-b25d0fe37377" />
+<img width="1490" height="383" alt="image" src="docs/images/readme/install-5-plugins.webp" />
 
 > [!IMPORTANT]
 > `BepInEx/` の直下ではなく、**`BepInEx/plugins/` フォルダの中**に入れてください。
 
 6. もう一度起動するとBepinExフォルダの中のconfigフォルダに```net.noeleve.BunnyGarden2FixMod.cfg```設定ファイルが出来上がるので、それをメモ帳などで変更して解像度の設定やフレームレートなどの設定をする。
-<img width="1677" height="1906" alt="image" src="https://github.com/user-attachments/assets/d8cdc40e-7299-46f4-bbf0-ba5d685c38c9" />
+<img width="1677" height="1906" alt="image" src="docs/images/readme/install-6-config.webp" />
 上の画像は例です。お好みにどうぞ。
 
 
