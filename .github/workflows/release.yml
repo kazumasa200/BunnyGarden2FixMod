@@ -196,6 +196,8 @@ jobs:
                 --data-binary "@$zip" \
                 "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$draft_id/assets?name=$name" > /dev/null
             done
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" -f target_commitish="$GITHUB_SHA" > /dev/null
+            # 下書きを PATCH するときは tag_name も必ず渡す。省くと下書きのタグが外れ、
+            # 公開したときに untagged-xxxx という名前のタグが作られてしまう（v1.1.0 で実際に起きた）
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$draft_id" -f tag_name="$VERSION" -f target_commitish="$GITHUB_SHA" > /dev/null
             echo "::notice::既存の v$VERSION の下書きの zip を差し替えました（本文はそのままです）。"
           fi

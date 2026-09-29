@@ -97,6 +97,11 @@ Conventional Commits の type で振り分けます。
 [`.github/release-notes-template.md`](../.github/release-notes-template.md) にあります。
 ゲームのバージョンが変わったときは、このファイルを書き換えてください。
 
+下書きの本文は Releases の編集画面で直すのが安全です。API（`gh api -X PATCH .../releases/<id>`）で書き換えるときは、
+**`tag_name` も必ず一緒に渡してください**。省くと下書きのタグが外れ、公開したときに `untagged-xxxx` という名前のタグで
+公開されます。そうなると Mod の更新チェックが版数を読めず、新しい版が案内されません（v1.1.0 で実際に起きました）。
+公開後に気付いたら、リリースの編集画面でタグを正しい版数に付け替え、余計にできた `untagged-xxxx` タグを削除してください。
+
 手元で試すときは、リポジトリのルートで次のように実行します。
 
 ```bash
