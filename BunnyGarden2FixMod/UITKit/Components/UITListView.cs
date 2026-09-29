@@ -71,6 +71,47 @@ public class UITListView : VisualElement
         }
     }
 
+    /// <summary>
+    /// index 行が見える位置まで最小限スクロールする。
+    /// 行は固定高（UITListRow の height + marginBottom 1）なので、レイアウトの確定を待たずに位置を計算できる。
+    /// ScrollTo はレイアウト前に呼ぶと空振りするため使わない。
+    /// </summary>
+    public void ScrollToRow(int index)
+    {
+        if (m_scroll == null) return;
+        int count = m_scroll.contentContainer.childCount;
+        if (index < 0 || index >= count) return;
+
+        const float rowHeight = UITTheme.Row.Height + 1f;
+        float viewHeight = m_scroll.contentViewport.layout.height;
+        if (float.IsNaN(viewHeight) || viewHeight <= 0f)
+        {
+            // 初回はまだ大きさが無い。次の更新で改めて合わせる
+            m_scroll.schedule.Execute(() => ScrollToRow(index));
+            return;
+        }
+
+        float top = index * rowHeight;
+        var offset = m_scroll.scrollOffset;
+        if (top < offset.y)
+            offset.y = top;
+        else if (top + rowHeight > offset.y + viewHeight)
+            offset.y = top + rowHeight - viewHeight;
+        offset.y = Mathf.Clamp(offset.y, 0f, Mathf.Max(0f, count * rowHeight - viewHeight));
+        m_scroll.scrollOffset = offset;
+
+        // Rebuild 直後はスクロール範囲が前の内容のままで、代入が丸められることがある。
+        // 新しい行のレイアウトが確定した時点でもう一度同じ位置を入れる
+        var content = m_scroll.contentContainer;
+        EventCallback<GeometryChangedEvent> once = null;
+        once = _ =>
+        {
+            content.UnregisterCallback(once);
+            m_scroll.scrollOffset = offset;
+        };
+        content.RegisterCallback(once);
+    }
+
     public void ShowEmpty(string message)
     {
         if (m_scroll == null) return; // Setup 未呼び出し時のガード

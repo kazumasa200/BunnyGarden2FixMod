@@ -4,112 +4,186 @@ using UnityEngine.InputSystem;
 
 namespace BunnyGarden2FixMod.Patches.FreeCamera;
 
+/// <summary>
+/// フリーカメラの視点・移動操作。
+///
+/// <para>
+/// 毎フレーム「入力を軸値へ正規化 → ローカル空間の移動ベクトルへ合成 → 1 回だけ適用」
+/// の順に処理する。キーボード・スティック・トリガーをいったん同じ軸値
+/// (right / up / forward, 各 -1〜1) に落としてから合成するため、複数の入力手段を
+/// 同時に操作しても移動量が二重に足し込まれない。斜め入力は大きさ 1 に丸めるので
+/// 前進と横移動の同時押しでも速度が上がらない。
+/// </para>
+/// </summary>
 public class FreeCameraController : MonoBehaviour
 {
-    private const float ControllerLookScale = 18f;
-    private const float StickDeadzoneSqr = 0.01f;
-    private const float ZRDeadzone = 0.05f;
-    private float rotationH;
-    private float rotationV;
-    private bool useMouseView = true;
+    /// <summary>
+    /// マウス視点の回転量（度/ピクセル、感度 1 あたり）。
+    /// マウスの delta は「前フレームからの移動量」という変位入力なので、
+    /// deltaTime を掛けてはいけない（掛けると FPS が高いほど感度が下がる）。
+    /// </summary>
+    private const float MouseLookScale = 0.017f;
+
+    /// <summary>右スティック最大倒し込み時の回転速度（度/秒、感度 1 あたり）。</summary>
+    private const float StickLookRate = 18f;
+
+    /// <summary>スティックの遊びを無視するしきい値（ベクトルの長さ）。</summary>
+    private const float StickDeadzone = 0.1f;
+
+    /// <summary>トリガーを入力とみなし始めるしきい値。</summary>
+    private const float TriggerDeadzone = 0.05f;
+
+    /// <summary>見上げ／見下ろしの可動範囲（度）。</summary>
+    private const float PitchLimit = 90f;
+
+    private float yaw;
+    private float pitch;
+    private bool mouseLookEnabled;
 
     private void Start()
     {
-        Vector3 eulerAngles = transform.rotation.eulerAngles;
-        rotationH = eulerAngles.y;
-        rotationV = eulerAngles.x;
-
-        if (rotationV > 180f)
-            rotationV -= 360f;
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // 乗っ取り時点のカメラ姿勢を yaw / pitch に分解して引き継ぐ。
+        Vector3 angles = transform.rotation.eulerAngles;
+        yaw = angles.y;
+        pitch = angles.x > 180f ? angles.x - 360f : angles.x;
     }
+
+    // 固定モードの ON/OFF はこのコンポーネントの enabled 切り替えで行われるため、
+    // カーソルの拘束もそれに追従させる（固定中はゲーム UI を操作できる）。
+    private void OnEnable() => SetMouseLook(true);
+
+    private void OnDisable() => SetMouseLook(false);
 
     private void Update()
     {
-        float deltaTime = Time.unscaledDeltaTime;
+        float dt = Time.unscaledDeltaTime;
 
-        if (useMouseView && Mouse.current != null)
-        {
-            Vector2 mouseDelta = Mouse.current.delta.ReadValue();
-            float sensitivity = Configs.Sensitivity.Value;
-            rotationH += mouseDelta.x * sensitivity * deltaTime;
-            rotationV -= mouseDelta.y * sensitivity * deltaTime;
-        }
-
-        Vector2 rightStick = GamepadHelper.ReadRightStick();
-        if (rightStick.sqrMagnitude > StickDeadzoneSqr)
-        {
-            float sensitivity = Configs.Sensitivity.Value * ControllerLookScale;
-            rotationH += rightStick.x * sensitivity * deltaTime;
-            rotationV -= rightStick.y * sensitivity * deltaTime;
-        }
-
-        rotationV = Mathf.Clamp(rotationV, -90f, 90f);
-        transform.rotation = Quaternion.AngleAxis(rotationH, Vector3.up);
-        transform.rotation *= Quaternion.AngleAxis(rotationV, Vector3.right);
-
-        float speed = Configs.Speed.Value;
-        if (Configs.ControllerEnabled.Value)
-        {
-            if (GamepadHelper.IsButtonHeld(ControllerButton.R))
-                speed = Configs.FastSpeed.Value;
-            else if (GamepadHelper.IsButtonHeld(ControllerButton.L))
-                speed = Configs.SlowSpeed.Value;
-        }
-
-        if (Keyboard.current != null)
-        {
-            if (Keyboard.current.leftShiftKey.isPressed || Keyboard.current.rightShiftKey.isPressed)
-                speed = Configs.FastSpeed.Value;
-            else if (Keyboard.current.leftCtrlKey.isPressed || Keyboard.current.rightCtrlKey.isPressed)
-                speed = Configs.SlowSpeed.Value;
-
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed)
-                transform.position += speed * deltaTime * transform.forward;
-            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed)
-                transform.position -= speed * deltaTime * transform.forward;
-            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed)
-                transform.position -= speed * deltaTime * transform.right;
-            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed)
-                transform.position += speed * deltaTime * transform.right;
-            if (Keyboard.current.qKey.isPressed)
-                transform.position += speed * deltaTime * transform.up;
-            if (Keyboard.current.eKey.isPressed)
-                transform.position += speed * deltaTime * -transform.up;
-        }
-
-        if (Configs.ControllerEnabled.Value)
-        {
-            Vector2 leftStick = GamepadHelper.ReadLeftStick();
-            if (leftStick.sqrMagnitude > StickDeadzoneSqr)
-            {
-                transform.position += speed * deltaTime * transform.forward * leftStick.y;
-                transform.position += speed * deltaTime * transform.right * leftStick.x;
-            }
-
-
-            transform.position += speed * deltaTime *
-                Mathf.InverseLerp(ZRDeadzone, 1, GamepadHelper.ReadTrigger(ControllerButton.ZR)) * transform.up;
-            transform.position += speed * deltaTime *
-                Mathf.InverseLerp(ZRDeadzone, 1, GamepadHelper.ReadTrigger(ControllerButton.ZL)) * -transform.up;
-        }
-
-        if (Mouse.current != null)
-        {
-            if (Mouse.current.leftButton.wasPressedThisFrame || Mouse.current.rightButton.wasPressedThisFrame)
-            {
-                useMouseView = !useMouseView;
-                Cursor.lockState = useMouseView ? CursorLockMode.Locked : CursorLockMode.None;
-                Cursor.visible = !useMouseView;
-            }
-        }
+        UpdateRotation(dt);
+        UpdatePosition(dt);
+        UpdateMouseLookToggle();
     }
 
-    private void OnDisable()
+    // ── 視点 ──────────────────────────────────────────────────────────
+
+    private void UpdateRotation(float dt)
     {
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
+        float sensitivity = Configs.Sensitivity.Value;
+
+        // マウス: 変位入力。フレームごとの移動量をそのまま回転へ変換する（dt を掛けない）。
+        // これによりフレームレートに関係なく「同じ距離マウスを動かせば同じだけ回る」。
+        if (mouseLookEnabled && Mouse.current != null)
+        {
+            Vector2 mouse = Mouse.current.delta.ReadValue() * (sensitivity * MouseLookScale);
+            yaw += mouse.x;
+            pitch -= mouse.y;
+        }
+
+        // スティック: 倒し込み量は「回転し続ける速さ」を表す速度入力なので dt を掛ける。
+        if (Configs.ControllerEnabled.Value)
+        {
+            Vector2 stick = ApplyDeadzone(GamepadHelper.ReadRightStick()) * (sensitivity * StickLookRate * dt);
+            yaw += stick.x;
+            pitch -= stick.y;
+        }
+
+        pitch = Mathf.Clamp(pitch, -PitchLimit, PitchLimit);
+        transform.rotation = Quaternion.AngleAxis(yaw, Vector3.up)
+                           * Quaternion.AngleAxis(pitch, Vector3.right);
     }
+
+    // ── 移動 ──────────────────────────────────────────────────────────
+
+    private void UpdatePosition(float dt)
+    {
+        Vector3 axes = ReadMoveAxes();
+        if (axes == Vector3.zero)
+            return;
+
+        // 斜め入力やキーとスティックの同時操作で速度が増えないよう、長さ 1 に収める。
+        if (axes.sqrMagnitude > 1f)
+            axes.Normalize();
+
+        // 「速度(単位/秒) × dt」の積分なので、移動はフレームレートに依存しない。
+        transform.Translate(axes * (ResolveSpeed() * dt), Space.Self);
+    }
+
+    /// <summary>
+    /// キーボード・左スティック・ZL/ZR を right / up / forward の軸値へ統合する。
+    /// </summary>
+    private static Vector3 ReadMoveAxes()
+    {
+        Vector3 axes = Vector3.zero;
+
+        Keyboard kb = Keyboard.current;
+        if (kb != null)
+        {
+            axes.x = ToAxis(kb.dKey.isPressed || kb.rightArrowKey.isPressed,
+                            kb.aKey.isPressed || kb.leftArrowKey.isPressed);
+            axes.y = ToAxis(kb.qKey.isPressed, kb.eKey.isPressed);
+            axes.z = ToAxis(kb.wKey.isPressed || kb.upArrowKey.isPressed,
+                            kb.sKey.isPressed || kb.downArrowKey.isPressed);
+        }
+
+        if (Configs.ControllerEnabled.Value)
+        {
+            Vector2 stick = ApplyDeadzone(GamepadHelper.ReadLeftStick());
+            axes.x += stick.x;
+            axes.z += stick.y;
+            axes.y += ReadTriggerAxis(ControllerButton.ZR) - ReadTriggerAxis(ControllerButton.ZL);
+        }
+
+        return axes;
+    }
+
+    /// <summary>Shift / R で高速、Ctrl / L で低速。どちらでもなければ基本速度。</summary>
+    private static float ResolveSpeed()
+    {
+        Keyboard kb = Keyboard.current;
+        bool fast = kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed);
+        bool slow = kb != null && (kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed);
+
+        if (Configs.ControllerEnabled.Value)
+        {
+            fast |= GamepadHelper.IsButtonHeld(ControllerButton.R);
+            slow |= GamepadHelper.IsButtonHeld(ControllerButton.L);
+        }
+
+        if (fast) return Configs.FastSpeed.Value;
+        if (slow) return Configs.SlowSpeed.Value;
+        return Configs.Speed.Value;
+    }
+
+    // ── マウス視点の切り替え ──────────────────────────────────────────
+
+    private void UpdateMouseLookToggle()
+    {
+        Mouse mouse = Mouse.current;
+        if (mouse == null)
+            return;
+
+        // 左右どちらのクリックでも、マウス視点とカーソル表示を入れ替える。
+        if (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)
+            SetMouseLook(!mouseLookEnabled);
+    }
+
+    private void SetMouseLook(bool enabled)
+    {
+        mouseLookEnabled = enabled;
+        Cursor.lockState = enabled ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !enabled;
+    }
+
+    // ── 入力ヘルパー ──────────────────────────────────────────────────
+
+    /// <summary>2 つの押下状態を -1 / 0 / +1 の軸値へ変換する。</summary>
+    private static float ToAxis(bool positive, bool negative)
+        => (positive ? 1f : 0f) - (negative ? 1f : 0f);
+
+    /// <summary>デッドゾーン未満のスティック入力を切り捨てる。</summary>
+    private static Vector2 ApplyDeadzone(Vector2 stick)
+        => stick.sqrMagnitude > StickDeadzone * StickDeadzone ? stick : Vector2.zero;
+
+    /// <summary>トリガーの踏み込み量を、デッドゾーンを 0 とする 0〜1 の軸値へ変換する。</summary>
+    private static float ReadTriggerAxis(ControllerButton trigger)
+        => Mathf.InverseLerp(TriggerDeadzone, 1f, GamepadHelper.ReadTrigger(trigger));
 }

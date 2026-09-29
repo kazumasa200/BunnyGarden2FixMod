@@ -31,7 +31,7 @@ public static class Configs
     public static ConfigEntry<bool> DisableChromaticAberration;
     /// <summary>被写界深度(画面の一部がぼやける効果)を無効化</summary>
     public static ConfigEntry<bool> DisableDepthOfField;
-    /// <summary>フルスクリーンでウルトラワイド比率を使う</summary>
+    /// <summary>ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）</summary>
     public static ConfigEntry<bool> FullscreenUltrawideEnabled;
     /// <summary>拡張解像度の使用状態（内部）</summary>
     public static ConfigEntry<bool> ExtraActive;
@@ -207,6 +207,12 @@ public static class Configs
     public static ConfigEntry<float> LunaBreastJiggle;
     /// <summary>慣性倍率</summary>
     public static ConfigEntry<float> LunaBreastInertia;
+    /// <summary>サウンドテストを拡張する（要再起動）</summary>
+    public static ConfigEntry<bool> SoundTestEnabled;
+    /// <summary>音量（%）</summary>
+    public static ConfigEntry<int> SoundTestVolume;
+    /// <summary>リピート</summary>
+    public static ConfigEntry<BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode> SoundTestRepeat;
     /// <summary>Steam 経由起動を強制</summary>
     public static ConfigEntry<bool> SteamLaunchCheck;
     /// <summary>MOD UI スケール</summary>
@@ -263,12 +269,12 @@ public static class Configs
             2560,
             @"拡張解像度幅
 ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。
-16:9 以外の値は自動的に最大 16:9 に変換されます。");
+ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。");
 
         ExtraHeight = cfg.Bind("Graphics", "ExtraHeight",
             1440,
             @"拡張解像度高さ
-16:9 以外の値は自動的に最大 16:9 に変換されます。");
+ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。");
 
         FrameRate = cfg.Bind("Graphics", "FrameRate",
             60,
@@ -307,8 +313,8 @@ Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x。
 
         FullscreenUltrawideEnabled = cfg.Bind("Graphics", "FullscreenUltrawideEnabled",
             false,
-            @"フルスクリーンでウルトラワイド比率を使う
-ゲームプレイ中のみモニターのネイティブ比率で表示します。
+            @"ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）
+ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。
 タイトル画面やメニュー画面は従来どおり 16:9 のままです。");
 
         ExtraActive = cfg.Bind("Internal", "ExtraActive",
@@ -949,6 +955,29 @@ flat 量が 0 のときは無効。揺れを残すほど衣装が肌を突き抜
 瑠那 の胸の慣性の強さ。1.0 で標準、0.0 で慣性を無視します。大きくしても一定値で頭打ちになります。",
                 new AcceptableValueRange<float>(0.0f, 2.0f)));
 
+        SoundTestEnabled = cfg.Bind("SoundTest", "Enabled",
+            true,
+            @"サウンドテストを拡張する（要再起動）
+エクストラと自宅のサウンドテストを Mod の画面に置き換えます。
+歌詞の同期表示、曲の使用場所、通常は選べないエンディング曲やカラオケのゲームサイズ版・酔い版が追加されます。
+OFF にするとゲーム本来のサウンドテストに戻ります。変更は再起動後に反映されます。");
+
+        SoundTestVolume = cfg.Bind("SoundTest", "Volume",
+            100,
+            new ConfigDescription(
+                @"音量（%）
+サウンドテストでの再生音量。ゲームの BGM 音量設定に対する割合です。
+100 を超える値は音を増幅するので、大きくしすぎると音が割れます。",
+                new AcceptableValueRange<int>(0, 200)));
+
+        SoundTestRepeat = cfg.Bind("SoundTest", "Repeat",
+            BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode.One,
+            @"リピート
+曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。
+One: 同じ曲を繰り返す
+All: 次の曲へ進む（一覧を一周）
+None: 止まる");
+
         SteamLaunchCheck = cfg.Bind("General", "SteamLaunchCheck",
             true,
             @"Steam 経由起動を強制
@@ -1028,7 +1057,7 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
 
         FreeCamDisplayModeToggle = new global::BunnyGarden2FixMod.Utils.HotkeyConfig(cfg,
             "Hotkey", "ToggleFreeCamDisplayMode",
-            global::UnityEngine.InputSystem.Key.F4,
+            global::UnityEngine.InputSystem.Key.F3,
             global::BunnyGarden2FixMod.Utils.ControllerButton.None,
             @"フリーカメラの出力先切替",
             @"FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。",
@@ -1140,8 +1169,8 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {
             Category = "Graphics",
-            Label    = "フルスクリーンでウルトラワイド比率を使う",
-            Desc     = "ゲームプレイ中のみモニターのネイティブ比率で表示します。\nタイトル画面やメニュー画面は従来どおり 16:9 のままです。\n",
+            Label    = "ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）",
+            Desc     = "ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。\nタイトル画面やメニュー画面は従来どおり 16:9 のままです。\n",
             Kind     = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Toggle,
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.BoolAccessor(() => FullscreenUltrawideEnabled),
         },
@@ -2103,6 +2132,15 @@ FastForward ホットキー押下中の Time.timeScale 倍率。",
             SliderStep = 0.05f,
             Format     = "{0:F2}",
             Accessor = new global::BunnyGarden2FixMod.Patches.Settings.FloatAccessor(() => LunaBreastInertia, 0.05f),
+        },
+        new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
+        {
+            Category = "SoundTest",
+            Label    = "リピート",
+            Desc     = "曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。\nOne: 同じ曲を繰り返す\nAll: 次の曲へ進む（一覧を一周）\nNone: 止まる\n",
+            Kind            = global::BunnyGarden2FixMod.Patches.Settings.UIKind.Dropdown,
+            DropdownOptions = global::System.Enum.GetNames(typeof(global::BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode)),
+            Accessor        = new global::BunnyGarden2FixMod.Patches.Settings.EnumAccessor<global::BunnyGarden2FixMod.Patches.SoundTest.SoundTestRepeatMode>(() => SoundTestRepeat),
         },
         new global::BunnyGarden2FixMod.Patches.Settings.UIEntryMeta
         {

@@ -11,15 +11,15 @@
 |------|-----------|------|
 | `Width` | `1920` | 解像度幅<br>16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。 |
 | `Height` | `1080` | 解像度高さ<br>16:9 以外の値を指定すると自動的に最大 16:9 に変換されます。 |
-| `ExtraWidth` | `2560` | 拡張解像度幅<br>ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。<br>16:9 以外の値は自動的に最大 16:9 に変換されます。 |
-| `ExtraHeight` | `1440` | 拡張解像度高さ<br>16:9 以外の値は自動的に最大 16:9 に変換されます。 |
+| `ExtraWidth` | `2560` | 拡張解像度幅<br>ゲーム内 OptionMenu の DISPLAY 項目に追加される追加解像度（ウィンドウモード）。既定 2560×1440（WQHD）。<br>ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。 |
+| `ExtraHeight` | `1440` | 拡張解像度高さ<br>ウルトラワイド比率を使う設定が ON なら 16:9 より横長の値をそのまま使います（OFF のときや縦長の値は 16:9 に変換）。 |
 | `FrameRate` | `60` | FPS 上限<br>0 で上限を撤廃します。 |
 | `ForceVSync` | `false` | VSync を強制 ON<br>QualitySettings.vSyncCount = 1 を強制します。<br>フレームレートがモニターのリフレッシュレートに同期され、ティアリングが防止されます。<br>有効時は FrameRate 設定より VSync が優先されます。 |
 | `ForceExclusiveFullScreen` | `false` | 排他的フルスクリーンを強制<br>Windows DWM をバイパスし、複数モニター接続時の FPS 低下が改善される場合があります。<br>ウィンドウモード (1080p / 720p) では無効です。<br>Alt+Tab でのウィンドウ切り替え時に画面が一瞬暗転する場合があります。 |
 | `AntiAliasingType` | `MSAA8x` | アンチエイリアシング<br>Off / FXAA / TAA / MSAA2x / MSAA4x / MSAA8x。<br>右にいくほど画質が向上しますが動作が重くなります。 |
 | `DisableChromaticAberration` | `false` | 色収差(画面端のにじみ)を無効化 |
 | `DisableDepthOfField` | `false` | 被写界深度(画面の一部がぼやける効果)を無効化 |
-| `FullscreenUltrawideEnabled` | `false` | フルスクリーンでウルトラワイド比率を使う<br>ゲームプレイ中のみモニターのネイティブ比率で表示します。<br>タイトル画面やメニュー画面は従来どおり 16:9 のままです。 |
+| `FullscreenUltrawideEnabled` | `false` | ウルトラワイド比率を使う（フルスクリーン / 拡張解像度ウィンドウ）<br>ゲームプレイ中のみ、フルスクリーンではモニターのネイティブ比率、拡張解像度ウィンドウでは拡張解像度の比率で表示します。<br>タイトル画面やメニュー画面は従来どおり 16:9 のままです。 |
 
 ## [Camera] フリーカメラ
 
@@ -232,6 +232,14 @@ Wardrobe パネル表示中、以下のキーで操作できます。
 | `LunaBreastJiggle` | `1.0` | 揺れ度倍率<br>瑠那 の胸の揺れの強さ。1.0 で標準、2.0 でよく揺れる（大振幅）、0.5 で揺れにくい（小振幅）、0.0 で完全停止。 |
 | `LunaBreastInertia` | `1.0` | 慣性倍率<br>瑠那 の胸の慣性の強さ。1.0 で標準、0.0 で慣性を無視します。大きくしても一定値で頭打ちになります。 |
 
+## [SoundTest] サウンドテスト
+
+| キー | デフォルト | 説明 |
+|------|-----------|------|
+| `Enabled` | `true` | サウンドテストを拡張する（要再起動）<br>エクストラと自宅のサウンドテストを Mod の画面に置き換えます。<br>歌詞の同期表示、曲の使用場所、通常は選べないエンディング曲やカラオケのゲームサイズ版・酔い版が追加されます。<br>OFF にするとゲーム本来のサウンドテストに戻ります。変更は再起動後に反映されます。 |
+| `Volume` | `100` | 音量（%）<br>サウンドテストでの再生音量。ゲームの BGM 音量設定に対する割合です。<br>100 を超える値は音を増幅するので、大きくしすぎると音が割れます。 |
+| `Repeat` | `One` | リピート<br>曲が終わったときの動き。サウンドテスト画面では Y ボタンで切り替えられます。<br>One: 同じ曲を繰り返す<br>All: 次の曲へ進む（一覧を一周）<br>None: 止まる |
+
 ## [General] 全般
 
 | キー | デフォルト | 説明 |
@@ -273,7 +281,7 @@ Wardrobe パネル表示中、以下のキーで操作できます。
 | `ToggleFreeCamButton` | `Y` | フリーカメラ ON/OFFのボタン<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleFixedFreeCamKey` | `F6` | 固定フリーカメラ ON/OFFのキーボードキー<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。 |
 | `ToggleFixedFreeCamButton` | `X` | 固定フリーカメラ ON/OFFのボタン<br>フリーカメラ起動中にカメラ位置を固定します。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
-| `ToggleFreeCamDisplayModeKey` | `F4` | フリーカメラの出力先切替のキーボードキー<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。 |
+| `ToggleFreeCamDisplayModeKey` | `F3` | フリーカメラの出力先切替のキーボードキー<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。 |
 | `ToggleFreeCamDisplayModeButton` | `None` | フリーカメラの出力先切替のボタン<br>FreeCamDisplayMode 設定の値を順番に切り替えます。フリーカメラ起動中のみ有効。<br>ControllerModifier と同時押しが必要です。 |
 | `ToggleOverlayKey` | `F12` | オーバーレイ表示切替のキーボードキー<br>フリーカメラの操作ガイドが対象です。 |
 | `ToggleOverlayButton` | `Start` | オーバーレイ表示切替のボタン<br>フリーカメラの操作ガイドが対象です。<br>ControllerModifier と同時押しが必要です。 |

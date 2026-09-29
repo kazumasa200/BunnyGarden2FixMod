@@ -59,10 +59,13 @@ public class VSyncPatch
 [HarmonyPatch(typeof(SaveData), "SetDisplaySize")]
 public class ForceExclusiveFullScreenPatch
 {
-    private static void Postfix()
+    private static void Postfix(DisplaySize size)
     {
         if (!Configs.ForceExclusiveFullScreen.Value) return;
-        if (!Screen.fullScreen) return;
+        // SetResolution は次フレームまで反映されないため、ここで Screen.fullScreen を見ると
+        // ウィンドウ化の直後でも true のまま。要求されたサイズで判定しないと、ウィンドウ化を
+        // 排他フルスクリーンで上書きしてゲーム側の再適用と押し合い（暗転ループ）になる。
+        if (size != DisplaySize.FULL_SCREEN) return;
 
         // 既に ExclusiveFullScreen なら再設定しない（GBSystem.Update のループ防止）
         if (Screen.fullScreenMode == FullScreenMode.ExclusiveFullScreen) return;

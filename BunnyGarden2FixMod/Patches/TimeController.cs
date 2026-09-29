@@ -5,6 +5,9 @@ namespace BunnyGarden2FixMod.Patches;
 
 public class TimeController : MonoBehaviour
 {
+    /// <summary>時間停止中かどうか。オーバーレイ表示の判定に使う。</summary>
+    internal static bool IsTimeStopped { get; private set; }
+
     private bool fastForward;
     private bool stop = false;
     private int frames;
@@ -13,16 +16,11 @@ public class TimeController : MonoBehaviour
     public static TimeController Initialize(GameObject parent)
         => parent.AddComponent<TimeController>();
 
-    private void OnEnable()
-    {
-        Plugin.GUICallback += GUICallback;
-    }
-
     private void OnDisable()
     {
-        Plugin.GUICallback -= GUICallback;
         Time.timeScale = 1f;
         stop = false;
+        IsTimeStopped = false;
     }
 
     private void Update()
@@ -30,7 +28,10 @@ public class TimeController : MonoBehaviour
         fastForward = Configs.FastForward.IsHeld();
 
         if (Configs.TimeStopToggle.IsTriggered())
+        {
             stop = !stop;
+            IsTimeStopped = stop;
+        }
 
         if (Configs.FrameAdvance.IsTriggered())
         {
@@ -59,15 +60,4 @@ public class TimeController : MonoBehaviour
         frames = Mathf.Max(0, frames - 1);
     }
 
-    private void GUICallback()
-    {
-        if (!stop)
-            return;
-
-        GUI.color = Color.cyan;
-        GUILayout.Label($"Time Stop: ON ({Configs.TimeStopToggle}=OFF)");
-        GUILayout.Label($"Frame Advance: ({Configs.FrameAdvance})");
-        GUILayout.Label($"Fast Forward: ({Configs.FastForward})");
-        GUI.color = Color.white;
-    }
 }
