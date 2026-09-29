@@ -10,7 +10,7 @@
 <img width="1920" height="1080" alt="image" src="docs/images/readme/hero.webp" />
 <img width="1920" height="1000" alt="スクリーンショット 2026-04-16 191718-e" src="docs/images/readme/screenshot.webp" />
 
-## 対応バージョン(MODバージョンv1.0.12.1現在)
+## 対応バージョン(MODバージョンv1.1.0現在)
 - ゲームバージョン1.0.5および1.0.6に対応  
 
 ## 機能
